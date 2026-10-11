@@ -1,0 +1,129 @@
+# Builds .deb and .rpm packages from a release's static Linux binaries,
+# attaches them to the GitHub Release, and publishes them to the signed
+# apt/yum repository on the gh-pages branch (served by GitHub Pages).
+#
+# Called by release.yml after the release is announced (dist
+# `post-announce-jobs`). Run it by hand to re-publish an existing release.
+#
+# Needs secrets:
+#   LINUX_PACKAGES_GPG_KEY         armored private signing key
+#   LINUX_PACKAGES_GPG_PASSPHRASE  its passphrase (optional)
+# Optional variable:
+#   LINUX_PACKAGES_URL  where the site is served (default: GitHub Pages URL)
+name: Publish Linux packages
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to package, e.g. v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: linux-packages
+  cancel-in-progress: false
+
+jobs:
+  packages:
+    runs-on: depot-ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PLAN: ${{ inputs.plan }}
+      DISPATCH_TAG: ${{ inputs.tag }}
+      SITE_URL: ${{ vars.LINUX_PACKAGES_URL || format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}
+    steps:
+      - name: Resolve release
+        id: release
+        run: |
+          if [ -n "$PLAN" ]; then
+            tag=$(jq -r .announcement_tag <<<"$PLAN")
+            prerelease=$(jq -r .announcement_is_prerelease <<<"$PLAN")
+          else
+            tag="$DISPATCH_TAG"
+            prerelease=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apt-utils createrepo-c gnupg
+          sudo packaging/install-nfpm.sh /usr/local/bin
+
+      - name: Download Linux binaries
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir downloads \
+            --pattern 'hpy-cli-x86_64-unknown-linux-musl.tar.xz' \
+            --pattern 'hpy-cli-aarch64-unknown-linux-musl.tar.xz'
+          for arch in x86_64 aarch64; do
+            mkdir -p "bin/$arch"
+            tar -xJf "downloads/hpy-cli-$arch-unknown-linux-musl.tar.xz" -C "bin/$arch"
+            mv "$(find "bin/$arch" -type f -name hpy | head -n 1)" "bin/$arch/hpy"
+          done
+
+      - name: Import signing key
+        env:
+          GPG_KEY: ${{ secrets.LINUX_PACKAGES_GPG_KEY }}
+        run: |
+          if [ -z "$GPG_KEY" ]; then
+            echo "::error::LINUX_PACKAGES_GPG_KEY is not set; see README → Releasing"
+            exit 1
+          fi
+          printf '%s\n' "$GPG_KEY" > "$RUNNER_TEMP/signing-key.asc"
+          gpg --batch --import "$RUNNER_TEMP/signing-key.asc"
+
+      - name: Build packages
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          RPM_SIGNING_KEY: ${{ runner.temp }}/signing-key.asc
+          NFPM_PASSPHRASE: ${{ secrets.LINUX_PACKAGES_GPG_PASSPHRASE }}
+        run: |
+          packaging/build-packages.sh "$TAG" dist \
+            amd64:bin/x86_64/hpy \
+            arm64:bin/aarch64/hpy
+
+      - name: Attach packages to the release
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Publish the apt/yum repository
+        if: steps.release.outputs.prerelease != 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          GPG_PASSPHRASE: ${{ secrets.LINUX_PACKAGES_GPG_PASSPHRASE }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" gh-pages >/dev/null; then
+            git clone --quiet --depth 1 --branch gh-pages "$remote" site
+          else
+            git init --quiet -b gh-pages site
+            git -C site remote add origin "$remote"
+          fi
+          packaging/update-repo.sh site "$SITE_URL" dist/*
+          git -C site add -A
+          git -C site -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "hpy $TAG"
+          git -C site push --quiet origin gh-pages
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/signing-key.asc"

@@ -1,0 +1,28 @@
+# Package definition template for nfpm. build-packages.sh fills in @VERSION@,
+# @ARCH@ (amd64|arm64), @BINARY@ and @README@, and keeps the `rpm:` signing
+# block only when RPM_SIGNING_KEY names an armored private key file.
+name: hpy
+arch: @ARCH@
+platform: linux
+version: @VERSION@
+section: devel
+priority: optional
+maintainer: HappyProto <packages@happyproto.at>
+vendor: HappyProto
+homepage: https://happyproto.at
+license: MIT
+description: |-
+  The HappyProto command line.
+  Publishes and manages HappyView plugins in the HappyProto registry.
+contents:
+  - src: @BINARY@
+    dst: /usr/bin/hpy
+    file_info:
+      mode: 0755
+  - src: @README@
+    dst: /usr/share/doc/hpy/README.md
+    file_info:
+      mode: 0644
+rpm:
+  signature:
+    key_file: @RPM_SIGNING_KEY@

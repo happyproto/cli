@@ -1,0 +1,69 @@
+# Commits the release's Homebrew formula to happyproto/homebrew-tap.
+#
+# Called by release.yml (dist `publish-jobs`) after the GitHub Release exists.
+# Pushes as the happyproto-infra-bump GitHub App, which must be installed on
+# happyproto/homebrew-tap with Contents: read and write.
+#
+# Needs:
+#   variable INFRA_APP_CLIENT_ID   the app's client ID
+#   secret   INFRA_APP_PRIVATE_KEY the app's private key
+name: Publish Homebrew formula
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  formula:
+    # Prereleases stay out of the tap.
+    if: ${{ !fromJson(inputs.plan).announcement_is_prerelease }}
+    runs-on: depot-ubuntu-24.04
+    steps:
+      - name: Fetch the formula
+        uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-*
+          path: artifacts
+          merge-multiple: true
+
+      # A one-hour token, scoped to the tap.
+      - uses: actions/create-github-app-token@v3.2.0
+        id: app
+        with:
+          client-id: ${{ vars.INFRA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.INFRA_APP_PRIVATE_KEY }}
+          owner: happyproto
+          repositories: homebrew-tap
+
+      - name: Commit the formula
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          VERSION: ${{ fromJson(inputs.plan).announcement_tag }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          test -f artifacts/hpy.rb || { echo "::error::no hpy.rb among the release artifacts"; exit 1; }
+          remote="https://x-access-token:${TOKEN}@github.com/happyproto/homebrew-tap.git"
+          if git ls-remote --exit-code --heads "$remote" >/dev/null; then
+            git clone --quiet --depth 1 "$remote" tap
+          else
+            # The tap has no commits yet; this release makes the first.
+            git init --quiet -b main tap
+            git -C tap remote add origin "$remote"
+          fi
+          mkdir -p tap/Formula
+          cp artifacts/hpy.rb tap/Formula/hpy.rb
+          bot_id=$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
+          cd tap
+          git add Formula/hpy.rb
+          if git diff --cached --quiet; then
+            echo "formula unchanged"
+            exit 0
+          fi
+          git -c user.name="${APP_SLUG}[bot]" \
+            -c user.email="${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com" \
+            commit --quiet -m "hpy ${VERSION#v}"
+          git push --quiet origin HEAD

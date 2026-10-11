@@ -1,0 +1,32 @@
+[package]
+name = "hpy-cli"
+description = "The HappyProto command line"
+homepage = "https://happyproto.at"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "hpy"
+path = "src/main.rs"
+
+[dependencies]
+hpy-plugin.workspace = true
+hpy-atproto.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+inquire.workspace = true
+miette.workspace = true
+reqwest.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+wiremock.workspace = true
+tempfile.workspace = true
