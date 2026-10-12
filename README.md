@@ -116,6 +116,8 @@ hpy registry plugin init --no-input --license MIT \
 | `hpy registry plugin publish` | Publishes a new release. `--dry-run` prints the record without publishing, `--wait` polls until the release is active, `--version` overrides the version, `--wasm` points at the module. |
 | `hpy registry plugin status [version]` | Lists releases from your repo and from the registry, with the registry's status for each. |
 | `hpy registry plugin withdraw <version>` | Deletes a release record. The release stays installable by its exact version, but that version can never be reused. |
+| `hpy update` | Updates `hpy` to the newest release on your channel (see [Updates](#updates)). |
+| `hpy channel [stable\|beta\|alpha]` | Shows your release channel, or switches to another. `--yes` skips the confirmation. |
 
 Global flags: `--json` (machine-readable output on stdout), `--no-input`
 (never prompt), and `-C <dir>`.
@@ -194,17 +196,36 @@ from the HappyView dashboard.
 
 ## Updates
 
-On the first command of each day (UTC), `hpy` checks GitHub for a newer
-release. The check runs alongside the command and never delays it by more
-than about two seconds.
+Every release is on one channel:
 
-- **Installed with the install script:** `hpy` updates itself in place when
-  the command finishes.
+| Channel | Versions | Cut from |
+| --- | --- | --- |
+| `stable` | `1.2.0` | `main` |
+| `beta` | `1.3.0-beta.1` | `beta` |
+| `alpha` | `1.3.0-alpha.4` | `alpha` |
+
+Channels are strict: `hpy` only ever offers the newest release on the channel
+you follow, never a newer one from another channel. Until you choose one with
+`hpy channel`, you follow the channel your installed version came from.
+
+`hpy channel alpha` (or `beta`, or `stable`, which `main` also names) switches
+channel and installs that channel's newest release. It asks first when the
+channel is a prerelease channel, which can be unstable, or when its newest
+release is older than the one you have. Without a terminal, pass `--yes`.
+
+`hpy update` updates to the newest release on your channel now. Otherwise, on
+the first command of each day (UTC), `hpy` checks GitHub for one. The check
+runs alongside the command and never delays it by more than about two
+seconds.
+
+- **Installed with the install script:** `hpy` updates itself in place, and
+  `hpy channel` installs the new channel's release itself.
 - **Installed with Homebrew, apt, dnf or cargo:** that package manager owns
-  the binary, so `hpy` prints the upgrade command instead, e.g.
-  `brew upgrade hpy`.
+  the binary, so `hpy` prints the commands to run instead, e.g.
+  `brew upgrade hpy`. Each channel has its own Homebrew formula (`hpy`,
+  `hpy-beta`, `hpy-alpha`) and its own apt suite and yum repository.
 
-The check is skipped in CI, when there's no terminal, and when
+The daily check is skipped in CI, when there's no terminal, and when
 `HPY_NO_UPDATE_CHECK=1` is set.
 
 ## Configuration

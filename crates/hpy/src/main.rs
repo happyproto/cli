@@ -1,3 +1,4 @@
+mod channel;
 mod cli;
 mod clock;
 mod commands;
@@ -20,9 +21,12 @@ use failure::Failure;
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
+    // `update` and `channel` do this themselves, and say so.
+    let checks = !matches!(cli.command, Command::Update | Command::Channel(_));
     let update = hpy_atproto::settings::config_dir()
         .ok()
-        .and_then(|dir| update::start(dir.join("update-check.toml")));
+        .filter(|_| checks)
+        .and_then(update::start);
     let code = match run(cli).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {
@@ -46,7 +50,11 @@ async fn run(cli: Cli) -> Result<(), Failure> {
         out: output::Output::new(cli.json),
         dir,
     };
-    let Command::Registry(command) = cli.command;
+    let command = match cli.command {
+        Command::Update => return commands::update::run(&ctx).await,
+        Command::Channel(a) => return commands::channel::run(&ctx, a).await,
+        Command::Registry(command) => command,
+    };
     match command {
         RegistryCommand::Login(a) => commands::auth::login(&ctx, a).await,
         RegistryCommand::Logout => commands::auth::logout(&ctx).await,

@@ -269,3 +269,51 @@ fn listing_commands_sit_directly_under_plugin() {
             .success();
     }
 }
+
+#[test]
+fn channel_defaults_to_the_installed_versions() {
+    let dir = tempfile::tempdir().unwrap();
+    let expected = match env!("CARGO_PKG_VERSION").split_once('-') {
+        Some((_, pre)) => pre.split('.').next().unwrap().to_string(),
+        None => "stable".into(),
+    };
+    hpy(dir.path())
+        .args(["--json", "channel"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains(format!("\"channel\": \"{expected}\""))
+                .and(predicate::str::contains("\"chosen\": false")),
+        );
+}
+
+#[test]
+fn choosing_the_channel_already_followed_records_it_without_the_network() {
+    let dir = tempfile::tempdir().unwrap();
+    let current = hpy(dir.path())
+        .args(["--json", "channel"])
+        .output()
+        .unwrap();
+    let current: serde_json::Value = serde_json::from_slice(&current.stdout).unwrap();
+    let current = current["channel"].as_str().unwrap().to_string();
+    hpy(dir.path())
+        .args(["channel", &current])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already on"));
+    hpy(dir.path())
+        .args(["--json", "channel"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"chosen\": true"));
+}
+
+#[test]
+fn an_unknown_channel_is_a_usage_error() {
+    let dir = tempfile::tempdir().unwrap();
+    hpy(dir.path())
+        .args(["channel", "nightly"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("stable, beta or alpha"));
+}

@@ -23,6 +23,20 @@ pub enum Command {
     /// Work with the HappyProto plugin registry.
     #[command(subcommand)]
     Registry(RegistryCommand),
+    /// Update hpy to the newest release on your channel.
+    Update,
+    /// Show or choose the release channel hpy updates from.
+    Channel(ChannelArgs),
+}
+
+#[derive(Args)]
+pub struct ChannelArgs {
+    /// stable (also `main`), beta or alpha. Shows the current channel when omitted.
+    #[arg(value_parser = clap::value_parser!(crate::channel::Channel))]
+    pub channel: Option<crate::channel::Channel>,
+    /// Do not ask for confirmation.
+    #[arg(long, short)]
+    pub yes: bool,
 }
 
 #[derive(Subcommand)]

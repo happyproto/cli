@@ -1,4 +1,6 @@
-//! Update checks, on the first command of each UTC day.
+//! Update checks, on the first command of each UTC day, and the installing
+//! that `hpy update` and `hpy channel` share. Only the newest release on the
+//! channel being followed counts (see `channel`).
 //!
 //! The check runs in the background while the command does its work, and the
 //! command waits for it at most a couple of seconds at the end. A copy of `hpy`
@@ -15,6 +17,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::channel::{self, Channel, Release, Version};
 use crate::clock;
 
 const REPO: &str = "happyproto/cli";
@@ -23,6 +26,8 @@ const GITHUB_API: &str = "https://api.github.com";
 const APP: &str = "hpy-cli";
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
 const WAIT: Duration = Duration::from_secs(2);
+/// The apt and yum repositories, on GitHub Pages.
+const PACKAGES: &str = "https://happyproto.github.io/cli";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Install {
@@ -71,23 +76,90 @@ pub fn detect(f: &Facts) -> Install {
     }
 }
 
-pub fn upgrade_hint(install: Install) -> String {
+/// The Homebrew formula each channel is published as.
+pub fn formula(channel: Channel) -> String {
+    match channel {
+        Channel::Stable => "hpy".into(),
+        other => format!("hpy-{other}"),
+    }
+}
+
+/// The yum repository definition for each channel.
+fn yum_repo(channel: Channel) -> String {
+    match channel {
+        Channel::Stable => format!("{PACKAGES}/hpy.repo"),
+        other => format!("{PACKAGES}/hpy-{other}.repo"),
+    }
+}
+
+/// A version as a .deb names it: nfpm writes a prerelease after `~`, which
+/// sorts before the release it precedes.
+fn deb_version(v: &Version) -> String {
+    if v.pre.is_empty() {
+        v.to_string()
+    } else {
+        format!("{}.{}.{}~{}", v.major, v.minor, v.patch, v.pre)
+    }
+}
+
+fn release_page(version: &Version) -> String {
+    format!("https://github.com/{REPO}/releases/tag/v{version}")
+}
+
+/// How to upgrade to `version`, the newest on `channel`, when a package
+/// manager owns this copy of hpy.
+pub fn upgrade_hint(install: Install, channel: Channel, version: &Version) -> String {
     match install {
-        Install::Homebrew => "brew upgrade hpy".into(),
+        Install::Homebrew => format!("brew upgrade {}", formula(channel)),
         Install::Apt => "sudo apt update && sudo apt install --only-upgrade hpy".into(),
         Install::Dnf => "sudo dnf upgrade hpy".into(),
-        Install::Cargo => format!("cargo install --git https://github.com/{REPO} hpy-cli --force"),
+        Install::Cargo => format!(
+            "cargo install --git https://github.com/{REPO} --tag v{version} hpy-cli --force"
+        ),
         Install::Script | Install::Unknown => {
-            format!("download it from https://github.com/{REPO}/releases/latest")
+            format!("download it from {}", release_page(version))
         }
     }
 }
 
-/// The latest version when it is a stable release newer than `current`.
-pub fn newer(current: &str, latest_tag: &str) -> Option<String> {
-    let latest = semver::Version::parse(latest_tag.trim_start_matches('v')).ok()?;
-    let current = semver::Version::parse(current).ok()?;
-    (latest.pre.is_empty() && latest > current).then(|| latest.to_string())
+/// How to move a package manager's copy of hpy from channel `from` to `to`,
+/// whose newest release is `version` (possibly older than the one installed).
+pub fn switch_hint(install: Install, from: Channel, to: Channel, version: &Version) -> String {
+    match install {
+        Install::Homebrew => format!(
+            "brew uninstall {} && brew install happyproto/tap/{}",
+            formula(from),
+            formula(to)
+        ),
+        Install::Apt => [
+            format!(
+                "sudo sed -i 's#/deb [a-z]* main#/deb {to} main#' /etc/apt/sources.list.d/hpy.list"
+            ),
+            "sudo apt update".into(),
+            format!(
+                "sudo apt install --allow-downgrades hpy={}",
+                deb_version(version)
+            ),
+        ]
+        .join(" && "),
+        // distro-sync moves to the newest the enabled repository has, down
+        // as well as up.
+        Install::Dnf => format!(
+            "sudo curl -fsSL {} -o /etc/yum.repos.d/hpy.repo && sudo dnf distro-sync hpy",
+            yum_repo(to)
+        ),
+        install => upgrade_hint(install, to, version),
+    }
+}
+
+/// The newest release on `channel`, when it is newer than `current`.
+pub fn available(current: &Version, channel: Channel, releases: &[Release]) -> Option<Version> {
+    channel::latest_on(channel, releases).filter(|latest| latest > current)
+}
+
+/// The running version.
+pub fn current() -> Version {
+    Version::parse(CURRENT).expect("the crate version is semver")
 }
 
 #[derive(Serialize, Deserialize)]
@@ -162,15 +234,12 @@ fn http() -> Option<reqwest::Client> {
         .ok()
 }
 
-/// The tag of the latest stable release, or `None` on any failure: an update
-/// check must never get in the way of the command.
-pub async fn latest_tag(api_base: &str) -> Option<String> {
-    #[derive(Deserialize)]
-    struct Release {
-        tag_name: String,
-    }
+/// The repo's newest releases, or `None` on any failure: an update check must
+/// never get in the way of the command.
+pub async fn list_releases(api_base: &str) -> Option<Vec<Release>> {
     let resp = http()?
-        .get(format!("{api_base}/repos/{REPO}/releases/latest"))
+        .get(format!("{api_base}/repos/{REPO}/releases"))
+        .query(&[("per_page", "100")])
         .header("Accept", "application/vnd.github+json")
         .timeout(Duration::from_secs(5))
         .send()
@@ -179,7 +248,14 @@ pub async fn latest_tag(api_base: &str) -> Option<String> {
     if !resp.status().is_success() {
         return None;
     }
-    resp.json::<Release>().await.ok().map(|r| r.tag_name)
+    resp.json::<Vec<Release>>().await.ok()
+}
+
+/// The releases, for a command that cannot go on without them.
+pub async fn releases() -> Result<Vec<Release>, String> {
+    list_releases(GITHUB_API)
+        .await
+        .ok_or_else(|| format!("could not list hpy's releases on GitHub (github.com/{REPO})"))
 }
 
 fn env_var(k: &str) -> Option<String> {
@@ -211,33 +287,54 @@ fn facts(exe: PathBuf) -> Facts {
     }
 }
 
-enum Found {
-    SelfUpdate { latest: String, prefix: PathBuf },
-    Notice { latest: String, hint: String },
+/// How this copy of hpy was installed; for the installer's, where to.
+pub struct This {
+    pub install: Install,
+    pub prefix: Option<PathBuf>,
 }
 
-async fn check() -> Option<Found> {
+pub fn this_install() -> Option<This> {
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
     let install = detect(&facts(exe.clone()));
-    let latest = newer(CURRENT, &latest_tag(GITHUB_API).await?)?;
-    Some(match install {
-        Install::Script => Found::SelfUpdate {
+    let prefix = (install == Install::Script)
+        .then(|| script_prefix(&exe))
+        .flatten();
+    Some(This { install, prefix })
+}
+
+/// The channel to follow, given the config directory.
+pub fn following(config_dir: &Path) -> Channel {
+    channel::effective(channel::read(&channel_file(config_dir)), &current())
+}
+
+pub fn channel_file(config_dir: &Path) -> PathBuf {
+    config_dir.join("channel.toml")
+}
+
+enum Found {
+    SelfUpdate { latest: Version, prefix: PathBuf },
+    Notice { latest: Version, hint: String },
+}
+
+async fn check(config_dir: PathBuf) -> Option<Found> {
+    let this = this_install()?;
+    let channel = following(&config_dir);
+    let latest = available(&current(), channel, &list_releases(GITHUB_API).await?)?;
+    Some(match (this.install, this.prefix) {
+        (Install::Script, Some(prefix)) => Found::SelfUpdate { latest, prefix },
+        (install, _) => Found::Notice {
+            hint: upgrade_hint(install, channel, &latest),
             latest,
-            prefix: script_prefix(&exe)?,
-        },
-        install => Found::Notice {
-            latest,
-            hint: upgrade_hint(install),
         },
     })
 }
 
 /// Downloads the release's installer and runs it into the same prefix.
-async fn self_update(latest: &str, prefix: &Path) -> Result<(), String> {
+pub async fn self_update(latest: &Version, prefix: &Path) -> Result<(), String> {
     let windows = cfg!(windows);
     let script = http()
         .ok_or("no HTTP client")?
-        .get(installer_url(latest, windows))
+        .get(installer_url(&latest.to_string(), windows))
         .send()
         .await
         .and_then(|r| r.error_for_status())
@@ -287,10 +384,11 @@ fn tempfile_dir() -> Result<PathBuf, String> {
 pub struct Pending(tokio::task::JoinHandle<Option<Found>>);
 
 /// Starts today's check if this is the first command of the UTC day.
-pub fn start(state_file: PathBuf) -> Option<Pending> {
+pub fn start(config_dir: PathBuf) -> Option<Pending> {
     if !enabled(&env_var, std::io::stderr().is_terminal()) {
         return None;
     }
+    let state_file = config_dir.join("update-check.toml");
     let today = clock::today_utc();
     if !due(read_last_checked(&state_file).as_deref(), &today) {
         return None;
@@ -298,7 +396,7 @@ pub fn start(state_file: PathBuf) -> Option<Pending> {
     // Recorded up front, so a failed or slow check is not retried by every
     // command for the rest of the day.
     let _ = write_last_checked(&state_file, &today);
-    Some(Pending(tokio::spawn(check())))
+    Some(Pending(tokio::spawn(check(config_dir))))
 }
 
 /// Waits briefly for the check, then updates or says how to.
@@ -317,18 +415,23 @@ pub async fn finish(pending: Option<Pending>) {
             eprintln!("\nUpdating hpy {CURRENT} → {latest}…");
             match self_update(&latest, &prefix).await {
                 Ok(()) => eprintln!("Updated hpy to {latest}."),
-                Err(e) => eprintln!(
-                    "Could not update hpy automatically ({e}). To update by hand: \
-                     curl -fsSL https://happyproto.github.io/cli/install.sh | sh"
-                ),
+                Err(e) => eprintln!("{}", self_update_failed(&latest, &e)),
             }
         }
     }
 }
 
+pub fn self_update_failed(latest: &Version, error: &str) -> String {
+    format!(
+        "Could not update hpy automatically ({error}). To update by hand: curl -fsSL {} | sh",
+        installer_url(&latest.to_string(), false)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::channel::Release;
     use std::path::PathBuf;
 
     fn facts(exe: &str) -> Facts {
@@ -402,22 +505,85 @@ mod tests {
         assert_eq!(detect(&facts("/tmp/hpy")), Install::Unknown);
     }
 
-    #[test]
-    fn tells_package_manager_users_how_to_upgrade() {
-        assert!(upgrade_hint(Install::Homebrew).contains("brew upgrade hpy"));
-        assert!(upgrade_hint(Install::Apt).contains("apt install --only-upgrade hpy"));
-        assert!(upgrade_hint(Install::Dnf).contains("dnf upgrade hpy"));
-        assert!(upgrade_hint(Install::Cargo).contains("cargo install"));
-        assert!(upgrade_hint(Install::Unknown).contains("releases/latest"));
+    fn v(s: &str) -> Version {
+        Version::parse(s).unwrap()
+    }
+
+    fn releases(tags: &[&str]) -> Vec<Release> {
+        tags.iter()
+            .map(|t| Release {
+                tag: t.to_string(),
+                draft: false,
+            })
+            .collect()
     }
 
     #[test]
-    fn only_newer_stable_versions_count() {
-        assert_eq!(newer("0.1.0", "v0.2.0"), Some("0.2.0".to_string()));
-        assert_eq!(newer("0.2.0", "v0.2.0"), None);
-        assert_eq!(newer("0.3.0", "v0.2.0"), None);
-        assert_eq!(newer("0.2.0-beta.1", "v0.2.0"), Some("0.2.0".to_string()));
-        assert_eq!(newer("0.1.0", "garbage"), None);
+    fn tells_package_manager_users_how_to_upgrade_on_their_channel() {
+        let alpha = v("1.1.0-alpha.2");
+        assert_eq!(
+            upgrade_hint(Install::Homebrew, Channel::Stable, &v("1.1.0")),
+            "brew upgrade hpy"
+        );
+        assert_eq!(
+            upgrade_hint(Install::Homebrew, Channel::Alpha, &alpha),
+            "brew upgrade hpy-alpha"
+        );
+        assert!(
+            upgrade_hint(Install::Apt, Channel::Alpha, &alpha)
+                .contains("apt install --only-upgrade hpy")
+        );
+        assert!(upgrade_hint(Install::Dnf, Channel::Alpha, &alpha).contains("dnf upgrade hpy"));
+        assert!(
+            upgrade_hint(Install::Cargo, Channel::Alpha, &alpha).contains("--tag v1.1.0-alpha.2")
+        );
+        assert!(
+            upgrade_hint(Install::Unknown, Channel::Alpha, &alpha)
+                .ends_with("/releases/tag/v1.1.0-alpha.2")
+        );
+    }
+
+    #[test]
+    fn tells_package_manager_users_how_to_switch_channel() {
+        let alpha = v("1.1.0-alpha.2");
+        assert_eq!(
+            switch_hint(Install::Homebrew, Channel::Stable, Channel::Alpha, &alpha),
+            "brew uninstall hpy && brew install happyproto/tap/hpy-alpha"
+        );
+        let apt = switch_hint(Install::Apt, Channel::Stable, Channel::Alpha, &alpha);
+        assert!(apt.contains("/deb alpha main"), "{apt}");
+        // apt never picks a lower version on its own, so name it exactly
+        assert!(apt.contains("hpy=1.1.0~alpha.2"), "{apt}");
+        let dnf = switch_hint(Install::Dnf, Channel::Alpha, Channel::Stable, &v("1.0.0"));
+        assert!(dnf.contains("/hpy.repo"), "{dnf}");
+        assert!(dnf.contains("dnf distro-sync hpy"), "{dnf}");
+        assert!(
+            switch_hint(
+                Install::Dnf,
+                Channel::Stable,
+                Channel::Beta,
+                &v("1.1.0-beta.1")
+            )
+            .contains("/hpy-beta.repo")
+        );
+    }
+
+    #[test]
+    fn only_newer_versions_on_the_channel_count() {
+        let all = releases(&["v1.0.0", "v1.1.0", "v1.2.0-alpha.1", "v1.2.0-alpha.2"]);
+        assert_eq!(
+            available(&v("1.0.0"), Channel::Stable, &all),
+            Some(v("1.1.0"))
+        );
+        assert_eq!(available(&v("1.1.0"), Channel::Stable, &all), None);
+        assert_eq!(
+            available(&v("1.2.0-alpha.1"), Channel::Alpha, &all),
+            Some(v("1.2.0-alpha.2"))
+        );
+        // strict: a newer stable is not offered on alpha
+        let later = releases(&["v1.2.0-alpha.2", "v2.0.0"]);
+        assert_eq!(available(&v("1.2.0-alpha.2"), Channel::Alpha, &later), None);
+        assert_eq!(available(&v("1.0.0"), Channel::Beta, &all), None);
     }
 
     #[test]
@@ -432,20 +598,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reads_the_latest_release_tag() {
-        use wiremock::matchers::{method, path};
+    async fn lists_the_releases_skipping_drafts_downstream() {
+        use wiremock::matchers::{method, path, query_param};
         use wiremock::{Mock, MockServer, ResponseTemplate};
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/repos/happyproto/cli/releases/latest"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({ "tag_name": "v1.4.0" })),
-            )
+            .and(path("/repos/happyproto/cli/releases"))
+            .and(query_param("per_page", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "tag_name": "v1.4.0-alpha.1", "draft": false, "prerelease": true },
+                { "tag_name": "v1.3.0", "draft": false, "prerelease": false }
+            ])))
             .mount(&server)
             .await;
-        assert_eq!(latest_tag(&server.uri()).await.as_deref(), Some("v1.4.0"));
-        assert_eq!(latest_tag("http://127.0.0.1:9").await, None);
+        let found = list_releases(&server.uri()).await.unwrap();
+        assert_eq!(
+            found.iter().map(|r| r.tag.as_str()).collect::<Vec<_>>(),
+            ["v1.4.0-alpha.1", "v1.3.0"]
+        );
+        assert!(list_releases("http://127.0.0.1:9").await.is_none());
     }
 
     #[test]
