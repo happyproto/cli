@@ -1,32 +1,40 @@
 #!/usr/bin/env bash
-# Adds packages to the apt + yum repository in SITE_DIR and re-signs it.
+# Adds packages to a release channel's apt suite and yum repository in
+# SITE_DIR and re-signs them.
 #
-# Usage: update-repo.sh SITE_DIR BASE_URL PACKAGE...
+# Usage: update-repo.sh SITE_DIR BASE_URL CHANNEL PACKAGE...
 #   SITE_DIR  the GitHub Pages checkout; existing packages are kept, so every
 #             published version stays installable
 #   BASE_URL  where SITE_DIR is served, e.g. https://happyproto.github.io/cli
+#   CHANNEL   stable, beta or alpha (packaging/channel.sh); each channel is
+#             its own suite and repository, holding only its own releases
 #   GPG_KEY_ID      signing key (default: the first secret key in the keyring)
 #   GPG_PASSPHRASE  its passphrase, if it has one
 #
 # Needs apt-ftparchive (apt-utils), createrepo_c and gpg.
 #
 # Layout:
-#   gpg.key                          public signing key
-#   hpy.repo                         yum/dnf repository definition
-#   install.sh                       the shell installer, for curl | sh
-#   deb/dists/stable/...             apt metadata, InRelease + Release.gpg
-#   deb/pool/main/h/hpy/*.deb
-#   rpm/<x86_64|aarch64>/*.rpm       each with signed repodata/
+#   gpg.key                                  public signing key
+#   hpy.repo, hpy-beta.repo, hpy-alpha.repo  yum/dnf repository definitions
+#   install.sh                               the shell installer, for curl | sh
+#   deb/dists/<channel>/...                  apt metadata, InRelease + Release.gpg
+#   deb/pool/<channel>/h/hpy/*.deb
+#   rpm/<channel>/<x86_64|aarch64>/*.rpm     each with signed repodata/
 set -euo pipefail
 
-if [[ $# -lt 3 ]]; then
-  echo "usage: $0 SITE_DIR BASE_URL PACKAGE..." >&2
+if [[ $# -lt 4 ]]; then
+  echo "usage: $0 SITE_DIR BASE_URL CHANNEL PACKAGE..." >&2
   exit 2
 fi
 
 site="$1"
 base_url="${2%/}"
-shift 2
+channel="$3"
+shift 3
+case "$channel" in
+  stable | beta | alpha) ;;
+  *) echo "update-repo: unknown channel $channel" >&2; exit 2 ;;
+esac
 key="${GPG_KEY_ID:-$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')}"
 if [[ -z "$key" ]]; then
   echo "update-repo: no signing key in the keyring" >&2
@@ -40,29 +48,30 @@ sign() {
   fi
 }
 
-pool="$site/deb/pool/main/h/hpy"
+pool="$site/deb/pool/$channel/h/hpy"
+rpms="$site/rpm/$channel"
 mkdir -p "$pool"
 for pkg in "$@"; do
   case "$pkg" in
     *.deb) cp "$pkg" "$pool/" ;;
-    *.x86_64.rpm) mkdir -p "$site/rpm/x86_64" && cp "$pkg" "$site/rpm/x86_64/" ;;
-    *.aarch64.rpm) mkdir -p "$site/rpm/aarch64" && cp "$pkg" "$site/rpm/aarch64/" ;;
+    *.x86_64.rpm) mkdir -p "$rpms/x86_64" && cp "$pkg" "$rpms/x86_64/" ;;
+    *.aarch64.rpm) mkdir -p "$rpms/aarch64" && cp "$pkg" "$rpms/aarch64/" ;;
     *) echo "update-repo: skipping $pkg (not a .deb or x86_64/aarch64 .rpm)" >&2 ;;
   esac
 done
 
-# apt: one suite, one component, both architectures.
-dists="$site/deb/dists/stable"
+# apt: a suite per channel, one component, both architectures.
+dists="$site/deb/dists/$channel"
 for arch in amd64 arm64; do
   mkdir -p "$dists/main/binary-$arch"
-  (cd "$site/deb" && apt-ftparchive --arch "$arch" packages pool) > "$dists/main/binary-$arch/Packages"
+  (cd "$site/deb" && apt-ftparchive --arch "$arch" packages "pool/$channel") > "$dists/main/binary-$arch/Packages"
   gzip -9 -n -k -f "$dists/main/binary-$arch/Packages"
 done
 apt-ftparchive \
   -o APT::FTPArchive::Release::Origin=HappyProto \
   -o APT::FTPArchive::Release::Label=hpy \
-  -o APT::FTPArchive::Release::Suite=stable \
-  -o APT::FTPArchive::Release::Codename=stable \
+  -o APT::FTPArchive::Release::Suite="$channel" \
+  -o APT::FTPArchive::Release::Codename="$channel" \
   -o APT::FTPArchive::Release::Architectures="amd64 arm64" \
   -o APT::FTPArchive::Release::Components=main \
   -o APT::FTPArchive::Release::Description="hpy, the HappyProto command line" \
@@ -71,8 +80,8 @@ mv "$dists/Release.tmp" "$dists/Release"
 sign --clearsign -o "$dists/InRelease" "$dists/Release"
 sign --armor --detach-sign -o "$dists/Release.gpg" "$dists/Release"
 
-# yum/dnf: one repository per architecture ($basearch).
-for dir in "$site"/rpm/*/; do
+# yum/dnf: a repository per channel and architecture ($basearch).
+for dir in "$rpms"/*/; do
   [[ -d "$dir" ]] || continue
   createrepo_c --quiet --update "$dir"
   sign --armor --detach-sign -o "$dir/repodata/repomd.xml.asc" "$dir/repodata/repomd.xml"
@@ -80,15 +89,18 @@ done
 
 gpg --batch --armor --export "$key" > "$site/gpg.key"
 
-cat > "$site/hpy.repo" <<EOF
-[hpy]
-name=hpy (HappyProto)
-baseurl=$base_url/rpm/\$basearch
+for c in stable beta alpha; do
+  if [[ "$c" == stable ]]; then id=hpy; else id="hpy-$c"; fi
+  cat > "$site/$id.repo" <<EOF
+[$id]
+name=hpy $c (HappyProto)
+baseurl=$base_url/rpm/$c/\$basearch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
 gpgkey=$base_url/gpg.key
 EOF
+done
 
 cat > "$site/install.sh" <<'EOF'
 #!/bin/sh
@@ -123,9 +135,11 @@ sudo apt update &amp;&amp; sudo apt install hpy</pre>
 sudo dnf install hpy</pre>
 <h2>Anything else</h2>
 <pre>curl -fsSL $base_url/install.sh | sh</pre>
+<h2>Prereleases</h2>
+<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
 </body>
 </html>
 EOF
 
 touch "$site/.nojekyll"
-echo "update-repo: $(find "$pool" -name '*.deb' | wc -l | tr -d ' ') .deb, $(find "$site/rpm" -name '*.rpm' | wc -l | tr -d ' ') .rpm in $site"
+echo "update-repo: $channel has $(find "$pool" -name '*.deb' | wc -l | tr -d ' ') .deb, $(find "$rpms" -name '*.rpm' | wc -l | tr -d ' ') .rpm in $site"

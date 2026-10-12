@@ -58,6 +58,18 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/happyproto/cli/rel
 cargo install --git https://github.com/happyproto/cli hpy-cli
 ```
 
+**Prereleases**
+
+These install the stable channel. For the `beta` or `alpha` channel (see
+[Updates](#updates)):
+
+- Homebrew: `brew install happyproto/tap/hpy-beta` (or `hpy-alpha`).
+- apt: write `beta` (or `alpha`) in place of `stable` in `hpy.list`.
+- dnf: download `hpy-beta.repo` (or `hpy-alpha.repo`) in place of `hpy.repo`.
+- The install script: run the `hpy-cli-installer.sh` attached to the
+  [release](https://github.com/happyproto/cli/releases) you want. After that,
+  `hpy update` keeps you on its channel.
+
 The Linux packages contain a static (musl) binary, so they install on any
 glibc or musl distribution, on x86_64 and arm64.
 
@@ -335,8 +347,11 @@ and `CHANGELOG.md`, commits and tags `vX.Y.Z`, and dispatches `release.yml`.
 [Depot](https://depot.dev) runners, creates the GitHub Release and updates the
 Homebrew formula. After that, `publish-linux-packages.yml` builds the
 `.deb`/`.rpm` packages, attaches them to the release, and publishes them to the
-apt/yum repository on the `gh-pages` branch. Prereleases get packages attached
-to the release but are kept out of the apt/yum repository.
+apt/yum repository on the `gh-pages` branch. Every release goes to its own
+channel only: the `hpy`, `hpy-beta` or `hpy-alpha` formula, and the `stable`,
+`beta` or `alpha` apt suite and yum repository (`packaging/channel.sh` decides
+which). A prerelease no channel ships, such as `-rc.1`, gets packages attached
+to its release and is published nowhere else.
 
 Never edit the version by hand. If `main` is ever protected, add a
 `RELEASE_TOKEN` secret: a token that can push to it.
@@ -356,9 +371,9 @@ Repository setup:
   `packaging/hpy-packages.asc`. It is stored in the `LINUX_PACKAGES_GPG_KEY`
   and `LINUX_PACKAGES_GPG_PASSPHRASE` secrets. Keep an offline backup:
   replacing the key means every user re-imports `gpg.key`.
-- **GitHub Pages:** after the first release creates the `gh-pages` branch,
-  enable Pages for it (Settings → Pages → Deploy from a branch → `gh-pages` /
-  root). To serve it from your own domain, set the custom domain there, set
+- **GitHub Pages:** after the first release (of any channel) creates the
+  `gh-pages` branch, enable Pages for it (Settings → Pages → Deploy from a
+  branch → `gh-pages` / root). To serve it from your own domain, set the custom domain there, set
   the repository variable `LINUX_PACKAGES_URL` (e.g. `https://pkg.happyproto.at`),
   and update the URLs in the Install section.
 
@@ -368,4 +383,6 @@ packages* workflow by hand with its tag.
 `packaging/test-repo.sh` tests the whole Linux path in Docker: it builds a
 static `hpy`, packages and publishes it to a local repository with a
 throwaway key, installs it with `apt` on Debian and `dnf` on Fedora, then
-publishes a newer version and checks both upgrade.
+publishes an alpha and a newer stable version and checks both upgrade within
+their channel, then switches both to the alpha channel with the commands
+`hpy channel` prints.

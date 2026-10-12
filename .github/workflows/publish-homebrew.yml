@@ -1,4 +1,5 @@
-# Commits the release's Homebrew formula to happyproto/homebrew-tap.
+# Commits the release's Homebrew formula to happyproto/homebrew-tap: `hpy`
+# for a stable release, `hpy-beta` or `hpy-alpha` for a prerelease.
 #
 # Called by release.yml (dist `publish-jobs`) after the GitHub Release exists.
 # Pushes as the happyproto-infra-bump GitHub App, which must be installed on
@@ -18,11 +19,23 @@ on:
 
 jobs:
   formula:
-    # Prereleases stay out of the tap.
-    if: ${{ !fromJson(inputs.plan).announcement_is_prerelease }}
     runs-on: depot-ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Find the channel
+        id: channel
+        env:
+          TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+        run: |
+          channel=$(packaging/channel.sh "$TAG")
+          [ -n "$channel" ] || echo "::notice::$TAG is on no release channel; the tap is left alone"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
       - name: Fetch the formula
+        if: steps.channel.outputs.channel != ''
         uses: actions/download-artifact@v8
         with:
           pattern: artifacts-*
@@ -31,6 +44,7 @@ jobs:
 
       # A one-hour token, scoped to the tap.
       - uses: actions/create-github-app-token@v3.2.0
+        if: steps.channel.outputs.channel != ''
         id: app
         with:
           client-id: ${{ vars.INFRA_APP_CLIENT_ID }}
@@ -39,7 +53,9 @@ jobs:
           repositories: homebrew-tap
 
       - name: Commit the formula
+        if: steps.channel.outputs.channel != ''
         env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
           TOKEN: ${{ steps.app.outputs.token }}
           APP_SLUG: ${{ steps.app.outputs.app-slug }}
           VERSION: ${{ fromJson(inputs.plan).announcement_tag }}
@@ -54,16 +70,15 @@ jobs:
             git init --quiet -b main tap
             git -C tap remote add origin "$remote"
           fi
-          mkdir -p tap/Formula
-          cp artifacts/hpy.rb tap/Formula/hpy.rb
+          formula=$(packaging/formula.sh artifacts/hpy.rb "$CHANNEL" tap)
           bot_id=$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
           cd tap
-          git add Formula/hpy.rb
+          git add "${formula#tap/}"
           if git diff --cached --quiet; then
             echo "formula unchanged"
             exit 0
           fi
           git -c user.name="${APP_SLUG}[bot]" \
             -c user.email="${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com" \
-            commit --quiet -m "hpy ${VERSION#v}"
+            commit --quiet -m "$(basename "$formula" .rb) ${VERSION#v}"
           git push --quiet origin HEAD

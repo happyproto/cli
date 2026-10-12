@@ -1,6 +1,7 @@
 # Builds .deb and .rpm packages from a release's static Linux binaries,
-# attaches them to the GitHub Release, and publishes them to the signed
-# apt/yum repository on the gh-pages branch (served by GitHub Pages).
+# attaches them to the GitHub Release, and publishes them to the release
+# channel's signed apt suite and yum repository on the gh-pages branch (served
+# by GitHub Pages).
 #
 # Called by release.yml after the release is announced (dist
 # `post-announce-jobs`). Run it by hand to re-publish an existing release.
@@ -46,18 +47,24 @@ jobs:
         run: |
           if [ -n "$PLAN" ]; then
             tag=$(jq -r .announcement_tag <<<"$PLAN")
-            prerelease=$(jq -r .announcement_is_prerelease <<<"$PLAN")
           else
             tag="$DISPATCH_TAG"
-            prerelease=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v6
         with:
           ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
+
+      - name: Find the channel
+        id: channel
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          channel=$(packaging/channel.sh "$TAG")
+          [ -n "$channel" ] || echo "::notice::$TAG is on no release channel; the repository is left alone"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
 
       - name: Install tools
         run: |
@@ -105,9 +112,10 @@ jobs:
         run: gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Publish the apt/yum repository
-        if: steps.release.outputs.prerelease != 'true'
+        if: steps.channel.outputs.channel != ''
         env:
           TAG: ${{ steps.release.outputs.tag }}
+          CHANNEL: ${{ steps.channel.outputs.channel }}
           GPG_PASSPHRASE: ${{ secrets.LINUX_PACKAGES_GPG_PASSPHRASE }}
         run: |
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
@@ -117,7 +125,7 @@ jobs:
             git init --quiet -b gh-pages site
             git -C site remote add origin "$remote"
           fi
-          packaging/update-repo.sh site "$SITE_URL" dist/*
+          packaging/update-repo.sh site "$SITE_URL" "$CHANNEL" dist/*
           git -C site add -A
           git -C site -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \

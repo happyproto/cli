@@ -6,7 +6,11 @@
 #      update-repo.sh using a throwaway signing key
 #   3. serves the site and installs `hpy` from it on Debian (apt) and
 #      Fedora (dnf), exactly as the README tells users to
-#   4. publishes 0.0.2 into the same site and checks both upgrade
+#   4. publishes 0.0.2-alpha.1 to the alpha channel and checks stable
+#      ignores it, then publishes 0.0.2 and checks both upgrade
+#   5. switches both to the alpha channel with the commands `hpy channel`
+#      prints (crates/hpy/src/update.rs `switch_hint`), which downgrades
+#      0.0.2 to 0.0.2-alpha.1
 #
 # The signing key has a passphrase, as the release workflow's may.
 #
@@ -63,15 +67,15 @@ docker exec "$publisher" bash -c '
     --quick-gen-key "hpy test <test@example.com>" rsa3072 sign never
   gpg --batch --pinentry-mode loopback --passphrase test-pass --armor --export-secret-keys > /tmp/key.asc
 '
-publish() { # version
-  docker exec -e VERSION="$1" -e GPG_PASSPHRASE=test-pass -e NFPM_PASSPHRASE=test-pass "$publisher" bash -c '
+publish() { # version channel
+  docker exec -e VERSION="$1" -e CHANNEL="$2" -e GPG_PASSPHRASE=test-pass -e NFPM_PASSPHRASE=test-pass "$publisher" bash -c '
     set -e
     export GNUPGHOME=$(mktemp -d)
     gpg --batch --quiet --import /tmp/key.asc
     rm -rf target/packaging-test/dist/*
     RPM_SIGNING_KEY=/tmp/key.asc packaging/build-packages.sh "$VERSION" target/packaging-test/dist \
       "'"$(arch_pair)"'"
-    packaging/update-repo.sh target/packaging-test/site http://repo:8000 target/packaging-test/dist/*
+    packaging/update-repo.sh target/packaging-test/site http://repo:8000 "$CHANNEL" target/packaging-test/dist/*
   '
 }
 arch_pair() {
@@ -80,7 +84,7 @@ arch_pair() {
     *) echo "amd64:target/packaging-test/hpy" ;;
   esac
 }
-publish 0.0.1
+publish 0.0.1 stable
 
 step "serving the repository"
 docker network create "$net" >/dev/null
@@ -115,8 +119,21 @@ docker exec "$fedora" bash -c '
   test "$(rpm -q --qf "%{VERSION}" hpy)" = 0.0.1
 '
 
+step "publishing 0.0.2-alpha.1, which stable ignores"
+publish 0.0.2-alpha.1 alpha
+docker exec "$debian" bash -c '
+  set -e
+  apt-get update -qq && apt-get install -y -qq --only-upgrade hpy >/dev/null
+  test "$(dpkg-query -W -f="\${Version}" hpy)" = 0.0.1
+'
+docker exec "$fedora" bash -c '
+  set -e
+  dnf upgrade -y -q --refresh hpy
+  test "$(rpm -q --qf "%{VERSION}" hpy)" = 0.0.1
+'
+
 step "publishing 0.0.2 and upgrading"
-publish 0.0.2
+publish 0.0.2 stable
 docker exec "$debian" bash -c '
   set -e
   apt-get update -qq && apt-get install -y -qq --only-upgrade hpy >/dev/null
@@ -128,6 +145,23 @@ docker exec "$fedora" bash -c '
   dnf upgrade -y -q --refresh hpy
   test "$(rpm -q --qf "%{VERSION}" hpy)" = 0.0.2
 '
-test -f "$work/site/deb/pool/main/h/hpy/hpy_0.0.1_$(arch_pair | cut -d: -f1).deb" # old versions stay installable
+test -f "$work/site/deb/pool/stable/h/hpy/hpy_0.0.1_$(arch_pair | cut -d: -f1).deb" # old versions stay installable
 
-step "ok: apt and dnf install and upgrade hpy from the repository"
+step "switching to the alpha channel, back to 0.0.2-alpha.1"
+docker exec "$debian" bash -c '
+  set -e
+  sed -i "s#/deb [a-z]* main#/deb alpha main#" /etc/apt/sources.list.d/hpy.list
+  apt-get update -qq
+  apt-get install -y -qq --allow-downgrades hpy=0.0.2~alpha.1 >/dev/null
+  hpy --version
+  test "$(dpkg-query -W -f="\${Version}" hpy)" = 0.0.2~alpha.1
+'
+docker exec "$fedora" bash -c '
+  set -e
+  curl -fsSL http://repo:8000/hpy-alpha.repo -o /etc/yum.repos.d/hpy.repo
+  dnf distro-sync -y -q hpy
+  hpy --version
+  test "$(rpm -q --qf "%{VERSION}" hpy)" = 0.0.2~alpha.1
+'
+
+step "ok: apt and dnf install, upgrade and switch channels from the repository"
