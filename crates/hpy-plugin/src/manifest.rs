@@ -28,6 +28,12 @@ pub struct Manifest {
     pub capabilities: Option<Vec<String>>,
     #[serde(default)]
     pub allowed_hosts: Vec<String>,
+    /// Interpreters only: the file extensions a project's scripts use, without the dot.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// The single-extension spelling older manifests use; read when `extensions` is empty.
+    #[serde(default)]
+    pub file_extension: Option<String>,
     #[serde(default)]
     pub wasm_file: Option<String>,
 }
@@ -44,6 +50,12 @@ pub struct ReleaseExtension {
     pub capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_hosts: Vec<String>,
+    #[serde(
+        rename = "fileExtensions",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub file_extensions: Vec<String>,
 }
 
 const PLUGIN_TYPES: [&str; 3] = ["auth", "library", "interpreter"];
@@ -127,8 +139,36 @@ impl Manifest {
                 )),
                 Some(_) => {}
             }
+            let effective = self.effective_extensions();
+            for (i, e) in effective.iter().enumerate() {
+                // `json` names lexicons in a project, so it cannot name a script language.
+                let ok = (1..=16).contains(&e.len())
+                    && e.chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+                    && *e != "json";
+                if !ok {
+                    out.push(Problem::new(
+                        format!("manifest.extensions[{i}]"),
+                        "must be 1 to 16 lowercase letters or digits, without the dot, and not `json`",
+                    ));
+                } else if effective[..i].contains(e) {
+                    out.push(Problem::new(
+                        format!("manifest.extensions[{i}]"),
+                        format!("`{e}` is listed twice"),
+                    ));
+                }
+            }
         }
         out
+    }
+
+    /// `extensions`, else the lone `file_extension` an older manifest names.
+    fn effective_extensions(&self) -> Vec<&str> {
+        if self.extensions.is_empty() {
+            self.file_extension.as_deref().into_iter().collect()
+        } else {
+            self.extensions.iter().map(String::as_str).collect()
+        }
     }
 
     /// The release extension. Call after `extension_problems` is empty.
@@ -140,6 +180,14 @@ impl Manifest {
             language_id: self.language_id.clone(),
             capabilities: self.capabilities.clone().unwrap_or_default(),
             allowed_hosts: self.allowed_hosts.clone(),
+            file_extensions: if self.plugin_type.as_deref() == Some("interpreter") {
+                self.effective_extensions()
+                    .into_iter()
+                    .map(String::from)
+                    .collect()
+            } else {
+                Vec::new()
+            },
         }
     }
 }
@@ -178,6 +226,81 @@ mod tests {
                 "capabilities": ["atproto:read", "attest:sign"]
             })
         );
+    }
+
+    #[test]
+    fn interpreter_file_extensions_reach_the_release() {
+        let m = manifest(
+            r#"{"id":"happyview-lua","api_version":"2","plugin_type":"interpreter",
+                "language_id":"lua","extensions":["lua"],"capabilities":[]}"#,
+        );
+        assert!(m.extension_problems().is_empty());
+        let ext = serde_json::to_value(m.extension()).unwrap();
+        assert_eq!(ext["fileExtensions"], serde_json::json!(["lua"]));
+        let back: ReleaseExtension = serde_json::from_value(ext).unwrap();
+        assert_eq!(back.file_extensions, ["lua"]);
+    }
+
+    #[test]
+    fn a_release_without_file_extensions_still_reads() {
+        let ext: ReleaseExtension = serde_json::from_value(serde_json::json!({
+            "pluginType": "library", "apiVersion": "2", "capabilities": []
+        }))
+        .unwrap();
+        assert!(ext.file_extensions.is_empty());
+        assert!(
+            serde_json::to_value(&ext)
+                .unwrap()
+                .get("fileExtensions")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn file_extensions_have_a_shape() {
+        let m = manifest(
+            r#"{"id":"x","api_version":"2","plugin_type":"interpreter","language_id":"x",
+                "extensions":[".lua","LUA","toolongextension1","json"],"capabilities":[]}"#,
+        );
+        let paths: Vec<_> = m.extension_problems().into_iter().map(|p| p.path).collect();
+        assert_eq!(
+            paths,
+            [
+                "manifest.extensions[0]",
+                "manifest.extensions[1]",
+                "manifest.extensions[2]",
+                "manifest.extensions[3]"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_repeated_extension_is_refused() {
+        let m = manifest(
+            r#"{"id":"x","api_version":"2","plugin_type":"interpreter","language_id":"x",
+                "extensions":["ts","mts","ts"],"capabilities":[]}"#,
+        );
+        let paths: Vec<_> = m.extension_problems().into_iter().map(|p| p.path).collect();
+        assert_eq!(paths, ["manifest.extensions[2]"]);
+    }
+
+    #[test]
+    fn a_lone_file_extension_is_published() {
+        let m = manifest(
+            r#"{"id":"x","api_version":"2","plugin_type":"interpreter","language_id":"js",
+                "file_extension":"js","capabilities":[]}"#,
+        );
+        assert!(m.extension_problems().is_empty());
+        assert_eq!(m.extension().file_extensions, ["js"]);
+    }
+
+    #[test]
+    fn a_library_publishes_no_file_extensions() {
+        let m = manifest(
+            r#"{"id":"x","api_version":"2","plugin_type":"library","namespace":"a.b",
+                "extensions":["lua"],"capabilities":[]}"#,
+        );
+        assert!(m.extension().file_extensions.is_empty());
     }
 
     #[test]
