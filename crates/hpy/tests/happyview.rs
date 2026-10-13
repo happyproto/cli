@@ -399,3 +399,90 @@ fn locked_refuses_a_lock_that_no_longer_matches() {
         ));
     assert!(!read(&stack.project.path().join("happyview.lock")).contains("lua"));
 }
+
+#[cfg(unix)]
+#[test]
+fn dev_runs_happyview_dev_in_the_project() {
+    let stack = Stack::new();
+    stack.hpy().args(["hv", "dev"]).assert().success();
+    assert_eq!(stack.log().trim(), "dev .");
+    assert_eq!(
+        read(&stack.log.with_extension("log.cwd")).trim(),
+        std::fs::canonicalize(stack.project.path())
+            .unwrap()
+            .display()
+            .to_string()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_passes_the_childs_exit_code_through() {
+    let stack = Stack::new();
+    stack
+        .hpy()
+        .args(["hv", "dev"])
+        .env("HV_EXIT", "6")
+        .assert()
+        .code(6);
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_does_not_hand_the_binary_a_plugin_dir() {
+    let stack = Stack::new();
+    stack
+        .hpy()
+        .args(["hv", "dev"])
+        .env("PLUGIN_DIR", "/elsewhere")
+        .assert()
+        .success();
+    assert!(!stack.log().contains("PLUGIN_DIR"), "{}", stack.log());
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_receives_sigterm_and_exits_with_the_childs_code() {
+    use std::time::{Duration, Instant};
+
+    let stack = Stack::new();
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
+    stack.env(&mut cmd);
+    let mut child = cmd
+        .args(["hv", "dev"])
+        .env("HV_MODE", "trap")
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let ready = stack.log.with_extension("log.ready");
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !ready.exists() {
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "hpy exited before the binary was ready"
+        );
+        assert!(Instant::now() < deadline, "the binary never became ready");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // The pid file can be seen before its line is written.
+    while read(&ready).trim().is_empty() {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // SAFETY: kill(2) with the pid of a child this test spawned and has not reaped.
+    assert_eq!(
+        unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) },
+        0
+    );
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            panic!("hpy did not exit after SIGTERM");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(status.code(), Some(7));
+    assert_eq!(read(&stack.log.with_extension("log.term")), "got\n");
+}

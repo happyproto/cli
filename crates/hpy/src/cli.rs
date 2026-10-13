@@ -184,6 +184,8 @@ pub struct WithdrawArgs {
 
 #[derive(Subcommand)]
 pub enum HappyviewCommand {
+    /// Run the project with its pinned HappyView; a saved file is live on the next request.
+    Dev(DevArgs),
     /// Build the project's snapshot without serving it; exits non-zero on any error.
     Check(RunArgs),
     /// Run the project's tests.
@@ -195,6 +197,12 @@ pub struct RunArgs {
     /// Fail rather than update happyview.lock when it no longer matches happyview.toml.
     #[arg(long)]
     pub locked: bool,
+}
+
+#[derive(Args)]
+pub struct DevArgs {
+    #[command(flatten)]
+    pub run: RunArgs,
 }
 
 #[derive(Args)]
