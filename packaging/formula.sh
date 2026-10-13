@@ -21,9 +21,11 @@ case "$channel" in
   alpha) name=hpy-alpha class=HpyAlpha ;;
   *) echo "formula: unknown channel $channel" >&2; exit 2 ;;
 esac
-others=()
-for n in hpy hpy-beta hpy-alpha; do [[ "$n" == "$name" ]] || others+=("\"$n\""); done
-conflicts="  conflicts_with $(IFS=,; echo "${others[*]}" | sed 's/,/, /g'), because: \"each release channel installs the same hpy\""
+others=""
+for n in hpy hpy-beta hpy-alpha; do
+  [[ "$n" == "$name" ]] || others="${others:+$others, }\"$n\""
+done
+conflicts="  conflicts_with $others, because: \"each release channel installs the same hpy\""
 
 grep -q '^class Hpy < Formula$' "$source" || { echo "formula: $source is not dist's hpy formula" >&2; exit 1; }
 grep -q '^  license ' "$source" || { echo "formula: no license line in $source to follow" >&2; exit 1; }
