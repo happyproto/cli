@@ -12,7 +12,7 @@ use serde_json::json;
 use crate::cli::AddArgs;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
-use crate::project::prepare::choose_with_prompter;
+use crate::project::prepare::{PACKAGE_FLAG, choose_with_prompter};
 use crate::project::resolve::{
     Candidate, Choose, Resolver, candidates, pick_version, resolve_lock,
 };
@@ -38,7 +38,7 @@ pub fn parse_spec(spec: &str) -> (String, Option<String>) {
 /// The newest active stable release. A prerelease is offered only when
 /// nothing else is published, since a project asking for no version in
 /// particular should not land on one that has not been released.
-fn newest(releases: &[ReleaseView]) -> Option<semver::Version> {
+pub fn newest(releases: &[ReleaseView]) -> Option<semver::Version> {
     let active: Vec<semver::Version> = releases
         .iter()
         .filter(|r| r.status == "active")
@@ -251,7 +251,7 @@ pub async fn run(ctx: &Ctx, args: AddArgs) -> Result<(), Failure> {
     })?;
     let cache_root = cache::cache_root()?;
     let registry = ctx.registry();
-    let choose = choose_with_prompter(ctx);
+    let choose = choose_with_prompter(ctx, PACKAGE_FLAG);
     let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
     let (additions, lock) = add_in(&root, &registry, &cache_root, &args, &choose, &warn).await?;
     let lines: Vec<String> = args

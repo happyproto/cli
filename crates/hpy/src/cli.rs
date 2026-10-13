@@ -184,6 +184,8 @@ pub struct WithdrawArgs {
 
 #[derive(Subcommand)]
 pub enum HappyviewCommand {
+    /// Scaffold a new HappyView project.
+    Create(CreateArgs),
     /// Run the project with its pinned HappyView; a saved file is live on the next request.
     Dev(DevArgs),
     /// Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to date and download it.
@@ -193,6 +195,31 @@ pub enum HappyviewCommand {
     Check(RunArgs),
     /// Run the project's tests.
     Test(TestArgs),
+}
+
+#[derive(Args)]
+pub struct CreateArgs {
+    /// Directory to create, relative to the current one.
+    #[arg(long, value_name = "DIR")]
+    pub name: PathBuf,
+    /// The superadmin's DID (default: the account `hpy registry login` holds).
+    #[arg(long, value_name = "DID")]
+    pub superadmin: Option<String>,
+    /// Interpreter language id; repeatable (default: lua).
+    #[arg(long = "interpreter", value_name = "LANGUAGE")]
+    pub interpreters: Vec<String>,
+    /// Library namespace or id; repeatable.
+    #[arg(long = "library", value_name = "LIBRARY")]
+    pub libraries: Vec<String>,
+    /// The registry package to use for the interpreter or library it answers to, when several do; repeatable.
+    #[arg(long = "package", value_name = "AT-URI")]
+    pub packages: Vec<String>,
+    /// The app's display name (default: the directory name).
+    #[arg(long)]
+    pub app_name: Option<String>,
+    /// HappyView version to pin (default: the newest with a binary for this machine).
+    #[arg(long, value_name = "VERSION")]
+    pub happyview_version: Option<String>,
 }
 
 #[derive(Args, Default)]

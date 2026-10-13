@@ -79,22 +79,85 @@ pub fn render(s: &Scaffold) -> Vec<(PathBuf, String)> {
 }
 
 /// Writes a project into a directory that is absent or empty, so `create`
-/// never mixes its files into someone else's.
+/// never mixes its files into someone else's. Every file lands in a private
+/// sibling directory that is renamed onto `dir` only once it is complete, so
+/// a failure leaves nothing at `dir` and a retry starts clean.
 pub fn write_new(dir: &Path, files: &[(PathBuf, String)]) -> Result<(), Problem> {
     let path = dir.display().to_string();
-    if let Ok(mut entries) = std::fs::read_dir(dir)
-        && entries.next().is_some()
-    {
-        return Err(Problem::new(path, "already exists and is not empty"));
-    }
-    for (rel, body) in files {
-        let target = dir.join(rel);
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Problem::new(&path, e.to_string()))?;
+    let existing_empty = match std::fs::read_dir(dir) {
+        Ok(mut entries) => {
+            if entries.next().is_some() {
+                return Err(Problem::new(path, "already exists and is not empty"));
+            }
+            true
         }
-        std::fs::write(&target, body).map_err(|e| Problem::new(&path, e.to_string()))?;
+        Err(_) => false,
+    };
+    let name = dir
+        .file_name()
+        .ok_or_else(|| Problem::new(&path, "names no directory to create"))?;
+    let parent = match dir.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    std::fs::create_dir_all(&parent)
+        .map_err(|e| Problem::new(&path, format!("creating {}: {e}", parent.display())))?;
+    let partial = parent.join(format!(
+        ".{}.partial-{}-{:016x}",
+        name.to_string_lossy(),
+        std::process::id(),
+        random()
+    ));
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder
+        .create(&partial)
+        .map_err(|e| Problem::new(&path, format!("creating {}: {e}", partial.display())))?;
+    let result = fill(&partial, files).and_then(|()| {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("opening up {}: {e}", partial.display()))?;
+        }
+        // Renaming onto an existing directory fails on Windows even when it
+        // is empty.
+        if existing_empty {
+            std::fs::remove_dir(dir).map_err(|e| format!("replacing the empty directory: {e}"))?;
+        }
+        std::fs::rename(&partial, dir)
+            .map_err(|e| format!("moving {} into place: {e}", partial.display()))
+    });
+    result.map_err(|why| {
+        let _ = std::fs::remove_dir_all(&partial);
+        Problem::new(path, why)
+    })
+}
+
+fn fill(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
+    for (rel, body) in files {
+        let target = root.join(rel);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("creating {}: {e}", rel.display()))?;
+        }
+        std::fs::write(&target, body).map_err(|e| format!("writing {}: {e}", rel.display()))?;
     }
     Ok(())
+}
+
+/// Enough randomness that two processes, or two runs in one, never pick the
+/// same temporary name.
+fn random() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos()),
+    );
+    h.finish()
 }
 
 #[cfg(test)]
@@ -182,5 +245,55 @@ mod tests {
         let fresh = dir.path().join("app");
         write_new(&fresh, &render(&scaffold(Some("lua")))).unwrap();
         assert!(fresh.join("src/lexicons/com/example/hello.lua").is_file());
+    }
+
+    fn entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn a_failure_partway_leaves_nothing_behind() {
+        let parent = tempfile::tempdir().unwrap();
+        let dir = parent.path().join("app");
+        let mut files = render(&scaffold(Some("lua")));
+        // `happyview.toml` is a file by now, so nothing can go under it.
+        files.push((PathBuf::from("happyview.toml/oops"), String::new()));
+        let err = write_new(&dir, &files).unwrap_err();
+        assert!(err.message.contains("happyview.toml/oops"), "{err}");
+        assert!(
+            entries(parent.path()).is_empty(),
+            "{:?}",
+            entries(parent.path())
+        );
+
+        // The same with an empty directory waiting: it is the one thing left.
+        std::fs::create_dir(&dir).unwrap();
+        write_new(&dir, &files).unwrap_err();
+        assert_eq!(entries(parent.path()), ["app"]);
+        assert!(entries(&dir).is_empty());
+
+        write_new(&dir, &render(&scaffold(Some("lua")))).unwrap();
+        assert!(dir.join("happyview.toml").is_file());
+    }
+
+    #[test]
+    fn an_empty_directory_is_filled_in_place() {
+        let parent = tempfile::tempdir().unwrap();
+        let dir = parent.path().join("app");
+        std::fs::create_dir(&dir).unwrap();
+        write_new(&dir, &render(&scaffold(Some("lua")))).unwrap();
+        assert!(dir.join("src/lexicons/com/example/hello.lua").is_file());
+        assert_eq!(entries(parent.path()), ["app"]);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o755);
+        }
     }
 }

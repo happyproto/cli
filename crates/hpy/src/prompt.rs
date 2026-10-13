@@ -140,6 +140,43 @@ impl Prompter {
         Ok(items)
     }
 
+    /// Several of `options`: flags if any were given (checked against the
+    /// options when there are any), else a checklist with `preselected`
+    /// ticked, else `preselected`.
+    pub fn multi(
+        &self,
+        flag: &str,
+        label: &str,
+        given: Vec<String>,
+        options: &[String],
+        preselected: &[String],
+    ) -> Result<Vec<String>, Failure> {
+        if !given.is_empty() {
+            if !options.is_empty()
+                && let Some(bad) = given.iter().find(|g| !options.contains(g))
+            {
+                return Err(Failure::usage(format!(
+                    "{flag}: `{bad}` is not one of {}",
+                    options.join(", ")
+                )));
+            }
+            return Ok(given);
+        }
+        if self.interactive && !options.is_empty() {
+            let defaults: Vec<usize> = options
+                .iter()
+                .enumerate()
+                .filter(|(_, o)| preselected.contains(o))
+                .map(|(i, _)| i)
+                .collect();
+            return inquire::MultiSelect::new(label, options.to_vec())
+                .with_default(&defaults)
+                .prompt()
+                .map_err(prompt_err);
+        }
+        Ok(preselected.to_vec())
+    }
+
     /// One of `options`, by index: a prompt with a terminal, otherwise an
     /// error listing them and naming the flag that decides.
     pub fn choose(&self, flag: &str, label: &str, options: &[String]) -> Result<usize, Failure> {
@@ -213,5 +250,57 @@ mod tests {
             "{msg}"
         );
         assert_eq!(err.code, 2);
+    }
+
+    #[test]
+    fn multi_uses_flags_then_the_preselection() {
+        let p = Prompter::new(true);
+        let options = vec!["lua".to_string(), "javascript".to_string()];
+        assert_eq!(
+            p.multi(
+                "--interpreter",
+                "Interpreters:",
+                vec![],
+                &options,
+                &["lua".into()]
+            )
+            .unwrap(),
+            ["lua"]
+        );
+        assert_eq!(
+            p.multi(
+                "--interpreter",
+                "Interpreters:",
+                vec!["javascript".into()],
+                &options,
+                &["lua".into()]
+            )
+            .unwrap(),
+            ["javascript"]
+        );
+        let err = p
+            .multi(
+                "--interpreter",
+                "Interpreters:",
+                vec!["python".into()],
+                &options,
+                &[],
+            )
+            .unwrap_err();
+        let msg = format!("{:?}", err.report);
+        assert!(
+            msg.contains("--interpreter: `python`") && msg.contains("lua, javascript"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn multi_takes_any_flag_value_when_nothing_was_listed() {
+        let p = Prompter::new(true);
+        assert_eq!(
+            p.multi("--library", "Libraries:", vec!["x".into()], &[], &[])
+                .unwrap(),
+            ["x"]
+        );
     }
 }

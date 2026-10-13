@@ -153,6 +153,9 @@ struct Node {
     keys: BTreeSet<String>,
     reqs: Vec<Req>,
     chosen: Option<(String, Value)>,
+    /// The newest release, when nothing satisfied the ranges and every
+    /// active release is a prerelease, which no plain range matches.
+    only_prereleases: Option<String>,
 }
 
 impl Node {
@@ -213,6 +216,18 @@ fn conflict(nodes: &BTreeMap<String, Node>, package: &str) -> Failure {
             older.join(" or ")
         ));
     }
+    let names_prerelease = |req: &str| {
+        semver::VersionReq::parse(req)
+            .is_ok_and(|r| r.comparators.iter().any(|c| !c.pre.is_empty()))
+    };
+    if let Some(newest) = &node.only_prereleases
+        && !node.reqs.iter().any(|(req, _)| names_prerelease(req))
+    {
+        msg.push_str(&format!(
+            "\n{} has only prereleases, which a range matches only when it names one, as \"^{newest}\" does",
+            node.slug
+        ));
+    }
     Failure::usage(msg)
 }
 
@@ -265,6 +280,7 @@ pub async fn resolve_lock(
             keys: BTreeSet::new(),
             reqs: Vec::new(),
             chosen: None,
+            only_prereleases: None,
         });
         node.keys.insert(req.key.clone());
         node.reqs.push((req.req.clone(), None));
@@ -301,10 +317,16 @@ pub async fn resolve_lock(
             unsatisfied.remove(&package);
             continue;
         }
-        let Some(chosen) = choose_release(r, previous, &package, &did, &slug, &ranges).await?
-        else {
-            unsatisfied.insert(package);
-            continue;
+        let chosen = match choose_release(r, previous, &package, &did, &slug, &ranges).await? {
+            Ok(chosen) => chosen,
+            Err(only_prereleases) => {
+                nodes
+                    .get_mut(&package)
+                    .expect("node exists")
+                    .only_prereleases = only_prereleases;
+                unsatisfied.insert(package);
+                continue;
+            }
         };
         unsatisfied.remove(&package);
         let ext = release_extension(&chosen.1)?;
@@ -375,6 +397,7 @@ pub async fn resolve_lock(
                 keys: BTreeSet::new(),
                 reqs: Vec::new(),
                 chosen: None,
+                only_prereleases: None,
             });
             node.reqs.push((range, Some(package.clone())));
             queue.push_back(dep);
@@ -435,7 +458,8 @@ pub async fn resolve_lock(
 }
 
 /// The locked version when it still satisfies `ranges`, else the highest
-/// active one that does, else `None`.
+/// active one that does. When none does, the error is the newest release if
+/// every active one is a prerelease.
 async fn choose_release(
     r: &Resolver<'_>,
     previous: Option<&Lockfile>,
@@ -443,7 +467,7 @@ async fn choose_release(
     did: &str,
     slug: &str,
     ranges: &[String],
-) -> Result<Option<(String, Value)>, Failure> {
+) -> Result<Result<(String, Value), Option<String>>, Failure> {
     let locked = previous.and_then(|l| l.plugins.iter().find(|p| p.package == package));
     if let Some(p) = locked
         && ranges.iter().all(|req| version_matches(req, &p.version))
@@ -463,10 +487,23 @@ async fn choose_release(
                 p.version, p.checksum
             )));
         }
-        return Ok(Some((p.version.clone(), release.record)));
+        return Ok(Ok((p.version.clone(), release.record)));
     }
     let releases = r.registry.list_releases(did, slug).await?;
-    Ok(pick_version(&releases, ranges))
+    if let Some(chosen) = pick_version(&releases, ranges) {
+        return Ok(Ok(chosen));
+    }
+    let active: Vec<semver::Version> = releases
+        .iter()
+        .filter(|r| r.status == "active")
+        .filter_map(|r| semver::Version::parse(r.record["version"].as_str()?).ok())
+        .collect();
+    let only_prereleases = active
+        .iter()
+        .all(|v| !v.pre.is_empty())
+        .then(|| active.iter().max().map(|v| v.to_string()))
+        .flatten();
+    Ok(Err(only_prereleases))
 }
 
 #[cfg(test)]
@@ -934,6 +971,53 @@ mod tests {
         };
         assert_eq!(picked("*").await, "1.2.0");
         assert_eq!(picked("^1.3.0-alpha").await, "1.3.0-alpha.1");
+    }
+
+    #[tokio::test]
+    async fn only_prereleases_suggests_a_range_that_names_one() {
+        let mut reg = RegistryFixture::default();
+        for version in ["0.1.0-alpha.1", "0.1.0-alpha.3", "0.1.0-alpha.2"] {
+            reg.publish(
+                HV,
+                "happyview-js",
+                version,
+                interpreter_ext("javascript", "js"),
+                json!({}),
+                version.as_bytes(),
+            );
+        }
+        let err = resolve(&reg, &toml("[interpreters]\njavascript = \"*\"\n"), None)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, 2);
+        assert_eq!(
+            err.report.to_string(),
+            "no version of happyview-js satisfies every requirement: \
+             happyview.toml needs happyview-js *\n\
+             happyview-js has only prereleases, which a range matches only when it names one, \
+             as \"^0.1.0-alpha.3\" does"
+        );
+        let suggested = resolve(
+            &reg,
+            &toml("[interpreters]\njavascript = \"^0.1.0-alpha.3\"\n"),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(suggested.plugins[0].version, "0.1.0-alpha.3");
+        // A range that already names a prerelease gets no such advice.
+        let named = resolve(
+            &reg,
+            &toml("[interpreters]\njavascript = \"^0.2.0-alpha\"\n"),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            !named.report.to_string().contains("only prereleases"),
+            "{}",
+            named.report
+        );
     }
 
     #[tokio::test]

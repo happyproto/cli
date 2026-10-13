@@ -41,13 +41,22 @@ pub struct Prepared {
     pub binary: PathBuf,
 }
 
-pub fn choose_with_prompter(
-    ctx: &Ctx,
-) -> impl Fn(&str, &[Candidate]) -> Result<usize, Failure> + Sync + '_ {
+/// The flag that decides among several packages, as `dev`, `check` and
+/// `test` name it: they take no `--package`, so it means running `add`.
+pub const PACKAGE_VIA_ADD: &str = "--package <AT-URI> (with `hpy happyview add`)";
+/// The flag as `create` and `add` name it, which take it themselves.
+pub const PACKAGE_FLAG: &str = "--package <AT-URI>";
+
+/// Asks which of several packages answering one key to use; without a
+/// terminal, the error names `flag` as what decides.
+pub fn choose_with_prompter<'a>(
+    ctx: &'a Ctx,
+    flag: &'a str,
+) -> impl Fn(&str, &[Candidate]) -> Result<usize, Failure> + Sync + 'a {
     move |key: &str, found: &[Candidate]| {
         let labels: Vec<String> = found.iter().map(Candidate::label).collect();
         ctx.prompter.choose(
-            "--package <AT-URI> (with `hpy happyview add`)",
+            flag,
             &format!("Several packages answer to `{key}`."),
             &labels,
         )
@@ -81,7 +90,7 @@ pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failu
                     "happyview.lock does not match happyview.toml, and --locked forbids updating it:\n  {why}"
                 )));
             }
-            let choose = choose_with_prompter(ctx);
+            let choose = choose_with_prompter(ctx, PACKAGE_VIA_ADD);
             let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
             let r = Resolver {
                 registry: &registry,

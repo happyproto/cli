@@ -50,9 +50,8 @@ fn tar_xz(name: &str, body: &[u8]) -> Vec<u8> {
 }
 
 struct Stack {
-    /// The runtime the mock server runs on. Only unix tests mount more mocks
-    /// on it, so elsewhere it is held only to keep the server alive.
-    _rt: tokio::runtime::Runtime,
+    /// The runtime the mock server runs on, and that tests mount more mocks on.
+    rt: tokio::runtime::Runtime,
     server: MockServer,
     config: tempfile::TempDir,
     cache: tempfile::TempDir,
@@ -97,7 +96,7 @@ impl Stack {
         .unwrap();
         let log = project.path().join("hv.log");
         Stack {
-            _rt: rt,
+            rt,
             server,
             config: tempfile::tempdir().unwrap(),
             cache: tempfile::tempdir().unwrap(),
@@ -188,7 +187,7 @@ fn check_places_and_verifies_locked_plugins() {
         }
     });
     let profile = json!({ "uri": package, "status": "active", "record": { "name": "Lua" } });
-    stack._rt.block_on(async {
+    stack.rt.block_on(async {
         Mock::given(method("GET"))
             .and(path("/xrpc/at.happyproto.registry.getRelease"))
             .and(query_param("version", PLUGIN))
@@ -497,4 +496,365 @@ fn add_validates_package_before_touching_the_network() {
         .code(2)
         .stderr(predicate::str::contains("--package"));
     assert!(!read(&stack.project.path().join("happyview.toml")).contains("lua"));
+}
+
+fn interpreter_release(slug: &str, version: &str, wasm: &[u8]) -> serde_json::Value {
+    serde_json::json!({
+        "uri": format!("at://did:plc:hv/at.happyproto.plugin.release/{slug}:{version}"),
+        "status": "active",
+        "record": {
+            "package": slug, "version": version,
+            "artifacts": { "package": { "checksum": hpy_plugin::checksum::checksum(wasm) } },
+            "extensions": { "at.happyproto.plugin.releaseExtension": {
+                "pluginType": "interpreter", "apiVersion": "2", "languageId": "lua",
+                "fileExtensions": ["lua"], "capabilities": ["script:host"]
+            } }
+        }
+    })
+}
+
+/// A registry whose interpreters are `slugs`, each published by `did:plc:hv`
+/// with the one release `release(slug)` (at 1.4.2), and which has no
+/// libraries. Search leaves the latest version out, as the deployed registry
+/// does.
+fn mount_interpreters(stack: &Stack, slugs: &[&str], release: fn(&str) -> serde_json::Value) {
+    use wiremock::matchers::query_param;
+    let packages: Vec<serde_json::Value> = slugs
+        .iter()
+        .map(|slug| {
+            serde_json::json!({
+                "uri": format!("at://did:plc:hv/at.happyproto.plugin.profile/{slug}"),
+                "did": "did:plc:hv", "record": { "name": "Lua" }, "status": "active"
+            })
+        })
+        .collect();
+    stack.rt.block_on(async {
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
+            .and(query_param("pluginType", "interpreter"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "packages": packages })),
+            )
+            .mount(&stack.server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
+            .and(query_param("pluginType", "library"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "packages": [] })),
+            )
+            .mount(&stack.server)
+            .await;
+        for slug in slugs {
+            let release = release(slug);
+            Mock::given(method("GET"))
+                .and(path("/xrpc/at.happyproto.registry.getPackage"))
+                .and(query_param("slug", *slug))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "uri": format!("at://did:plc:hv/at.happyproto.plugin.profile/{slug}"),
+                    "did": "did:plc:hv", "record": { "name": "Lua" },
+                    "status": "active", "latestVersion": "1.4.2"
+                })))
+                .mount(&stack.server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path("/xrpc/at.happyproto.registry.getRelease"))
+                .and(query_param("slug", *slug))
+                .respond_with(ResponseTemplate::new(200).set_body_json(release.clone()))
+                .mount(&stack.server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path("/xrpc/at.happyproto.registry.listReleases"))
+                .and(query_param("slug", *slug))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({ "releases": [release] })),
+                )
+                .mount(&stack.server)
+                .await;
+        }
+    });
+}
+
+fn lua_release(slug: &str) -> serde_json::Value {
+    interpreter_release(slug, "1.4.2", slug.as_bytes())
+}
+
+fn mount_lua(stack: &Stack) {
+    mount_interpreters(stack, &["happyview-lua"], lua_release);
+}
+
+#[test]
+fn create_writes_a_project_and_its_lock_without_downloading_anything() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let parent = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("hpy happyview dev"));
+    let app = parent.path().join("my-app");
+    let toml = read(&app.join("happyview.toml"));
+    assert!(
+        toml.contains("lua = \"1.4.2\"") && toml.contains("app_name = \"my-app\""),
+        "{toml}"
+    );
+    let lock = read(&app.join("happyview.lock"));
+    assert!(
+        lock.contains("id = \"happyview-lua\"") && lock.contains("keys = [\"lua\"]"),
+        "{lock}"
+    );
+    assert!(app.join("src/lexicons/com/example/hello.lua").is_file());
+    assert_eq!(read(&app.join(".gitignore")), ".env\n.happyview/\n");
+    assert!(
+        std::fs::read_dir(stack.cache.path())
+            .unwrap()
+            .next()
+            .is_none(),
+        "create downloaded something"
+    );
+}
+
+#[test]
+fn create_resolves_before_writing_anything() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let parent = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+            "--interpreter",
+            "lua",
+            "--library",
+            "happyview.nope",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("happyview.nope"));
+    assert!(!parent.path().join("my-app").exists());
+}
+
+#[test]
+fn create_writes_nothing_when_resolution_refuses_the_release() {
+    let stack = Stack::new();
+    // An interpreter from before project mode: no file extensions.
+    mount_interpreters(&stack, &["happyview-lua"], |slug| {
+        let mut release = lua_release(slug);
+        release["record"]["extensions"]["at.happyproto.plugin.releaseExtension"]
+            .as_object_mut()
+            .unwrap()
+            .remove("fileExtensions");
+        release
+    });
+    let parent = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("declares no file extensions"));
+    assert!(!parent.path().join("my-app").exists());
+}
+
+#[test]
+fn create_without_a_login_or_flag_names_superadmin() {
+    let stack = Stack::new();
+    let parent = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args(["hv", "create", "--name", "my-app", "--no-input"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--superadmin"));
+}
+
+#[test]
+fn create_refuses_a_directory_with_files_in_it() {
+    let stack = Stack::new();
+    let parent = tempfile::tempdir().unwrap();
+    std::fs::create_dir(parent.path().join("taken")).unwrap();
+    std::fs::write(parent.path().join("taken/notes.txt"), "mine").unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "taken",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("not empty"));
+    assert_eq!(read(&parent.path().join("taken/notes.txt")), "mine");
+}
+
+#[test]
+fn create_takes_a_package_where_several_answer() {
+    let stack = Stack::new();
+    mount_interpreters(&stack, &["happyview-lua", "other-lua"], lua_release);
+    let parent = tempfile::tempdir().unwrap();
+    let create = |name: &str, package: Option<&str>| {
+        let mut cmd = stack.hpy();
+        cmd.current_dir(parent.path()).args([
+            "hv",
+            "create",
+            "--name",
+            name,
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+        ]);
+        if let Some(uri) = package {
+            cmd.args(["--package", uri]);
+        }
+        cmd.assert()
+    };
+    create("asked", None)
+        .code(2)
+        .stderr(predicate::str::contains(
+            "pass --package <AT-URI> to choose",
+        ))
+        .stderr(predicate::str::contains("hpy happyview add").not());
+    let other = "at://did:plc:hv/at.happyproto.plugin.profile/other-lua";
+    create("pinned", Some(other)).success();
+    let lock = read(&parent.path().join("pinned/happyview.lock"));
+    assert!(
+        lock.contains("id = \"other-lua\"") && lock.contains(other),
+        "{lock}"
+    );
+    create(
+        "stray",
+        Some("at://did:plc:hv/at.happyproto.plugin.profile/nobody"),
+    )
+    .code(2)
+    .stderr(predicate::str::contains("nobody answers to"));
+    assert!(!parent.path().join("stray").exists());
+}
+
+#[test]
+fn create_refuses_a_superadmin_that_is_not_a_did() {
+    let stack = Stack::new();
+    let parent = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:PLC:me",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--superadmin"))
+        .stderr(predicate::str::contains("is not a DID"));
+    assert!(!parent.path().join("my-app").exists());
+}
+
+#[test]
+fn create_refuses_a_blank_app_name() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let parent = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+            "--app-name",
+            "   ",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--app-name"))
+        .stderr(predicate::str::contains("must not be empty"));
+    assert!(!parent.path().join("my-app").exists());
+}
+
+#[test]
+fn create_fills_an_existing_empty_directory() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let parent = tempfile::tempdir().unwrap();
+    std::fs::create_dir(parent.path().join("my-app")).unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+        ])
+        .assert()
+        .success();
+    let app = parent.path().join("my-app");
+    assert!(app.join("happyview.toml").is_file() && app.join("happyview.lock").is_file());
+    let names: Vec<_> = std::fs::read_dir(parent.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(
+        names,
+        ["my-app"],
+        "a temporary directory was left beside it"
+    );
 }
