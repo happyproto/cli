@@ -206,6 +206,16 @@ its own: revoking it doesn't sign you out anywhere else, and signing out
 locally doesn't break CI. Revoke it with `HPY_CREDENTIAL=… hpy registry logout`, or
 from the HappyView dashboard.
 
+On GitHub Actions, [`happyproto/actions/plugin-publish`](https://github.com/happyproto/actions)
+installs `hpy` and does the above in one step:
+
+```yaml
+- uses: happyproto/actions/plugin-publish@v1
+  with:
+    version: 1.2.0
+    credential: ${{ secrets.HPY_CREDENTIAL }}
+```
+
 ## Updates
 
 Every release is on one channel:
