@@ -6,7 +6,7 @@ use std::path::Path;
 use hpy_plugin::Problem;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{PluginKind, ProjectToml, version_matches};
+use crate::config::{PluginKind, ProjectToml, version_matches, write_if_changed};
 
 pub const LOCK_FILE: &str = "happyview.lock";
 pub const LOCK_VERSION: u32 = 1;
@@ -134,9 +134,7 @@ impl Lockfile {
     /// Writes beside the toml through a rename, so an interrupted write never
     /// leaves a truncated lock for the next command to misread.
     pub fn write(&self, root: &Path) -> std::io::Result<()> {
-        let tmp = root.join(format!(".{LOCK_FILE}.{}", std::process::id()));
-        std::fs::write(&tmp, self.render())?;
-        std::fs::rename(&tmp, root.join(LOCK_FILE))
+        write_if_changed(&root.join(LOCK_FILE), &self.render()).map(|_| ())
     }
 
     pub fn find_key(&self, kind: PluginKind, key: &str) -> Option<&LockedPlugin> {

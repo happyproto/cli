@@ -1,3 +1,4 @@
+pub mod add;
 pub mod check;
 pub mod dev;
 
@@ -8,6 +9,7 @@ use crate::failure::Failure;
 pub async fn run(ctx: &Ctx, command: HappyviewCommand) -> Result<(), Failure> {
     match command {
         HappyviewCommand::Dev(a) => dev::run(ctx, a).await,
+        HappyviewCommand::Add(a) => add::run(ctx, a).await,
         HappyviewCommand::Check(a) => check::check(ctx, a).await,
         HappyviewCommand::Test(a) => check::test(ctx, a).await,
     }

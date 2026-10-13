@@ -486,3 +486,15 @@ fn dev_receives_sigterm_and_exits_with_the_childs_code() {
     assert_eq!(status.code(), Some(7));
     assert_eq!(read(&stack.log.with_extension("log.term")), "got\n");
 }
+
+#[test]
+fn add_validates_package_before_touching_the_network() {
+    let stack = Stack::new();
+    stack
+        .hpy()
+        .args(["hv", "add", "lua", "--package", "not-a-uri"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--package"));
+    assert!(!read(&stack.project.path().join("happyview.toml")).contains("lua"));
+}

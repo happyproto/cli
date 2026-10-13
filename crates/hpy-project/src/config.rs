@@ -105,6 +105,29 @@ pub fn find_root(start: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// Replaces `path` with `text` through a temporary file and a rename, so an
+/// interrupted write cannot leave a truncated file, and leaves it alone when
+/// it already holds `text`, so a watcher sees no change that is not one.
+/// Returns whether it wrote.
+pub fn write_if_changed(path: &Path, text: &str) -> std::io::Result<bool> {
+    if std::fs::read(path).is_ok_and(|old| old == text.as_bytes()) {
+        return Ok(false);
+    }
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other(format!("{} names no file", path.display())))?;
+    let tmp = path.with_file_name(format!(
+        ".{}.{}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
+    Ok(true)
+}
+
 /// `text` with `key = "version"` in the kind's table and nothing else changed:
 /// comments, ordering and a replaced value's trailing comment all survive.
 pub fn set_plugin(
@@ -361,5 +384,20 @@ path = "modules/shared"
         assert!(version_matches("0.1.0-alpha.3", "0.1.0-alpha.3"));
         assert!(!version_matches("not a range", "1.0.0"));
         assert!(!version_matches("1", "not a version"));
+    }
+
+    #[test]
+    fn write_if_changed_replaces_and_skips_identical_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CONFIG_FILE);
+        assert!(write_if_changed(&path, "a = 1\n").unwrap());
+        assert!(!write_if_changed(&path, "a = 1\n").unwrap());
+        assert!(write_if_changed(&path, "a = 2\n").unwrap());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "a = 2\n");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, [CONFIG_FILE], "no temporary file is left behind");
     }
 }

@@ -186,6 +186,9 @@ pub struct WithdrawArgs {
 pub enum HappyviewCommand {
     /// Run the project with its pinned HappyView; a saved file is live on the next request.
     Dev(DevArgs),
+    /// Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to date and download it.
+    #[command(alias = "install")]
+    Add(AddArgs),
     /// Build the project's snapshot without serving it; exits non-zero on any error.
     Check(RunArgs),
     /// Run the project's tests.
@@ -203,6 +206,22 @@ pub struct RunArgs {
 pub struct DevArgs {
     #[command(flatten)]
     pub run: RunArgs,
+}
+
+#[derive(Args)]
+pub struct AddArgs {
+    /// A language id (interpreters) or a namespace or id (libraries), optionally `@version`.
+    #[arg(value_name = "PLUGIN")]
+    pub plugins: Vec<String>,
+    /// Treat every PLUGIN as an interpreter.
+    #[arg(long, conflicts_with = "library")]
+    pub interpreter: bool,
+    /// Treat every PLUGIN as a library.
+    #[arg(long)]
+    pub library: bool,
+    /// The registry package to use, when several answer to one name.
+    #[arg(long, value_name = "AT-URI", requires = "plugins")]
+    pub package: Option<String>,
 }
 
 #[derive(Args)]
