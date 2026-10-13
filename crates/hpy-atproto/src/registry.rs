@@ -15,6 +15,8 @@ pub struct PackageView {
     pub uri: String,
     #[serde(default)]
     pub did: String,
+    #[serde(default)]
+    pub handle: Option<String>,
     pub status: String,
     #[serde(default)]
     pub latest_version: Option<String>,
@@ -43,6 +45,11 @@ pub trait Registry: Send + Sync {
         version: &str,
     ) -> Result<Option<ReleaseView>>;
     async fn list_releases(&self, did: &str, slug: &str) -> Result<Vec<ReleaseView>>;
+    /// Every package whose latest release is of `plugin_type`. The registry
+    /// leaves `latest_version` and `handle` unset here; `get_package` fills them.
+    async fn search_packages(&self, plugin_type: &str) -> Result<Vec<PackageView>>;
+    /// The `package` artifact of one release: the module's bytes.
+    async fn get_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>>;
     /// Checks a profile against the indexer's rules and, unless
     /// `validate_only`, writes it to the signed-in user's repo.
     async fn publish_profile(
@@ -92,6 +99,13 @@ struct XrpcErrorBody {
 struct ListReleases {
     #[serde(default)]
     releases: Vec<ReleaseView>,
+    cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SearchPackages {
+    #[serde(default)]
+    packages: Vec<PackageView>,
     cursor: Option<String>,
 }
 
@@ -244,6 +258,66 @@ impl Registry for HttpRegistry {
         Ok(out)
     }
 
+    async fn search_packages(&self, plugin_type: &str) -> Result<Vec<PackageView>> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut params = vec![("pluginType", plugin_type), ("limit", "100")];
+            if let Some(c) = &cursor {
+                params.push(("cursor", c));
+            }
+            let page: Option<SearchPackages> = self
+                .query("at.happyproto.registry.searchPackages", &params)
+                .await?;
+            let Some(page) = page else { break };
+            out.extend(page.packages);
+            match page.cursor {
+                Some(c) if Some(&c) != cursor.as_ref() => cursor = Some(c),
+                _ => break,
+            }
+        }
+        Ok(out)
+    }
+
+    async fn get_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
+        const METHOD: &str = "at.happyproto.registry.getArtifact";
+        let url = format!("{}/xrpc/{METHOD}", self.base);
+        let mut request =
+            self.http
+                .get(&url)
+                .query(&[("did", did), ("slug", slug), ("version", version)]);
+        if let Some(key) = &self.client_key {
+            request = request.header("x-client-key", key);
+        }
+        let resp = request.send().await.map_err(|e| {
+            Error::Other(format!(
+                "could not reach the registry at {}: {e}",
+                self.base
+            ))
+        })?;
+        let status = resp.status();
+        // A module is never JSON, so a JSON body is an error envelope even
+        // under 200, as a Lua query's errors arrive.
+        let json = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("application/json"));
+        let body = resp.bytes().await.map_err(Error::other)?;
+        if status.is_success() && !json {
+            return Ok(body.to_vec());
+        }
+        let err: XrpcErrorBody = serde_json::from_slice(&body).unwrap_or(XrpcErrorBody {
+            error: None,
+            message: None,
+        });
+        Err(Error::Xrpc {
+            method: METHOD.into(),
+            name: err.error.unwrap_or_else(|| format!("HTTP {status}")),
+            message: err.message,
+        })
+    }
+
     async fn publish_profile(
         &self,
         slug: &str,
@@ -357,6 +431,87 @@ mod tests {
             all.iter().map(|r| r.uri.as_str()).collect::<Vec<_>>(),
             ["u1", "u2"]
         );
+    }
+
+    #[tokio::test]
+    async fn search_packages_filters_by_type_and_follows_the_cursor() {
+        // The deployed query leaves `latestVersion` and `handle` out.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
+            .and(query_param("pluginType", "interpreter"))
+            .and(query_param("cursor", "next"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "packages": [{ "uri": "u2", "did": "did:plc:a", "record": {}, "status": "active" }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
+            .and(query_param("pluginType", "interpreter"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "packages": [{ "uri": "u1", "did": "did:plc:a", "record": {}, "status": "active" }],
+                "cursor": "next"
+            })))
+            .mount(&server)
+            .await;
+        let all = HttpRegistry::new(&server.uri())
+            .search_packages("interpreter")
+            .await
+            .unwrap();
+        assert_eq!(
+            all.iter().map(|p| p.uri.as_str()).collect::<Vec<_>>(),
+            ["u1", "u2"]
+        );
+        assert_eq!(all[0].handle, None);
+        assert_eq!(all[0].latest_version, None);
+    }
+
+    #[tokio::test]
+    async fn get_artifact_answers_bytes_and_surfaces_refusals() {
+        let server = MockServer::start().await;
+        for (version, template) in [
+            (
+                "1.0.0",
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/wasm")
+                    .set_body_bytes(b"\0asm\x01\0\0\0".to_vec()),
+            ),
+            (
+                "2.0.0",
+                ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                    "error": "ArtifactNotHeld", "message": "not copied yet"
+                })),
+            ),
+            (
+                "3.0.0",
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "error": "NotConfigured", "message": "no identity"
+                })),
+            ),
+        ] {
+            Mock::given(method("GET"))
+                .and(path("/xrpc/at.happyproto.registry.getArtifact"))
+                .and(query_param("version", version))
+                .respond_with(template)
+                .mount(&server)
+                .await;
+        }
+        let reg = HttpRegistry::new(&server.uri());
+        assert_eq!(
+            reg.get_artifact("did:plc:a", "x", "1.0.0").await.unwrap(),
+            b"\0asm\x01\0\0\0"
+        );
+        let err = reg
+            .get_artifact("did:plc:a", "x", "2.0.0")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("ArtifactNotHeld"), "{err}");
+        let err = reg
+            .get_artifact("did:plc:a", "x", "3.0.0")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("NotConfigured"), "{err}");
     }
 
     #[tokio::test]

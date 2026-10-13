@@ -154,6 +154,16 @@ impl Registry for FakeRegistry {
         Ok(self.releases.lock().unwrap().values().cloned().collect())
     }
 
+    async fn search_packages(&self, _: &str) -> Result<Vec<PackageView>> {
+        self.check()?;
+        Ok(self.package.clone().into_iter().collect())
+    }
+
+    async fn get_artifact(&self, _: &str, _: &str, _: &str) -> Result<Vec<u8>> {
+        self.check()?;
+        Err(Error::Other("FakeRegistry holds no artifacts".into()))
+    }
+
     async fn publish_profile(
         &self,
         slug: &str,
