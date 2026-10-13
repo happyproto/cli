@@ -1956,6 +1956,7 @@ dependencies = [
  "clap",
  "hpy-atproto",
  "hpy-plugin",
+ "hpy-project",
  "inquire",
  "miette",
  "predicates",

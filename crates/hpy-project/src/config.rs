@@ -167,16 +167,13 @@ fn check_entry(kind: PluginKind, key: &str, version: &str) -> Result<(), Problem
 }
 
 /// Whether `version` satisfies `req` in Cargo's dialect, which is the one
-/// HappyView's dependency graph and the registry both use. `*` also takes a
-/// prerelease, because a project that asks for "any" version of a plugin that
-/// has only prereleases means one of them.
+/// HappyView's dependency graph and the registry both use. A prerelease
+/// matches only a range that itself names a prerelease of the same version,
+/// `*` included, so asking for "any" version never lands on an alpha.
 pub fn version_matches(req: &str, version: &str) -> bool {
     let Ok(version) = semver::Version::parse(version) else {
         return false;
     };
-    if req.trim() == "*" {
-        return true;
-    }
     semver::VersionReq::parse(req).is_ok_and(|r| r.matches(&version))
 }
 
@@ -353,12 +350,15 @@ path = "modules/shared"
     }
 
     #[test]
-    fn version_matching_is_cargo_flavoured_and_star_takes_prereleases() {
+    fn version_matching_is_cargo_flavoured() {
         assert!(version_matches("1.4.0", "1.9.2"));
         assert!(!version_matches("1.4.0", "2.0.0"));
         assert!(version_matches("=1.4.0", "1.4.0"));
-        assert!(version_matches("*", "0.1.0-alpha.3"));
+        assert!(version_matches("*", "1.2.0"));
+        assert!(!version_matches("*", "0.1.0-alpha.3"));
         assert!(!version_matches(">=3.0.0", "3.0.0-alpha.10"));
+        assert!(version_matches("^1.3.0-alpha", "1.3.0-alpha.1"));
+        assert!(version_matches("0.1.0-alpha.3", "0.1.0-alpha.3"));
         assert!(!version_matches("not a range", "1.0.0"));
         assert!(!version_matches("1", "not a version"));
     }

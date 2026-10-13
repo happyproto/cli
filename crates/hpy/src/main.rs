@@ -5,6 +5,7 @@ mod commands;
 mod ctx;
 mod failure;
 mod output;
+mod project;
 mod prompt;
 #[cfg(test)]
 mod testing;
