@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hpy packages</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #fff; }
+  pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; border-radius: 6px; }
+  @media (prefers-color-scheme: dark) { body { color: #e8e8e8; background: #141414; } pre { background: #222; } }
+</style>
+</head>
+<body>
+<h1>hpy</h1>
+<p>Package repositories for <a href="https://github.com/happyproto/cli">hpy</a>, the HappyProto command line.</p>
+<h2>Debian, Ubuntu</h2>
+<pre>curl -fsSL https://happyproto.github.io/cli/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/hpy.gpg
+echo "deb [signed-by=/usr/share/keyrings/hpy.gpg] https://happyproto.github.io/cli/deb stable main" | sudo tee /etc/apt/sources.list.d/hpy.list
+sudo apt update &amp;&amp; sudo apt install hpy</pre>
+<h2>Fedora, RHEL, CentOS</h2>
+<pre>sudo curl -fsSL https://happyproto.github.io/cli/hpy.repo -o /etc/yum.repos.d/hpy.repo
+sudo dnf install hpy</pre>
+<h2>Anything else</h2>
+<pre>curl -fsSL https://happyproto.github.io/cli/install.sh | sh</pre>
+<h2>Prereleases</h2>
+<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
+</body>
+</html>

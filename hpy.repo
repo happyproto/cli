@@ -1,0 +1,7 @@
+[hpy]
+name=hpy stable (HappyProto)
+baseurl=https://happyproto.github.io/cli/rpm/stable/$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://happyproto.github.io/cli/gpg.key

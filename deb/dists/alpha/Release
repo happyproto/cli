@@ -1,0 +1,28 @@
+Architectures: amd64 arm64
+Codename: alpha
+Components: main
+Date: Tue, 13 Oct 2026 20:56:22 +0000
+Description: hpy, the HappyProto command line
+Label: hpy
+Origin: HappyProto
+Suite: alpha
+MD5Sum:
+ b76a6e53404d637da8e494ab1488710e              671 main/binary-amd64/Packages
+ 78faa6cbb8d8f306a76632e54ff61783              463 main/binary-amd64/Packages.gz
+ 95776edd14dd9bc90dad9b374b5cff8f              671 main/binary-arm64/Packages
+ 658191b69128dcdb60922ee4ea0df08b              464 main/binary-arm64/Packages.gz
+SHA1:
+ 0aaa02893b39552995c3104f6b8d1ffa19c93ced              671 main/binary-amd64/Packages
+ 9ae0327a9108f1e965805136aa52f40bbff64a68              463 main/binary-amd64/Packages.gz
+ 2c12f14e7a4d8689a7416969f29fc7a5054a6651              671 main/binary-arm64/Packages
+ 83984f39083c803d8cd43208605f5f55cf6e6cae              464 main/binary-arm64/Packages.gz
+SHA256:
+ d3c47dca1864200b930fe21cd1140274954d5240f4b2da1cb0cb246c64d75675              671 main/binary-amd64/Packages
+ cee8bfd7b4224a69b494bbbe0ef1a1dc6bab93e1e8ac0f1a473a8775b8f7119e              463 main/binary-amd64/Packages.gz
+ 2c5f243dbbfebccebc6efe5011001cd06ca2c5a8dae14e970d67133b3f407989              671 main/binary-arm64/Packages
+ 74371682cbb324a6a72e017b586b23d6dd97f6bdd98f8afd152470fac9b375eb              464 main/binary-arm64/Packages.gz
+SHA512:
+ f831805ed4b90913201e5fdfeef03694034b0eb99fa26cd8845bb7dccd5d524bb34812c026fd539ae1d1c0839f6c51a186a3fe2bc5498ddf06c37fdb267a255d              671 main/binary-amd64/Packages
+ 098383cc23f380bc22d3a68ae58eea81eb1353b0fc4c075d8ec93044ccebee3699a5632febc557bf7683e0d31c09d4e9512d5c6d4432fd0367a49ff8c195516b              463 main/binary-amd64/Packages.gz
+ 9602b3694067941508d42c1e6f44501e33fc177e87e01e97d5f420d57e663bdad794d70f9ff0abc8e1d28c13e1f037c49d454fff962efd50a7ef5acfa40dfd2f              671 main/binary-arm64/Packages
+ 7ea4d1a14711cf03cbef5d19cabd3f704cdc707d2b23b684244578a795c8c22226f1cd834fca3f5a3764eed1049cce7cb9d4c7c6b6c9a93d2916b4204330091b              464 main/binary-arm64/Packages.gz
