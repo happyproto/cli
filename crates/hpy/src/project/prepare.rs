@@ -63,13 +63,19 @@ pub fn choose_with_prompter<'a>(
     }
 }
 
-pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failure> {
-    let root = find_root(&ctx.dir).ok_or_else(|| {
+/// The directory holding `happyview.toml`, found from the working directory
+/// upwards.
+pub fn project_root(ctx: &Ctx) -> Result<PathBuf, Failure> {
+    find_root(&ctx.dir).ok_or_else(|| {
         Failure::usage(format!(
             "no {CONFIG_FILE} in {} or any directory above it; start one with `hpy happyview create`",
             ctx.dir.display()
         ))
-    })?;
+    })
+}
+
+pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failure> {
+    let root = project_root(ctx)?;
     if std::env::var_os("PLUGIN_DIR").is_some() {
         ctx.out
             .status("warning: ignoring PLUGIN_DIR; hpy runs the plugins locked in happyview.lock");

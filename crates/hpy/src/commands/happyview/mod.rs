@@ -1,4 +1,5 @@
 pub mod add;
+pub mod build;
 pub mod check;
 pub mod create;
 pub mod dev;
@@ -14,6 +15,7 @@ pub async fn run(ctx: &Ctx, command: HappyviewCommand) -> Result<(), Failure> {
         HappyviewCommand::Create(a) => create::run(ctx, a).await,
         HappyviewCommand::Dev(a) => dev::run(ctx, a).await,
         HappyviewCommand::Add(a) => add::run(ctx, a).await,
+        HappyviewCommand::Build => build::run(ctx).await,
         HappyviewCommand::Check(a) => check::check(ctx, a).await,
         HappyviewCommand::Test(a) => check::test(ctx, a).await,
     }

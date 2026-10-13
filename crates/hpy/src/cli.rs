@@ -191,6 +191,8 @@ pub enum HappyviewCommand {
     /// Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to date and download it.
     #[command(alias = "install")]
     Add(AddArgs),
+    /// Build every compiled script module in happyview.toml into .happyview/build/.
+    Build,
     /// Build the project's snapshot without serving it; exits non-zero on any error.
     Check(RunArgs),
     /// Run the project's tests.

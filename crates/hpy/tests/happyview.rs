@@ -281,6 +281,55 @@ fn test_passes_watch_and_filter_and_hv_is_an_alias() {
 
 #[cfg(unix)]
 #[test]
+fn check_and_test_build_the_modules_then_run_the_binary() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let stack = Stack::new();
+    let root = stack.project.path();
+    std::fs::write(
+        root.join("happyview.toml"),
+        format!(
+            "[happyview]\nversion = \"{VERSION}\"\n\
+             [modules.registry]\nlanguage = \"rust\"\npath = \"modules/registry\"\n"
+        ),
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("modules/registry")).unwrap();
+    std::fs::write(
+        root.join("modules/registry/Cargo.toml"),
+        "[package]\nname = \"registry\"\n[profile.release]\npanic = \"abort\"\n",
+    )
+    .unwrap();
+    let built = root.join("built.wasm");
+    let cargo = root.join("cargo");
+    std::fs::write(
+        &cargo,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then exit 0; fi\n\
+             manifest=''; while [ $# -gt 0 ]; do [ \"$1\" = --manifest-path ] && manifest=\"$2\"; shift; done\n\
+             printf '{{\"reason\":\"compiler-artifact\",\"manifest_path\":\"%s\",\"target\":{{\"crate_types\":[\"cdylib\"]}},\"filenames\":[\"{}\"]}}\\n' \"$manifest\"\n",
+            built.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let dest = root.join(".happyview/build/registry.wasm");
+    for (command, version) in [("check", b"\0asm-1"), ("test", b"\0asm-2")] {
+        std::fs::write(&built, version).unwrap();
+        stack
+            .hpy()
+            .args(["hv", command])
+            .env("HPY_CARGO", &cargo)
+            .env("HPY_RUSTUP", "/nonexistent/rustup")
+            .assert()
+            .success();
+        assert_eq!(std::fs::read(&dest).unwrap(), version, "{command}");
+        assert!(stack.log().trim_end().ends_with(&format!("{command} .")));
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn commands_find_the_project_from_a_subdirectory() {
     let stack = Stack::new();
     let deep = stack.project.path().join("src/lexicons");
