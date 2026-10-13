@@ -438,3 +438,27 @@ pub fn library_ext(namespace: &str) -> Value {
     json!({ "pluginType": "library", "apiVersion": "2", "namespace": namespace,
             "capabilities": [] })
 }
+
+/// A `.tar.xz` holding `files` as `(path, bytes, mode)`.
+pub fn tar_xz(files: &[(&str, &[u8], u32)]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(xz2::write::XzEncoder::new(Vec::new(), 6));
+    for (path, bytes, mode) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(*mode);
+        header.set_cksum();
+        builder.append_data(&mut header, path, *bytes).unwrap();
+    }
+    builder.into_inner().unwrap().finish().unwrap()
+}
+
+pub fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write;
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (path, bytes) in files {
+        w.start_file(*path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        w.write_all(bytes).unwrap();
+    }
+    w.finish().unwrap().into_inner()
+}

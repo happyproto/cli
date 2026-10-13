@@ -30,6 +30,19 @@ pub fn plugin_dir(root: &Path, id: &str, version: &str) -> PathBuf {
     root.join("plugins").join(id).join(version)
 }
 
+/// Where the HappyView binary for `version` lives. A binary for another
+/// machine than this one sits one level deeper, under its triple, so both can
+/// be cached side by side.
+pub fn binary_path(root: &Path, version: &str, target: &str) -> PathBuf {
+    let dir = root.join("happyview").join(version);
+    let dir = if target == crate::project::binary::HOST_TARGET {
+        dir
+    } else {
+        dir.join(target)
+    };
+    dir.join(crate::project::binary::binary_name(target))
+}
+
 /// Creates `path` and any missing parents, 0700 on unix, so nothing another
 /// user could swap a module into is ever world-writable.
 fn create_private_dirs(path: &Path) -> std::io::Result<()> {

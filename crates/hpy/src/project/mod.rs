@@ -1,6 +1,7 @@
 //! Running a HappyView project: resolving its plugins, fetching and verifying
 //! what it runs, and starting the binary.
 
+pub mod binary;
 pub mod cache;
 pub mod plugins;
 pub mod resolve;
