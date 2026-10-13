@@ -1966,6 +1966,7 @@ dependencies = [
  "clap",
  "data-encoding",
  "etcetera",
+ "flate2",
  "hpy-atproto",
  "hpy-plugin",
  "hpy-project",
