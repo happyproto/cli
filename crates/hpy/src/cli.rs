@@ -140,7 +140,7 @@ pub struct ProfileEditArgs {
 
 #[derive(Args)]
 pub struct PublishArgs {
-    /// Path to the built .wasm module.
+    /// Path to the built .wasm module, relative to the plugin's directory (-C).
     #[arg(long)]
     pub wasm: Option<PathBuf>,
     /// Version to publish (default: hpy.toml [release] version, then manifest.json version).
