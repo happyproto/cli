@@ -14,6 +14,7 @@ use crate::cli::DevArgs;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 use crate::project::binary::http_client;
+use crate::project::modules::{self, ModuleSpec};
 use crate::project::network::access::{ensure_access, record_path};
 use crate::project::network::accounts::{SeededAccount, accounts_path, seeded_superadmin};
 use crate::project::network::app::{
@@ -25,7 +26,7 @@ use crate::project::network::atmosbox::{
 use crate::project::network::runner::{Runner, SystemRunner};
 use crate::project::network::sandbox::Sandbox;
 use crate::project::prepare::{PrepareOptions, prepare};
-use crate::project::run::finish;
+use crate::project::run::{ModuleWatcher, finish, first_build};
 
 /// Where the sandbox's access relay listens. Only one process on this
 /// computer can hold it.
@@ -367,8 +368,8 @@ pub async fn run_local(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
         &mut running,
     )
     .await;
-    let (sandbox, network_dir, account) = match (started, sandbox) {
-        (Ok((dir, account)), Some(sandbox)) => (sandbox, dir, account),
+    let (sandbox, (network_dir, account, root, specs)) = match (started, sandbox) {
+        (Ok(started), Some(sandbox)) => (sandbox, started),
         (Ok(_), None) => unreachable!("a started network has a sandbox"),
         (Err(Halt::Interrupted), sandbox) => {
             // Each step was left to finish or stop on its own terms. Running
@@ -407,7 +408,14 @@ pub async fn run_local(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
         }
     };
 
+    // The container runs HappyView from the bind-mounted project, so a host
+    // build into its `.happyview/build` is the one it loads: a module is wasm,
+    // the same whatever builds it.
+    let watcher = ModuleWatcher::spawn(&root, specs);
     let followed = follow(ctx, &mut interrupt, &sandbox, &network_dir, &account).await;
+    if let Some(watcher) = watcher {
+        watcher.stop().await;
+    }
     let interrupted = interrupt.seen();
     let stopped = stop(ctx, &sandbox).await;
     match followed {
@@ -425,9 +433,10 @@ pub async fn run_local(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
     }
 }
 
-/// Everything up to a running network with HappyView in it. `running` turns
-/// true once anything may have started, which is from when a failure has to
-/// stop the network again.
+/// Everything up to a running network with HappyView in it, answering the
+/// network's directory, the seeded superadmin, and the project's root and
+/// modules. `running` turns true once anything may have started, which is
+/// from when a failure has to stop the network again.
 async fn start<'r>(
     ctx: &Ctx,
     args: &DevArgs,
@@ -435,7 +444,7 @@ async fn start<'r>(
     interrupt: &mut Interrupt,
     sandbox_out: &mut Option<Sandbox<'r>>,
     running: &mut bool,
-) -> Result<(PathBuf, SeededAccount), Halt> {
+) -> Result<(PathBuf, SeededAccount, PathBuf, Vec<ModuleSpec>), Halt> {
     step(
         ctx,
         interrupt,
@@ -483,6 +492,17 @@ async fn start<'r>(
         target,
     };
     let prepared = abandonable(interrupt, prepare(ctx, &options)).await?;
+    // Before HappyView first boots, which refuses a module with no build.
+    let specs = modules::read_modules(&prepared.root)?;
+    if !specs.is_empty() {
+        step(
+            ctx,
+            interrupt,
+            "building the project's modules",
+            first_build(&prepared.root, &specs),
+        )
+        .await?;
+    }
     let backfill = ProjectToml::load(&prepared.root)
         .map_err(Failure::from)?
         .dev
@@ -629,7 +649,7 @@ async fn start<'r>(
             "backfill is off on the local network: its relay cannot list repos by collection",
         );
     }
-    Ok((net.dir, account))
+    Ok((net.dir, account, prepared.root, specs))
 }
 
 async fn follow(

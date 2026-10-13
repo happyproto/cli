@@ -1,9 +1,9 @@
 use crate::cli::{DevArgs, Network};
 use crate::ctx::Ctx;
 use crate::failure::Failure;
-use crate::project::modules::{self, Toolchain};
+use crate::project::modules;
 use crate::project::prepare::{PrepareOptions, prepare};
-use crate::project::run::{finish, run_rebuilding_modules};
+use crate::project::run::{finish, first_build, run_rebuilding_modules};
 
 pub async fn run(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
     if args.network == Network::Local {
@@ -23,19 +23,6 @@ pub async fn run(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
     let p = prepare(ctx, &PrepareOptions::native(args.run.locked)).await?;
     let specs = modules::read_modules(&p.root)?;
 
-    // A first build that fails does not stop dev: HappyView reports the
-    // missing module, and the watcher retries on the next save.
-    let (first_root, first_specs) = (p.root.clone(), specs.clone());
-    tokio::task::spawn_blocking(move || {
-        let toolchain = Toolchain::from_env();
-        for module in &first_specs {
-            if let Err(f) = modules::build_module(&toolchain, &first_root, module) {
-                eprintln!("{:?}", f.report);
-            }
-        }
-    })
-    .await
-    .map_err(Failure::runtime)?;
-
+    first_build(&p.root, &specs).await?;
     finish(run_rebuilding_modules(&p.binary, &["dev".into(), ".".into()], &p.root, specs).await?)
 }

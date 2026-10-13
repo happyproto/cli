@@ -338,6 +338,7 @@ fn check_and_test_build_the_modules_then_run_the_binary() {
         &cargo,
         format!(
             "#!/bin/sh\nif [ \"$1\" = --version ]; then exit 0; fi\n\
+             if [ -n \"$NET_LOG\" ]; then echo 'cargo build' >> \"$NET_LOG\"; fi\n\
              manifest=''; while [ $# -gt 0 ]; do [ \"$1\" = --manifest-path ] && manifest=\"$2\"; shift; done\n\
              printf '{{\"reason\":\"compiler-artifact\",\"manifest_path\":\"%s\",\"target\":{{\"crate_types\":[\"cdylib\"]}},\"filenames\":[\"{}\"]}}\\n' \"$manifest\"\n",
             built.display()
@@ -618,6 +619,7 @@ fn declare_module(stack: &Stack) -> (Vec<(&'static str, PathBuf)>, PathBuf) {
         &cargo,
         format!(
             "#!/bin/sh\nif [ \"$1\" = --version ]; then exit 0; fi\n\
+             if [ -n \"$NET_LOG\" ]; then echo 'cargo build' >> \"$NET_LOG\"; fi\n\
              manifest=''; while [ $# -gt 0 ]; do [ \"$1\" = --manifest-path ] && manifest=\"$2\"; shift; done\n\
              printf '{{\"reason\":\"compiler-artifact\",\"manifest_path\":\"%s\",\"target\":{{\"crate_types\":[\"cdylib\"]}},\"filenames\":[\"{}\"]}}\\n' \"$manifest\"\n",
             built.display()
@@ -848,6 +850,33 @@ fn a_killed_hpy_takes_the_binary_with_it() {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_module_build_shows_cargos_own_diagnostics() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let stack = Stack::new();
+    let (mut envs, _) = declare_module(&stack);
+    let cargo = stack.project.path().join("cargo-broken");
+    std::fs::write(
+        &cargo,
+        "#!/bin/sh\nif [ \"$1\" = --version ]; then exit 0; fi\n\
+         echo 'error[E0425]: cannot find value `answr` in this scope' >&2\nexit 101\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+    envs[0].1 = cargo;
+    let mut cmd = stack.hpy();
+    cmd.args(["hv", "build"]);
+    for (k, v) in &envs {
+        cmd.env(k, v);
+    }
+    cmd.assert().code(1).stderr(
+        says("error[E0425]: cannot find value `answr` in this scope")
+            .and(says("'registry' failed to build")),
+    );
 }
 
 /// Changes the module's source with `next` as what its next build installs,
@@ -1559,6 +1588,9 @@ struct LocalNet {
     subnet: String,
     /// A port nothing listens on, standing in for 443.
     free_addr: String,
+    /// Holds `free_addr` bound, without listening, so nothing else on the
+    /// machine can take it while the test runs.
+    _reserved: std::os::fd::OwnedFd,
 }
 
 #[cfg(unix)]
@@ -1587,11 +1619,7 @@ impl LocalNet {
         .unwrap();
         let ca = data_encoding::HEXLOWER.encode(&Sha256::digest(b"fake-ca\n"));
         std::fs::write(net.join("access.toml"), format!("ca_sha256 = \"{ca}\"\n")).unwrap();
-        let free_addr = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .to_string();
+        let (_reserved, free_addr) = reserve_port();
         let log = bin.path().join("net.log");
         LocalNet {
             stack,
@@ -1601,6 +1629,7 @@ impl LocalNet {
             project,
             subnet,
             free_addr,
+            _reserved,
         }
     }
 
@@ -1651,6 +1680,42 @@ impl LocalNet {
     fn calls(&self) -> String {
         std::fs::read_to_string(&self.log).unwrap_or_default()
     }
+}
+
+/// A loopback port bound but never listened on: a connection to it is
+/// refused, and no other socket can bind it while the descriptor lives.
+#[cfg(unix)]
+fn reserve_port() -> (std::os::fd::OwnedFd, String) {
+    use std::os::fd::FromRawFd;
+
+    // SAFETY: socket(2) with constant arguments; the descriptor it answers is
+    // owned from here on.
+    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+    assert!(fd >= 0, "{}", std::io::Error::last_os_error());
+    // SAFETY: `fd` is a fresh descriptor nothing else owns.
+    let owned = unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) };
+    // SAFETY: zeroed is a valid sockaddr_in, filled in below.
+    let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+    addr.sin_family = libc::AF_INET as libc::sa_family_t;
+    addr.sin_addr.s_addr = u32::from(std::net::Ipv4Addr::LOCALHOST).to_be();
+    let mut len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+    // SAFETY: bind(2) and getsockname(2) on the descriptor above, with a
+    // sockaddr_in and its true length.
+    unsafe {
+        assert_eq!(
+            libc::bind(fd, (&raw const addr).cast(), len),
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        assert_eq!(
+            libc::getsockname(fd, (&raw mut addr).cast(), &mut len),
+            0,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+    }
+    (owned, format!("127.0.0.1:{}", u16::from_be(addr.sin_port)))
 }
 
 /// `atmosbox::network_dir` (the directory and the subnet), which an
@@ -1875,6 +1940,67 @@ fn a_failed_up_shows_happyviews_last_log_lines_and_stops_the_network() {
         net.calls()
             .contains("docker logs --tail 50 hv-test-happyview-1")
     );
+    let calls = net.sandbox_calls();
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_local_network_builds_modules_before_happyview_boots_and_rebuilds_them() {
+    use std::os::unix::process::CommandExt;
+    use std::time::{Duration, Instant};
+
+    let net = LocalNet::new();
+    let (envs, dest) = declare_module(&net.stack);
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
+    net.env(&mut cmd);
+    let mut child = cmd
+        .args(["hv", "dev", "--network", "local"])
+        .envs(envs.iter().map(|(k, v)| (*k, v)))
+        .env("NET_BLOCK", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let group = child.id() as libc::pid_t;
+    let following = net.marker("following");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !following.exists() {
+        if child.try_wait().unwrap().is_some() || Instant::now() >= deadline {
+            // SAFETY: kill(2) on the process group of a child this test spawned.
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+            panic!("hpy never followed the logs: {}", net.calls());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(std::fs::read(&dest).unwrap(), b"\0asm-1");
+    let calls = net.calls();
+    let built = calls
+        .find("cargo build")
+        .unwrap_or_else(|| panic!("{calls}"));
+    assert!(
+        built < calls.find("deno task sandbox up").unwrap(),
+        "{calls}"
+    );
+
+    edit_and_await_rebuild(&net.stack, &dest, b"\0asm-2");
+
+    // SAFETY: as above.
+    assert_eq!(unsafe { libc::kill(-group, libc::SIGINT) }, 0);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            // SAFETY: as above.
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+            panic!("hpy did not exit after Ctrl-C: {}", net.calls());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(status.code(), Some(0), "{}", net.calls());
     let calls = net.sandbox_calls();
     assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
 }

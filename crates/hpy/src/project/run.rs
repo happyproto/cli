@@ -159,41 +159,79 @@ pub async fn run_supervised(
 /// Runs the binary while rebuilding each of `specs` whenever its source
 /// changes, and answers the binary's exit code. Without modules there is
 /// nothing to watch, and the binary replaces `hpy` as `run_foreground` does.
-/// Once the binary exits, a rebuild under way is stopped rather than waited
-/// out.
 pub async fn run_rebuilding_modules(
     binary: &Path,
     args: &[OsString],
     root: &Path,
     specs: Vec<ModuleSpec>,
 ) -> Result<i32, Failure> {
-    if specs.is_empty() {
+    let Some(watcher) = ModuleWatcher::spawn(root, specs) else {
         return run_foreground(binary, args, root, &[], REMOVED_ENV).await;
-    }
-    let stop = Arc::new(AtomicBool::new(false));
-    let watcher = {
-        let (stop, root) = (stop.clone(), PathBuf::from(root));
-        tokio::task::spawn_blocking(move || {
-            modules::watch(
-                &Toolchain::from_env(),
-                &root,
-                &specs,
-                Duration::from_millis(300),
-                &stop,
-                &mut |module, result| match result {
-                    Ok(_) => eprintln!("rebuilt module '{}'", module.name),
-                    Err(f) => eprintln!(
-                        "{:?}\nmodule '{}' failed to build; the previous build keeps serving",
-                        f.report, module.name
-                    ),
-                },
-            )
-        })
     };
     let exit = run_supervised(binary, args, root, &[], REMOVED_ENV).await;
-    stop.store(true, Ordering::SeqCst);
-    let _ = watcher.await;
+    watcher.stop().await;
     exit
+}
+
+/// Rebuilds a project's modules as their sources change, on a thread of its
+/// own, until stopped.
+pub struct ModuleWatcher {
+    stop: Arc<AtomicBool>,
+    thread: tokio::task::JoinHandle<()>,
+}
+
+impl ModuleWatcher {
+    /// `None` when there are no modules to watch.
+    pub fn spawn(root: &Path, specs: Vec<ModuleSpec>) -> Option<ModuleWatcher> {
+        if specs.is_empty() {
+            return None;
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread = {
+            let (stop, root) = (stop.clone(), PathBuf::from(root));
+            tokio::task::spawn_blocking(move || {
+                modules::watch(
+                    &Toolchain::from_env(),
+                    &root,
+                    &specs,
+                    Duration::from_millis(300),
+                    &stop,
+                    &mut |module, result| match result {
+                        Ok(_) => eprintln!("rebuilt module '{}'", module.name),
+                        Err(f) => eprintln!(
+                            "{:?}\nmodule '{}' failed to build; the previous build keeps serving",
+                            f.report, module.name
+                        ),
+                    },
+                )
+            })
+        };
+        Some(ModuleWatcher { stop, thread })
+    }
+
+    /// Ends the watch, stopping a rebuild under way rather than waiting it
+    /// out.
+    pub async fn stop(self) {
+        self.stop.store(true, Ordering::SeqCst);
+        let _ = self.thread.await;
+    }
+}
+
+/// Builds every module in `specs` once, reporting each failure without
+/// stopping: HappyView names a module that has no build, and a watcher
+/// retries it on the next save.
+pub async fn first_build(root: &Path, specs: &[ModuleSpec]) -> Result<(), Failure> {
+    let (root, specs) = (PathBuf::from(root), specs.to_vec());
+    tokio::task::spawn_blocking(move || {
+        let toolchain = Toolchain::from_env();
+        for module in &specs {
+            if let Err(f) = modules::build_module(&toolchain, &root, module) {
+                eprintln!("{:?}", f.report);
+            }
+        }
+    })
+    .await
+    .map_err(Failure::runtime)
 }
 
 fn could_not_start(program: &Path, e: std::io::Error) -> Failure {
