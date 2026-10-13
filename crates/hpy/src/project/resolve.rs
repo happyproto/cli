@@ -2,6 +2,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use hpy_atproto::{Registry, ReleaseView, rkey_of};
+use hpy_plugin::checksum::same_digest;
 use hpy_project::config::{PluginKind, ProjectToml, version_matches};
 use hpy_project::lock::{LOCK_VERSION, LockedHappyview, LockedPlugin, Lockfile};
 use hpy_project::manifest::{
@@ -480,7 +481,7 @@ async fn choose_release(
                 Failure::runtime(format!("the registry no longer has {slug}@{}", p.version))
             })?;
         let stated = release_checksum(&release.record)?;
-        if stated != p.checksum {
+        if !same_digest(&stated, &p.checksum) {
             return Err(Failure::runtime(format!(
                 "the registry states checksum {stated} for {slug}@{}, but happyview.lock records {}; \
                  a published version must never change, so hpy refuses it",
@@ -1167,6 +1168,12 @@ mod tests {
         let reg = registry();
         let cfg = toml("[interpreters]\nlua = \"1.4.0\"\n");
         let mut prev = resolve(&reg, &cfg, None).await.unwrap();
+        // The same digest written differently is the same release, as
+        // `ensure_plugin` reads it.
+        let stated = prev.plugins[0].checksum.clone();
+        prev.plugins[0].checksum = format!("b{}", stated[1..].to_ascii_uppercase());
+        assert_ne!(prev.plugins[0].checksum, stated);
+        resolve(&reg, &cfg, Some(&prev)).await.unwrap();
         prev.plugins[0].checksum = hpy_plugin::checksum::checksum(b"something else");
         let err = resolve(&reg, &cfg, Some(&prev)).await.unwrap_err();
         assert!(format!("{:?}", err.report).contains("must never change"));
