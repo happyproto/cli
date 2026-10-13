@@ -151,7 +151,7 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 | `hpy happyview dev` | Runs the project with its pinned HappyView, in the foreground. |
 | `hpy happyview add <plugin>[@version]` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. `--package <at-uri>` picks between packages with one name. With no plugin (or as `install`), brings the lock up to date and downloads it. |
 | `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
-| `hpy happyview test [--watch] [filter]` | Runs the project's tests. |
+| `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
 
 `hv` is short for `happyview`. `dev`, `check` and `test` take `--locked`,
 which fails instead of updating a lock that no longer matches
@@ -166,9 +166,9 @@ HappyView binaries are cached at `~/.cache/hpy/happyview/<version>/`
 published with each release. Plugins come from the registry into
 `~/.cache/hpy/plugins/<id>/<version>/`, checked against the checksum in
 their release record and in `happyview.lock`; a registry that ever states a
-different checksum for a locked version is refused. `dev` links them into
-the project's `.happyview/plugins/`, which `hpy` owns: anything else placed
-there is removed.
+different checksum for a locked version is refused. `dev`, `check` and
+`test` link them into the project's `.happyview/plugins/` (on Windows they
+copy them), which `hpy` owns: anything else placed there is removed.
 
 ## `hpy.toml`
 
