@@ -1,7 +1,7 @@
 //! The sandbox user who is the local instance's superadmin. A developer's real
 //! DID cannot sign in to a sandbox PDS, so the first seeded user stands in.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -26,9 +26,14 @@ impl std::fmt::Debug for SeededAccount {
     }
 }
 
+/// The sandbox's record of the accounts `seed` created, passwords included.
+pub fn accounts_path(checkout: &Path) -> PathBuf {
+    checkout.join("state/accounts.json")
+}
+
 /// `None` until `seed` has created the account and recorded its DID.
 pub fn seeded_superadmin(checkout: &Path) -> Result<Option<SeededAccount>, Failure> {
-    let path = checkout.join("state/accounts.json");
+    let path = accounts_path(checkout);
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -102,5 +107,18 @@ mod tests {
             format!("{:?}", seeded_superadmin(dir.path()).unwrap_err().report)
                 .contains("state/accounts.json")
         );
+    }
+
+    #[test]
+    fn debug_never_shows_the_password() {
+        let a = SeededAccount {
+            handle: SUPERADMIN_HANDLE.into(),
+            did: "did:plc:user1".into(),
+            password: "seeded-secret-pw".into(),
+        };
+        let shown = format!("{a:?}");
+        assert!(shown.contains("<redacted>"), "{shown}");
+        assert!(!shown.contains("seeded-secret-pw"), "{shown}");
+        assert!(shown.contains("did:plc:user1"), "{shown}");
     }
 }

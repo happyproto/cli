@@ -11,8 +11,12 @@ use sha2::{Digest, Sha256};
 use crate::failure::Failure;
 
 pub const APP_ID: &str = "happyview";
-pub const ROUTE_HOST: &str = "happyview";
-pub const PUBLIC_URL: &str = "https://happyview.atmosbox.test";
+/// The sandbox route HappyView's `PUBLIC_URL` is read from.
+pub const ROUTE_ID: &str = "happyview";
+/// A full name rather than a label under the sandbox's `.test` domain: the
+/// sandbox PDS refuses an OAuth `client_id` on the `.test` TLD.
+pub const ROUTE_HOSTNAME: &str = "happyview.atmosbox.internal";
+pub const PUBLIC_URL: &str = "https://happyview.atmosbox.internal";
 pub const SUPERADMIN_ENV: &str = "SUPERADMIN_DID";
 pub const BACKFILL_ENV: &str = "HAPPYVIEW_DEV_BACKFILL";
 /// Tells HappyView it is the sandboxed instance, not one on the real network.
@@ -22,9 +26,11 @@ pub const WATCH_POLL_ENV: &str = "HAPPYVIEW_WATCH_POLL_MS";
 /// Whether the sandbox relay can drive backfill's discovery
 /// (`listReposByCollection`).
 pub const BACKFILL_ON_LOCAL: bool = false;
-/// Polling instead of file events, for file shares that drop or delay them.
-/// `None` leaves the watcher on events.
-pub const WATCH_POLL_MS: Option<u32> = None;
+/// Polling instead of file events. Docker Desktop's VirtioFS share delivers
+/// no CLOSE_WRITE, MOVED_TO or delete events for the bind-mounted project, so
+/// an editor's save never reaches an event watcher. `None` would leave the
+/// watcher on events.
+pub const WATCH_POLL_MS: Option<u32> = Some(500);
 /// The local network's database and plugin cache, kept apart from the one
 /// `dev` uses against the real network so their records never mix.
 pub const LOCAL_DB_DIR: &str = ".happyview/local-network";
@@ -90,11 +96,13 @@ pub fn definition_json() -> Value {
         "services": [{
             "service": APP_ID,
             "environment": [
-                { "name": "PUBLIC_URL", "source": { "kind": "route-url", "route": "happyview" } },
+                { "name": "PUBLIC_URL", "source": { "kind": "route-url", "route": ROUTE_ID } },
                 { "name": "PLC_URL", "source": { "kind": "plc-url" } }
             ]
         }],
-        "routes": [{ "id": "happyview", "service": APP_ID, "host": ROUTE_HOST, "port": 3000 }],
+        // Atmosphere in a Box takes exactly one of `host` (a label under its
+        // domain) and `hostname` (a full name).
+        "routes": [{ "id": ROUTE_ID, "service": APP_ID, "hostname": ROUTE_HOSTNAME, "port": 3000 }],
         "secrets": []
     })
 }
@@ -148,8 +156,7 @@ fn copy_binary(from: &Path, to: &Path) -> Result<bool, Failure> {
     let wanted = std::fs::metadata(from)
         .map_err(|e| Failure::runtime(format!("cannot read {}: {e}", from.display())))?;
     if std::fs::metadata(to).is_ok_and(|have| have.len() == wanted.len())
-        && sha256_of(to).is_some()
-        && sha256_of(to) == sha256_of(from)
+        && sha256_of(to).is_some_and(|have| Some(have) == sha256_of(from))
     {
         return Ok(false);
     }
@@ -160,7 +167,15 @@ fn copy_binary(from: &Path, to: &Path) -> Result<bool, Failure> {
     Ok(true)
 }
 
-pub fn write_app(checkout: &Path, c: &AppConfig) -> Result<bool, Failure> {
+/// What `write_app` changed on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Written {
+    pub any: bool,
+    /// The application definition, which carries HappyView's route.
+    pub definition: bool,
+}
+
+pub fn write_app(checkout: &Path, c: &AppConfig) -> Result<Written, Failure> {
     let build = checkout.join(BUILD_DIR);
     let mut changed = false;
     changed |= write_if_changed(
@@ -178,14 +193,18 @@ pub fn write_app(checkout: &Path, c: &AppConfig) -> Result<bool, Failure> {
     changed |= write_if_changed(&checkout.join(STACK_FILE), &stack)?;
     let definition =
         serde_json::to_string_pretty(&definition_json()).expect("json serializes") + "\n";
-    changed |= write_if_changed(&checkout.join(DEFINITION_FILE), &definition)?;
+    let definition = write_if_changed(&checkout.join(DEFINITION_FILE), &definition)?;
+    changed |= definition;
     let components = checkout.join("stacks/components.json");
     let text = std::fs::read_to_string(&components).map_err(Failure::runtime)?;
     if let Some(updated) = register_component(&text)? {
         std::fs::write(&components, updated).map_err(Failure::runtime)?;
         changed = true;
     }
-    Ok(changed)
+    Ok(Written {
+        any: changed,
+        definition,
+    })
 }
 
 #[cfg(test)]
@@ -246,6 +265,7 @@ mod tests {
         assert_ne!(LOCAL_DB_DIR, ".happyview");
         assert!(env.get(SUPERADMIN_ENV).is_none());
         assert_eq!(env.get(WATCH_POLL_ENV).is_some(), WATCH_POLL_MS.is_some());
+        assert_eq!(env[WATCH_POLL_ENV], "500");
     }
 
     #[test]
@@ -261,13 +281,19 @@ mod tests {
         assert_eq!(d["id"], APP_ID);
         assert_eq!(
             d["routes"][0],
-            json!({ "id": "happyview", "service": APP_ID, "host": ROUTE_HOST, "port": 3000 })
+            json!({
+                "id": "happyview",
+                "service": APP_ID,
+                "hostname": "happyview.atmosbox.internal",
+                "port": 3000
+            })
         );
+        assert!(d["routes"][0].get("host").is_none());
+        assert_eq!(PUBLIC_URL, format!("https://{ROUTE_HOSTNAME}"));
         let env = d["services"][0]["environment"].as_array().unwrap();
-        assert!(
-            env.iter()
-                .any(|e| e["name"] == "PUBLIC_URL" && e["source"]["kind"] == "route-url")
-        );
+        assert!(env.iter().any(|e| e["name"] == "PUBLIC_URL"
+            && e["source"]["kind"] == "route-url"
+            && e["source"]["route"] == ROUTE_ID));
         assert!(
             env.iter()
                 .any(|e| e["name"] == "PLC_URL" && e["source"]["kind"] == "plc-url")
@@ -287,10 +313,25 @@ mod tests {
     #[test]
     fn write_app_reports_changes_only_when_something_changed() {
         let (checkout, mut c) = checkout_with(b"binary");
-        assert!(write_app(checkout.path(), &c).unwrap());
-        assert!(!write_app(checkout.path(), &c).unwrap());
+        assert_eq!(
+            write_app(checkout.path(), &c).unwrap(),
+            Written {
+                any: true,
+                definition: true
+            }
+        );
+        assert_eq!(write_app(checkout.path(), &c).unwrap(), Written::default());
         c.superadmin = Some("did:plc:user1".into());
-        assert!(write_app(checkout.path(), &c).unwrap());
+        // The stack changed; the route did not.
+        assert_eq!(
+            write_app(checkout.path(), &c).unwrap(),
+            Written {
+                any: true,
+                definition: false
+            }
+        );
+        std::fs::write(checkout.path().join(DEFINITION_FILE), "{}").unwrap();
+        assert!(write_app(checkout.path(), &c).unwrap().definition);
         assert!(
             checkout
                 .path()
@@ -316,9 +357,9 @@ mod tests {
 
         // Same size, different content: the hash must catch it.
         std::fs::write(&c.binary, b"two").unwrap();
-        assert!(write_app(checkout.path(), &c).unwrap());
+        assert!(write_app(checkout.path(), &c).unwrap().any);
         assert_eq!(std::fs::read(&copied).unwrap(), b"two");
         assert_eq!(std::fs::read_to_string(&stack_path).unwrap(), before);
-        assert!(!write_app(checkout.path(), &c).unwrap());
+        assert!(!write_app(checkout.path(), &c).unwrap().any);
     }
 }

@@ -2,6 +2,7 @@
 //! network, with its logs in the foreground.
 
 use std::path::{Path, PathBuf};
+use std::task::{Context, Waker};
 use std::time::Duration;
 
 use hpy_project::config::{CONFIG_FILE, ProjectToml, find_root};
@@ -13,13 +14,13 @@ use crate::cli::DevArgs;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 use crate::project::binary::http_client;
-use crate::project::network::access::ensure_access;
-use crate::project::network::accounts::{SeededAccount, seeded_superadmin};
+use crate::project::network::access::{ensure_access, record_path};
+use crate::project::network::accounts::{SeededAccount, accounts_path, seeded_superadmin};
 use crate::project::network::app::{
-    AppConfig, BACKFILL_ON_LOCAL, LOCAL_DB_DIR, PUBLIC_URL, write_app,
+    APP_ID, AppConfig, BACKFILL_ON_LOCAL, LOCAL_DB_DIR, PUBLIC_URL, write_app,
 };
 use crate::project::network::atmosbox::{
-    NetworkDir, PINNED, check_tools, data_root, ensure_checkout, network_dir,
+    NetworkDir, PINNED, check_tools, data_root, fetch_checkout, install_checkout, network_dir,
 };
 use crate::project::network::runner::{Runner, SystemRunner};
 use crate::project::network::sandbox::Sandbox;
@@ -35,10 +36,6 @@ const ACCESS_ADDR: &str = "127.0.0.1:443";
 const ACCESS_ADDR_ENV: &str = "HPY_NETWORK_ACCESS_ADDR";
 /// The file in a network directory naming the project it belongs to.
 const PROJECT_FILE: &str = "project";
-/// How long to wait for `hpy`'s own Ctrl-C to be reported once a child has
-/// ended: the terminal signals both at once, and the child can be reaped
-/// first.
-const INTERRUPT_GRACE: Duration = Duration::from_millis(250);
 
 pub fn linux_target(docker_arch: &str) -> Result<String, Failure> {
     match docker_arch.trim() {
@@ -50,16 +47,25 @@ pub fn linux_target(docker_arch: &str) -> Result<String, Failure> {
     }
 }
 
-pub fn banner(account: &SeededAccount, interactive: bool) -> String {
+/// `accounts` is where the password is kept; `access_record` is the file
+/// whose removal repeats the one-time setup.
+pub fn banner(
+    account: &SeededAccount,
+    interactive: bool,
+    accounts: &Path,
+    access_record: &Path,
+) -> String {
     let password = if interactive {
         format!("password {}", account.password)
     } else {
-        "password in the sandbox's state/accounts.json".into()
+        format!("password in {}", accounts.display())
     };
     format!(
         "local network ready: {PUBLIC_URL}\n  sign in as {} ({password}); that account is the superadmin\n  \
+         a certificate error in the browser? delete {} and run this again to repeat the one-time setup\n  \
          writes stay on this computer; Ctrl-C stops the network and keeps its data",
-        account.handle
+        account.handle,
+        access_record.display()
     )
 }
 
@@ -119,8 +125,9 @@ pub fn claim_network_dir(net: &NetworkDir, project_root: &Path) -> Result<Vec<St
         if !Path::new(&old).exists() {
             lines.push(format!(
                 "a local network for {old}, which no longer exists, is at {}; remove it with \
-                 `deno task sandbox destroy --accept-destructive` there",
-                dir.display()
+                 `deno task sandbox destroy --accept-destructive` in {}",
+                dir.display(),
+                dir.join(PINNED.top).display()
             ));
         }
     }
@@ -134,8 +141,11 @@ fn host_ids() -> (u32, u32) {
     unsafe { (libc::getuid(), libc::getgid()) }
 }
 
-/// Ctrl-C, caught so `hpy` outlives the children the terminal also sends it
-/// to and can leave the sandbox in a state the next run can pick up.
+/// Ctrl-C, caught so `hpy` decides when the run stops. Every child runs in a
+/// process group of its own (see `runner`), so the terminal's Ctrl-C reaches
+/// `hpy` alone: a sandbox command is never cut off part way, which would leave
+/// the sandbox locked, and `hpy` stops the network once the step in progress
+/// has finished.
 struct Interrupt {
     signal: Signal,
     seen: bool,
@@ -156,9 +166,16 @@ impl Interrupt {
         self.seen = true;
     }
 
-    async fn seen_within(&mut self, grace: Duration) -> bool {
-        if !self.seen {
-            let _ = tokio::time::timeout(grace, self.recv()).await;
+    /// Whether a Ctrl-C has arrived, taking one that is waiting without
+    /// waiting for one.
+    fn seen(&mut self) -> bool {
+        if !self.seen
+            && self
+                .signal
+                .poll_recv(&mut Context::from_waker(Waker::noop()))
+                .is_ready()
+        {
+            self.seen = true;
         }
         self.seen
     }
@@ -175,19 +192,29 @@ impl From<Failure> for Halt {
     }
 }
 
-/// Waits for a step that runs a child to finish, never cutting it short: the
-/// child got the same Ctrl-C and is the one that knows how to stop cleanly.
+/// Runs a step that has a child and waits for it to finish, even after a
+/// Ctrl-C: the signal prints one line, naming the step as `what`, saying the
+/// run stops once it is done. No step starts after a Ctrl-C.
 async fn step<T>(
+    ctx: &Ctx,
     interrupt: &mut Interrupt,
+    what: &str,
     fut: impl Future<Output = Result<T, Failure>>,
 ) -> Result<T, Halt> {
-    let result = fut.await;
-    let grace = if result.is_ok() {
-        Duration::ZERO
-    } else {
-        INTERRUPT_GRACE
+    if interrupt.seen() {
+        return Err(Halt::Interrupted);
+    }
+    let mut fut = std::pin::pin!(fut);
+    let result = tokio::select! {
+        result = &mut fut => result,
+        _ = interrupt.recv() => {
+            ctx.out.status(&format!(
+                "Ctrl-C: stopping once {what} has finished; cutting it short could leave the sandbox locked"
+            ));
+            fut.await
+        }
     };
-    if interrupt.seen_within(grace).await {
+    if interrupt.seen() {
         return Err(Halt::Interrupted);
     }
     Ok(result?)
@@ -198,6 +225,9 @@ async fn abandonable<T>(
     interrupt: &mut Interrupt,
     fut: impl Future<Output = Result<T, Failure>>,
 ) -> Result<T, Halt> {
+    if interrupt.seen() {
+        return Err(Halt::Interrupted);
+    }
     tokio::select! {
         result = fut => Ok(result?),
         _ = interrupt.recv() => Err(Halt::Interrupted),
@@ -271,7 +301,7 @@ async fn happyview_container(sandbox: &Sandbox<'_>) -> Result<Option<String>, Fa
                 "--filter".into(),
                 filter("project", &sandbox.project),
                 "--filter".into(),
-                filter("service", "happyview"),
+                filter("service", APP_ID),
                 "--format".into(),
                 "{{.Names}}".into(),
             ],
@@ -289,7 +319,7 @@ async fn happyview_container(sandbox: &Sandbox<'_>) -> Result<Option<String>, Fa
 /// withholds Compose's output, so a HappyView that dies at boot would
 /// otherwise surface only as a failed `up`.
 async fn up(ctx: &Ctx, interrupt: &mut Interrupt, sandbox: &Sandbox<'_>) -> Result<(), Halt> {
-    match step(interrupt, sandbox.up()).await {
+    match step(ctx, interrupt, "starting the local network", sandbox.up()).await {
         Err(Halt::Failed(f)) => {
             if let Ok(Some(name)) = happyview_container(sandbox).await {
                 ctx.out
@@ -360,22 +390,25 @@ pub async fn run_local(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
             return Err(Failure::exit(130));
         }
         (Err(Halt::Failed(f)), sandbox) => {
-            if let (true, Some(sandbox)) = (running, sandbox)
-                && let Err(e) = stop(ctx, &sandbox).await
-            {
-                ctx.out.status(&format!("warning: {}", e.report));
+            // As after a Ctrl-C: a pending step leaves only `resume`, which
+            // refuses `access stop` and `down`.
+            match sandbox {
+                Some(sandbox) if running && sandbox.pending() => ctx.out.status(
+                    "the local network's setup did not finish; its containers may still be running until the next run resumes it",
+                ),
+                Some(sandbox) if running => {
+                    if let Err(e) = stop(ctx, &sandbox).await {
+                        ctx.out.status(&format!("warning: {}", e.report));
+                    }
+                }
+                _ => {}
             }
             return Err(f);
         }
     };
 
     let followed = follow(ctx, &mut interrupt, &sandbox, &network_dir, &account).await;
-    let grace = if followed.is_err() {
-        INTERRUPT_GRACE
-    } else {
-        Duration::ZERO
-    };
-    let interrupted = interrupt.seen_within(grace).await;
+    let interrupted = interrupt.seen();
     let stopped = stop(ctx, &sandbox).await;
     match followed {
         _ if interrupted => stopped,
@@ -403,7 +436,13 @@ async fn start<'r>(
     sandbox_out: &mut Option<Sandbox<'r>>,
     running: &mut bool,
 ) -> Result<(PathBuf, SeededAccount), Halt> {
-    step(interrupt, check_tools(runner, &ctx.dir)).await?;
+    step(
+        ctx,
+        interrupt,
+        "checking for Deno and Docker",
+        check_tools(runner, &ctx.dir),
+    )
+    .await?;
     let root = find_root(&ctx.dir).ok_or_else(|| {
         Failure::usage(format!(
             "no {CONFIG_FILE} in {} or any directory above it; start one with `hpy happyview create`",
@@ -414,12 +453,20 @@ async fn start<'r>(
     let net = network_dir(&data, &root)?;
     // Checked before anything downloads or starts: the relay's port is the
     // one resource two sandboxes cannot share.
-    let relays = step(interrupt, relay_projects(runner, &root)).await?;
+    let relays = step(
+        ctx,
+        interrupt,
+        "looking for another local network",
+        relay_projects(runner, &root),
+    )
+    .await?;
     if let Some(other) = relays.iter().find(|p| **p != net.project) {
         return Err(relay_held_by(other).into());
     }
     let docker_arch = step(
+        ctx,
         interrupt,
+        "asking Docker for its architecture",
         runner.capture(
             "docker",
             &["info".into(), "--format".into(), "{{.Architecture}}".into()],
@@ -445,16 +492,24 @@ async fn start<'r>(
     }
     let checkout = abandonable(
         interrupt,
-        ensure_checkout(&http_client(), &PINNED, &net, runner, &|m| {
-            ctx.out.status(m)
-        }),
+        fetch_checkout(&http_client(), &PINNED, &net, &|m| ctx.out.status(m)),
+    )
+    .await?;
+    step(
+        ctx,
+        interrupt,
+        "installing Atmosphere in a Box",
+        install_checkout(runner, &PINNED, &checkout),
     )
     .await?;
     let sandbox = sandbox_out.insert(Sandbox {
         runner,
         checkout: checkout.clone(),
         project: net.project.clone(),
+        subnet: net.subnet.clone(),
     });
+    // Before the first sandbox command, which would only fail on it.
+    sandbox.refuse_a_held_lock()?;
 
     if args.reset {
         if !ctx.prompter.confirm(
@@ -463,15 +518,27 @@ async fn start<'r>(
         )? {
             return Err(Failure::runtime("cancelled").into());
         }
-        // An interrupted first create leaves pending state and no manifest,
-        // and that too is a sandbox to discard. `destroy` finds the sandbox's
-        // project through the manifest, so `resume` has to write it first.
-        if sandbox.pending() && !sandbox.created() {
+        // The sandbox refuses `destroy` while a step is pending, and an
+        // interrupted first create has no manifest for `destroy` to find the
+        // project in: `resume` settles both, and leaves a created sandbox.
+        if sandbox.pending() {
             *running = true;
-            step(interrupt, sandbox.resume()).await?;
+            step(
+                ctx,
+                interrupt,
+                "finishing the interrupted setup",
+                sandbox.resume(),
+            )
+            .await?;
         }
-        if sandbox.created() || sandbox.pending() {
-            step(interrupt, sandbox.destroy()).await?;
+        if sandbox.created() {
+            step(
+                ctx,
+                interrupt,
+                "discarding the local network",
+                sandbox.destroy(),
+            )
+            .await?;
         }
         let local = prepared.root.join(LOCAL_DB_DIR);
         if local.exists() {
@@ -486,12 +553,24 @@ async fn start<'r>(
         ctx.out
             .status("finishing the local network's interrupted setup");
         *running = true;
-        step(interrupt, sandbox.resume()).await?;
+        step(
+            ctx,
+            interrupt,
+            "finishing the interrupted setup",
+            sandbox.resume(),
+        )
+        .await?;
     }
     if !sandbox.created() {
         ctx.out
             .status(&format!("creating the local network ({})", net.project));
-        step(interrupt, sandbox.create()).await?;
+        step(
+            ctx,
+            interrupt,
+            "creating the local network",
+            sandbox.create(),
+        )
+        .await?;
     }
     let account = match seeded_superadmin(&checkout)? {
         Some(account) => account,
@@ -500,7 +579,13 @@ async fn start<'r>(
             // boot already has its superadmin and it boots once.
             *running = true;
             up(ctx, interrupt, sandbox).await?;
-            step(interrupt, sandbox.seed()).await?;
+            step(
+                ctx,
+                interrupt,
+                "creating the sandbox's accounts",
+                sandbox.seed(),
+            )
+            .await?;
             seeded_superadmin(&checkout)?
                 .ok_or_else(|| Failure::runtime("seed finished without recording user1's DID"))?
         }
@@ -514,10 +599,31 @@ async fn start<'r>(
         superadmin: Some(account.did.clone()),
         backfill,
     };
-    let changed = write_app(&checkout, &app)?;
-    step(interrupt, sandbox.sync(changed)).await?;
+    let written = write_app(&checkout, &app)?;
+    let route_changed = step(
+        ctx,
+        interrupt,
+        "applying HappyView to the local network",
+        sandbox.sync(written),
+    )
+    .await?;
     *running = true;
     up(ctx, interrupt, sandbox).await?;
+    if route_changed {
+        let restarted = step(
+            ctx,
+            interrupt,
+            "restarting the sandbox's DNS, gateway and PDS",
+            sandbox.restart_route_readers(),
+        )
+        .await?;
+        if restarted.is_empty() {
+            ctx.out.status(
+                "warning: no DNS, gateway or PDS container was running to restart for HappyView's new route; \
+                 sign-in may fail until the local network is restarted",
+            );
+        }
+    }
     if backfill && !BACKFILL_ON_LOCAL {
         ctx.out.status(
             "backfill is off on the local network: its relay cannot list repos by collection",
@@ -536,13 +642,16 @@ async fn follow(
     ensure_relay_port_free(sandbox).await?;
     ensure_access(ctx, sandbox, network_dir, Path::new("/etc/hosts")).await?;
     let name = happyview_container(sandbox).await?.ok_or_else(|| {
-        Failure::runtime(
-            "the HappyView container did not start; see `deno task sandbox ps` in the sandbox checkout",
-        )
+        Failure::runtime(format!(
+            "the HappyView container did not start; see `deno task sandbox ps` in {}",
+            sandbox.checkout.display()
+        ))
     })?;
     ctx.out.status(&banner(
         account,
         shows_password(ctx.prompter.is_interactive(), ctx.out.is_json()),
+        &accounts_path(&sandbox.checkout),
+        &record_path(network_dir),
     ));
     ctx.out.done(
         "",
@@ -550,16 +659,15 @@ async fn follow(
     );
     // Under --json the runner sends these to stderr with every other child's
     // output, keeping stdout to the one result document.
-    sandbox
-        .runner
-        .show(
-            "docker",
-            &["logs".into(), "--follow".into(), name.clone()],
-            &sandbox.checkout,
-        )
-        .await?;
-    if interrupt.seen_within(INTERRUPT_GRACE).await {
-        return Ok(0);
+    let args = ["logs".into(), "--follow".into(), name.clone()];
+    let logs = sandbox.runner.show("docker", &args, &sandbox.checkout);
+    tokio::select! {
+        result = logs => {
+            result?;
+        }
+        // `docker logs` is in a process group of its own and never sees the
+        // terminal's Ctrl-C; dropping it here is what ends it.
+        _ = interrupt.recv() => return Ok(0),
     }
     let state = sandbox
         .runner
@@ -603,11 +711,21 @@ mod tests {
             did: "did:plc:u".into(),
             password: "secret-pw".into(),
         };
-        let shown = banner(&a, true);
-        assert!(shown.contains("https://happyview.atmosbox.test") && shown.contains("secret-pw"));
-        let hidden = banner(&a, false);
+        let accounts = Path::new("/data/net/atmosphereinabox-v0.7.1/state/accounts.json");
+        let record = Path::new("/data/net/access.toml");
+        let shown = banner(&a, true, accounts, record);
+        assert!(
+            shown.contains("https://happyview.atmosbox.internal") && shown.contains("secret-pw")
+        );
+        let hidden = banner(&a, false, accounts, record);
         assert!(hidden.contains("user1.pds1.atmosbox.test") && !hidden.contains("secret-pw"));
-        assert!(hidden.contains("state/accounts.json"));
+        assert!(hidden.contains(&accounts.display().to_string()), "{hidden}");
+        // A removed CA trust shows up only as a browser error; the line
+        // names the file whose removal repeats the setup.
+        for text in [&shown, &hidden] {
+            assert!(text.contains("certificate error"), "{text}");
+            assert!(text.contains("delete /data/net/access.toml"), "{text}");
+        }
     }
 
     #[test]
@@ -641,6 +759,11 @@ mod tests {
         assert!(lines[0].contains(&first_path.display().to_string()));
         assert!(lines[0].contains(&old.dir.display().to_string()));
         assert!(lines[0].contains("deno task sandbox destroy --accept-destructive"));
+        assert!(
+            lines[0].contains(&format!("in {}", old.dir.join(PINNED.top).display())),
+            "{}",
+            lines[0]
+        );
         assert!(old.dir.is_dir(), "an old network is never deleted");
         // Said once, when the new directory appears.
         assert!(claim_network_dir(&new, second.path()).unwrap().is_empty());

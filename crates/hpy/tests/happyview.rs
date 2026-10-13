@@ -1059,11 +1059,23 @@ fn local_without_deno_names_what_to_install() {
 }
 
 /// A `deno` standing in for Atmosphere in a Box's CLI: it logs every call and
-/// writes the state files the real one would.
+/// writes the state files the real one would. Like the real one it refuses
+/// every sandbox command while `state/cli.lock` exists.
 #[cfg(unix)]
 const FAKE_DENO: &str = r#"echo "deno $*" >> "$NET_LOG"
+case "$*" in
+  "task sandbox"*)
+    if [ -d state/cli.lock ]; then
+      echo "CLI locked; inspect state/cli.lock before removing it after a crash" >&2
+      echo "deno refused: locked" >> "$NET_LOG"
+      exit 1
+    fi ;;
+esac
 # The real CLI reports progress on stdout; `access hosts` is read by hpy and
 # prints only its block.
+if [ "$1" = install ]; then
+  echo "deno install saw DENO_NO_PACKAGE_JSON=$DENO_NO_PACKAGE_JSON" >> "$NET_LOG"
+fi
 case "$*" in
   "task sandbox access hosts") ;;
   task*) echo "sandbox progress: $*" ;;
@@ -1077,12 +1089,16 @@ case "$*" in
   "task sandbox apply --app happyview")
     echo '{"applications":["happyview"]}' > state/manifest.json ;;
   "task sandbox seed")
+    # Fails part way, leaving a step pending.
+    if [ -n "$NET_SEED_FAILS" ]; then echo '{}' > state/pending-apply.json; exit 1; fi
+    # Waits for `NET_STEP_RELEASE` to appear once it has said it started.
     if [ -n "$NET_SEED_BLOCK" ]; then
       if [ "$NET_SEED_BLOCK" = pending ]; then echo '{}' > state/pending-apply.json; fi
-      echo seeding > "$NET_LOG.seeding"
-      sleep 30
+      echo seeding > "$NET_STEP_STARTED"
+      while [ ! -f "$NET_STEP_RELEASE" ]; do sleep 0.05; done
     fi
-    echo '{"version":1,"accounts":{"user1.pds1.atmosbox.test":{"handle":"user1.pds1.atmosbox.test","password":"seeded-secret-pw","phase":"ready","did":"did:plc:user1"}}}' > state/accounts.json ;;
+    echo '{"version":1,"accounts":{"user1.pds1.atmosbox.test":{"handle":"user1.pds1.atmosbox.test","password":"seeded-secret-pw","phase":"ready","did":"did:plc:user1"}}}' > state/accounts.json
+    echo "deno seed finished" >> "$NET_LOG" ;;
   "task sandbox resume")
     rm -f state/pending-create.json state/pending-apply.json
     mkdir -p state/ca
@@ -1095,25 +1111,45 @@ case "$*" in
   "task sandbox access hosts")
     if [ -n "$NET_HOSTS" ]; then printf '%s\n' '# begin' "$NET_HOSTS" '# end'; fi ;;
   "task sandbox up"*)
-    if [ -n "$NET_UP_FAILS" ] && grep -q happyview state/manifest.json; then exit 1; fi ;;
+    # Dies holding the lock, as a deno killed mid-operation does.
+    if [ -n "$NET_UP_CRASHES" ]; then mkdir state/cli.lock; kill -KILL $$; fi
+    # Another command takes the lock first, and this one refuses with an
+    # ordinary exit, as the real CLI's "CLI locked" does.
+    if [ -n "$NET_UP_CONTENDED" ]; then
+      mkdir state/cli.lock
+      echo "CLI locked; inspect state/cli.lock before removing it after a crash" >&2
+      exit 1
+    fi
+    if [ -n "$NET_UP_FAILS" ] && grep -q happyview state/manifest.json; then exit 1; fi
+    # The `up` that brings HappyView in, blocked as `seed` is above.
+    if [ -n "$NET_UP_BLOCK" ] && grep -q happyview state/manifest.json; then
+      echo up > "$NET_STEP_STARTED"
+      while [ ! -f "$NET_STEP_RELEASE" ]; do sleep 0.05; done
+    fi ;;
 esac
 exit 0"#;
 
 /// A `docker` answering what `hpy` asks of it. `NET_RELAY` names a running
-/// access relay; `NET_BLOCK` keeps `logs --follow` open until a signal.
+/// access relay; `NET_BLOCK` keeps `logs --follow` open far longer than any
+/// test waits, so only `hpy` ending it lets the test finish.
 #[cfg(unix)]
 const FAKE_DOCKER: &str = r#"echo "docker $*" >> "$NET_LOG"
 case "$*" in
   "compose version"*) echo "Docker Compose version v2.40.0" ;;
+  "network ls"*) echo bridge ;;
+  "network inspect"*) echo "bridge 172.17.0.0/16 " ;;
   "ps --filter label=com.docker.compose.service=host-access"*)
     if [ -n "$NET_RELAY" ]; then echo "$NET_RELAY"; fi ;;
+  "ps --filter label=com.docker.compose.project="*)
+    printf '%s\n' "hv-test-dns-1 dns" "hv-test-gateway-1 gateway" "hv-test-pds1-1 pds1" \
+      "hv-test-plc-1 plc" "hv-test-happyview-1 happyview" ;;
   "info"*) echo aarch64 ;;
   "ps -a"*)
     if grep -q happyview state/manifest.json 2>/dev/null; then echo hv-test-happyview-1; fi ;;
   "logs --tail"*) echo "happyview: could not open the database" ;;
   "logs --follow"*)
     echo "happyview log line"
-    if [ -n "$NET_BLOCK" ]; then echo following > "$NET_LOG.following"; sleep 30; fi ;;
+    if [ -n "$NET_BLOCK" ]; then echo following > "$NET_FOLLOWING"; exec sleep 120; fi ;;
   "inspect"*) echo "true 0" ;;
 esac
 exit 0"#;
@@ -1129,6 +1165,8 @@ struct LocalNet {
     checkout: PathBuf,
     /// The sandbox's Compose project name.
     project: String,
+    /// The subnet `hpy` derives for this project.
+    subnet: String,
     /// A port nothing listens on, standing in for 443.
     free_addr: String,
 }
@@ -1146,12 +1184,17 @@ impl LocalNet {
             std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
             std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let net = network_dir(&stack.cache.path().join("data"), stack.project.path());
+        let (net, subnet) = network_dir(&stack.cache.path().join("data"), stack.project.path());
         let checkout = net.join("atmosphereinabox-v0.7.1");
         let project = format!("hv-{}", net.file_name().unwrap().to_string_lossy());
         std::fs::create_dir_all(checkout.join("stacks")).unwrap();
         std::fs::write(checkout.join("stacks/components.json"), "[]").unwrap();
-        std::fs::write(checkout.join(".hpy-installed"), "v0.7.1").unwrap();
+        // The pinned archive's sha256, which marks the checkout installed.
+        std::fs::write(
+            checkout.join(".hpy-installed"),
+            "73bd22ac78ba137a2b5e9b8ffb88944232f1d25f0df42cdd5ab70e8d12bb526c",
+        )
+        .unwrap();
         let ca = data_encoding::HEXLOWER.encode(&Sha256::digest(b"fake-ca\n"));
         std::fs::write(net.join("access.toml"), format!("ca_sha256 = \"{ca}\"\n")).unwrap();
         let free_addr = std::net::TcpListener::bind("127.0.0.1:0")
@@ -1166,6 +1209,7 @@ impl LocalNet {
             log,
             checkout,
             project,
+            subnet,
             free_addr,
         }
     }
@@ -1177,12 +1221,24 @@ impl LocalNet {
             format!("{}:/usr/bin:/bin", self.bin.path().display()),
         )
         .env("NET_LOG", &self.log)
+        .env("NET_FOLLOWING", self.marker("following"))
+        .env("NET_STEP_STARTED", self.marker("step-started"))
+        .env("NET_STEP_RELEASE", self.marker("step-release"))
         .env("HPY_NETWORK_ACCESS_ADDR", &self.free_addr)
         .env_remove("NET_RELAY")
         .env_remove("NET_BLOCK")
         .env_remove("NET_UP_FAILS")
+        .env_remove("NET_UP_CRASHES")
+        .env_remove("NET_UP_CONTENDED")
+        .env_remove("NET_SEED_FAILS")
+        .env_remove("NET_UP_BLOCK")
         .env_remove("NET_HOSTS")
         .env_remove("NET_SEED_BLOCK");
+    }
+
+    /// A file a fake writes, or waits for, to coordinate with a test.
+    fn marker(&self, name: &str) -> PathBuf {
+        self.bin.path().join(name)
     }
 
     fn hpy(&self) -> Command {
@@ -1207,12 +1263,14 @@ impl LocalNet {
     }
 }
 
-/// `atmosbox::network_dir`, which an integration test cannot import.
+/// `atmosbox::network_dir` (the directory and the subnet), which an
+/// integration test cannot import.
 #[cfg(unix)]
-fn network_dir(data: &Path, project: &Path) -> PathBuf {
+fn network_dir(data: &Path, project: &Path) -> (PathBuf, String) {
     let canonical = std::fs::canonicalize(project).unwrap();
-    let hash =
-        data_encoding::HEXLOWER.encode(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
+    let digest = Sha256::digest(canonical.to_string_lossy().as_bytes());
+    let hash = data_encoding::HEXLOWER.encode(&digest);
+    let octet = if digest[0] == 249 { 250 } else { digest[0] };
     let name: String = canonical
         .file_name()
         .unwrap()
@@ -1235,7 +1293,10 @@ fn network_dir(data: &Path, project: &Path) -> PathBuf {
     let name: String = name.chars().take(24).collect();
     let name = name.trim_end_matches('-');
     let name = if name.is_empty() { "project" } else { name };
-    data.join("networks").join(format!("{name}-{}", &hash[..8]))
+    (
+        data.join("networks").join(format!("{name}-{}", &hash[..8])),
+        format!("172.30.{octet}.0/24"),
+    )
 }
 
 #[cfg(unix)]
@@ -1245,8 +1306,15 @@ fn a_local_run_without_a_terminal_prints_no_password() {
     net.hpy().assert().code(0).stderr(
         predicate::str::contains("seeded-secret-pw")
             .not()
-            .and(predicate::str::contains("state/accounts.json"))
-            .and(predicate::str::contains("https://happyview.atmosbox.test")),
+            .and(predicate::str::contains(
+                net.checkout
+                    .join("state/accounts.json")
+                    .display()
+                    .to_string(),
+            ))
+            .and(predicate::str::contains(
+                "https://happyview.atmosbox.internal",
+            )),
     );
     // HappyView joins only after the seed, so it first boots knowing its
     // superadmin; the walkthrough then starts the relay, and the end stops
@@ -1255,8 +1323,8 @@ fn a_local_run_without_a_terminal_prints_no_password() {
         net.sandbox_calls(),
         [
             format!(
-                "create --pds 1 --users-per-pds 1 --project {} --preset full-stack --subnet auto",
-                net.project
+                "create --pds 1 --users-per-pds 1 --project {} --preset full-stack --subnet {}",
+                net.project, net.subnet
             ),
             "check".into(),
             "up --build --wait-timeout 600".into(),
@@ -1269,6 +1337,19 @@ fn a_local_run_without_a_terminal_prints_no_password() {
             "access stop".into(),
             "down".into(),
         ]
+    );
+    let calls = net.calls();
+    // Its subnet was checked against Docker's before `create` asked for it.
+    let checked = calls.find("docker network inspect").unwrap();
+    assert!(checked < calls.find("deno task sandbox create").unwrap());
+    // Adding HappyView's route restarts the services that read routes only
+    // at start, once the network carrying the route is up.
+    let restart = "docker restart hv-test-dns-1 hv-test-gateway-1 hv-test-pds1-1\n";
+    let restarted = calls.find(restart).unwrap_or_else(|| panic!("{calls}"));
+    assert!(restarted > calls.rfind("deno task sandbox up").unwrap());
+    assert!(
+        !calls.contains("deno install"),
+        "an installed checkout was installed again"
     );
     let stack_file = read(&net.checkout.join("stacks/happyview.yaml"));
     assert!(stack_file.contains("did:plc:user1"), "{stack_file}");
@@ -1297,9 +1378,12 @@ fn a_local_run_without_a_terminal_prints_no_password() {
         std::fs::canonicalize(net.stack.project.path()).unwrap()
     );
 
-    // A second run finds the sandbox seeded and only brings it up.
+    // A second run finds the sandbox seeded and only brings it up; its route
+    // is unchanged, so nothing restarts and no subnet is checked.
     std::fs::write(&net.log, "").unwrap();
     net.hpy().assert().code(0);
+    assert!(!net.calls().contains("docker restart"), "{}", net.calls());
+    assert!(!net.calls().contains("docker network"), "{}", net.calls());
     assert_eq!(
         net.sandbox_calls(),
         [
@@ -1331,7 +1415,7 @@ fn under_json_stdout_holds_only_the_result() {
         .unwrap_or_else(|e| panic!("stdout is not JSON alone ({e}): {stdout}"));
     assert_eq!(documents.len(), 1, "{stdout}");
     let result = &documents[0];
-    assert_eq!(result["url"], "https://happyview.atmosbox.test");
+    assert_eq!(result["url"], "https://happyview.atmosbox.internal");
     assert_eq!(result["handle"], "user1.pds1.atmosbox.test");
     assert!(!stdout.contains("seeded-secret-pw"));
     let stderr = String::from_utf8(out.stderr).unwrap();
@@ -1427,7 +1511,7 @@ fn ctrl_c_while_following_stops_the_network() {
         .process_group(0)
         .spawn()
         .unwrap();
-    let following = net.log.with_extension("log.following");
+    let following = net.marker("following");
     let deadline = Instant::now() + Duration::from_secs(60);
     while !following.exists() {
         assert!(
@@ -1452,6 +1536,8 @@ fn ctrl_c_while_following_stops_the_network() {
         }
         std::thread::sleep(Duration::from_millis(20));
     };
+    // `docker logs` never saw the signal and would have followed for two
+    // minutes; `hpy` ended it.
     assert_eq!(status.code(), Some(0), "{}", net.calls());
     let calls = net.sandbox_calls();
     assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
@@ -1478,7 +1564,10 @@ fn without_a_terminal_a_missing_hosts_entry_stops_before_the_relay() {
     std::fs::remove_file(net.checkout.parent().unwrap().join("access.toml")).unwrap();
     net.hpy().assert().code(2).stderr(
         predicate::str::contains("cannot reach the local network yet")
-            .and(predicate::str::contains("state/ca/root.crt")),
+            .and(predicate::str::contains("state/ca/root.crt"))
+            // How to ask again once that trust is gone.
+            .and(predicate::str::contains("access.toml"))
+            .and(predicate::str::contains("delete that file")),
     );
     let calls = net.sandbox_calls();
     assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
@@ -1526,43 +1615,160 @@ fn reset_destroys_only_a_sandbox_that_exists_or_is_pending() {
     std::fs::write(&net.log, "").unwrap();
     net.hpy().args(["--reset", "--yes"]).assert().code(0);
     assert_eq!(net.sandbox_calls()[0], "destroy --accept-destructive");
+
+    // Created and pending: the sandbox refuses `destroy` until `resume`.
+    std::fs::write(net.checkout.join("state/pending-apply.json"), "{}").unwrap();
+    assert!(net.checkout.join("state/manifest.json").is_file());
+    std::fs::write(&net.log, "").unwrap();
+    net.hpy().args(["--reset", "--yes"]).assert().code(0);
+    assert_eq!(
+        net.sandbox_calls()[..2],
+        ["resume", "destroy --accept-destructive"]
+    );
 }
 
-/// Runs `dev --network local` with `NET_SEED_BLOCK=mode`, sends Ctrl-C to its
-/// process group once `seed` is under way, and answers its exit code.
 #[cfg(unix)]
-fn interrupt_during_seed(net: &LocalNet, mode: &str) -> Option<i32> {
+#[test]
+fn a_checkout_installed_from_another_archive_is_installed_again_frozen() {
+    let net = LocalNet::new();
+    // What an earlier hpy wrote: a version, which a re-tagged archive keeps.
+    let marker = net.checkout.join(".hpy-installed");
+    std::fs::write(&marker, "v0.7.1").unwrap();
+    net.hpy().assert().code(0);
+    let calls = net.calls();
+    let install = "deno install --frozen --entrypoint bin/sandbox.ts runtime/accounts.mjs\n";
+    let installed = calls.find(install).unwrap_or_else(|| panic!("{calls}"));
+    assert!(
+        calls.contains("deno install saw DENO_NO_PACKAGE_JSON=1"),
+        "{calls}"
+    );
+    assert!(
+        installed < calls.find("deno task sandbox").unwrap(),
+        "{calls}"
+    );
+    assert_eq!(
+        read(&marker),
+        "73bd22ac78ba137a2b5e9b8ffb88944232f1d25f0df42cdd5ab70e8d12bb526c"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failure_that_leaves_a_step_pending_stops_nothing() {
+    let net = LocalNet::new();
+    net.hpy()
+        .env("NET_SEED_FAILS", "1")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("until the next run resumes it"));
+    // The sandbox would refuse both while the step is pending.
+    assert_eq!(net.sandbox_calls().last().map(String::as_str), Some("seed"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_lock_found_at_start_is_refused_before_any_sandbox_command() {
+    let net = LocalNet::new();
+    let lock = net.checkout.join("state/cli.lock");
+    std::fs::create_dir_all(&lock).unwrap();
+    let out = net.hpy().assert().code(2).get_output().clone();
+    // The report is wrapped to the terminal's width, path and all.
+    let flat: String = String::from_utf8_lossy(&out.stderr)
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '│')
+        .collect();
+    assert!(flat.contains(&lock.display().to_string()), "{flat}");
+    assert!(flat.contains("inspectthatlock,removeit"), "{flat}");
+    assert!(net.sandbox_calls().is_empty(), "{}", net.calls());
+    assert!(lock.is_dir(), "a lock hpy did not take was removed");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_lock_another_command_holds_is_never_removed() {
+    let net = LocalNet::new();
+    net.hpy().env("NET_UP_CONTENDED", "1").assert().code(1);
+    assert!(
+        net.checkout.join("state/cli.lock").is_dir(),
+        "the other command's lock was removed: {}",
+        net.calls()
+    );
+    // Cleanup ran into that lock rather than taking it away.
+    assert!(
+        net.calls().contains("deno refused: locked"),
+        "{}",
+        net.calls()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_lock_our_crashed_command_left_is_removed_and_cleanup_runs() {
+    let net = LocalNet::new();
+    net.hpy().env("NET_UP_CRASHES", "1").assert().code(1);
+    let calls = net.sandbox_calls();
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+    assert!(
+        !net.calls().contains("deno refused: locked"),
+        "cleanup ran into the crashed command's lock: {}",
+        net.calls()
+    );
+    assert!(!net.checkout.join("state/cli.lock").exists());
+}
+
+/// Runs `dev --network local` with `block` (`NET_SEED_BLOCK` or
+/// `NET_UP_BLOCK`) set to `mode`, and sends Ctrl-C to its process group, as a
+/// terminal does, once that step is under way. The step is let finish only
+/// after `hpy` has had time to act on the signal. Answers the exit code and
+/// what `hpy` wrote to stderr.
+#[cfg(unix)]
+fn interrupt_during(net: &LocalNet, block: &str, mode: &str) -> (Option<i32>, String) {
     use std::os::unix::process::CommandExt;
     use std::time::{Duration, Instant};
 
+    let stderr = net.marker("stderr");
     let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
     net.env(&mut cmd);
     let mut child = cmd
         .args(["hv", "dev", "--network", "local"])
-        .env("NET_SEED_BLOCK", mode)
+        .env(block, mode)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::fs::File::create(&stderr).unwrap())
         .process_group(0)
         .spawn()
         .unwrap();
-    let seeding = net.log.with_extension("log.seeding");
     let deadline = Instant::now() + Duration::from_secs(60);
-    while !seeding.exists() {
+    while !net.marker("step-started").exists() {
         assert!(
             child.try_wait().unwrap().is_none(),
-            "hpy exited before seeding: {}",
+            "hpy exited before the step: {}",
             net.calls()
         );
-        assert!(Instant::now() < deadline, "hpy never seeded");
+        assert!(Instant::now() < deadline, "hpy never reached the step");
         std::thread::sleep(Duration::from_millis(20));
     }
     let group = child.id() as libc::pid_t;
     // SAFETY: kill(2) on the process group of a child this test spawned and has not reaped.
     assert_eq!(unsafe { libc::kill(-group, libc::SIGINT) }, 0);
+    // `hpy` waits for the step rather than ending it or itself. The step is
+    // released before anything is asserted, so a failure leaves no fake
+    // waiting behind it.
+    std::thread::sleep(Duration::from_millis(500));
+    let waited = child.try_wait().unwrap().is_none();
+    let calls_while_waiting = net.calls();
+    std::fs::write(net.marker("step-release"), "").unwrap();
+    assert!(
+        waited,
+        "hpy did not wait for the step: {calls_while_waiting}"
+    );
+    assert!(
+        !calls_while_waiting.contains("access stop"),
+        "{calls_while_waiting}"
+    );
     loop {
         if let Some(status) = child.try_wait().unwrap() {
-            return status.code();
+            return (status.code(), read(&stderr));
         }
         if Instant::now() >= deadline {
             // SAFETY: as above.
@@ -1575,26 +1781,50 @@ fn interrupt_during_seed(net: &LocalNet, mode: &str) -> Option<i32> {
 
 #[cfg(unix)]
 #[test]
-fn ctrl_c_during_setup_stops_a_running_network_unless_a_step_is_pending() {
+fn ctrl_c_during_setup_lets_the_step_finish_then_stops_unless_a_step_is_pending() {
     let net = LocalNet::new();
-    assert_eq!(
-        interrupt_during_seed(&net, "1"),
-        Some(130),
-        "{}",
-        net.calls()
+    let (code, stderr) = interrupt_during(&net, "NET_SEED_BLOCK", "1");
+    assert_eq!(code, Some(130), "{}", net.calls());
+    assert!(
+        stderr.contains("Ctrl-C: stopping once creating the sandbox's accounts has finished"),
+        "{stderr}"
     );
-    let calls = net.sandbox_calls();
-    assert_eq!(calls[calls.len() - 3..], ["seed", "access stop", "down"]);
+    // The seed was not killed: it finished, and only then did `hpy` stop
+    // the network, starting nothing new in between.
+    let calls = net.calls();
+    let finished = calls.find("deno seed finished").expect(&calls);
+    assert!(finished < calls.find("deno task sandbox access stop").expect(&calls));
+    let sandbox = net.sandbox_calls();
+    assert_eq!(
+        sandbox[sandbox.len() - 3..],
+        ["seed", "access stop", "down"]
+    );
 
     // A pending step leaves the sandbox for `resume`, which is all it accepts.
     let net = LocalNet::new();
-    assert_eq!(
-        interrupt_during_seed(&net, "pending"),
-        Some(130),
+    let (code, _) = interrupt_during(&net, "NET_SEED_BLOCK", "pending");
+    assert_eq!(code, Some(130), "{}", net.calls());
+    assert!(
+        net.calls().contains("deno seed finished"),
         "{}",
         net.calls()
     );
     assert_eq!(net.sandbox_calls().last().map(String::as_str), Some("seed"));
+
+    // The last step before the logs, on a second run where nothing follows
+    // `up`: the run stops there and never reaches the access setup or the
+    // logs.
+    let net = LocalNet::new();
+    net.hpy().assert().code(0);
+    std::fs::write(&net.log, "").unwrap();
+    let (code, stderr) = interrupt_during(&net, "NET_UP_BLOCK", "1");
+    assert_eq!(code, Some(130), "{}\n{stderr}", net.calls());
+    let sandbox = net.sandbox_calls();
+    assert_eq!(
+        sandbox[sandbox.len() - 3..],
+        ["up --build --wait-timeout 600", "access stop", "down"]
+    );
+    assert!(!net.calls().contains("docker logs"), "{}", net.calls());
 }
 
 /// `args` under a pseudo-terminal from script(1).

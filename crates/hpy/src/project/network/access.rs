@@ -2,7 +2,7 @@
 //! steps stay the developer's: `hpy` prints them, checks what it can, and
 //! never edits the hosts file or a trust store.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,6 +12,13 @@ use crate::failure::Failure;
 use crate::project::network::sandbox::Sandbox;
 
 const RECORD: &str = "access.toml";
+
+/// Where the developer's word that they trust the CA is kept. Deleting it is
+/// how they ask for the walkthrough again, since `hpy` cannot see a trust
+/// store and so cannot notice the trust being removed.
+pub fn record_path(network_dir: &Path) -> PathBuf {
+    network_dir.join(RECORD)
+}
 
 pub fn parse_hosts_block(out: &str) -> Vec<(String, String)> {
     out.lines()
@@ -63,13 +70,13 @@ pub struct AccessRecord {
 
 impl AccessRecord {
     pub fn load(dir: &Path) -> Option<AccessRecord> {
-        toml::from_str(&std::fs::read_to_string(dir.join(RECORD)).ok()?).ok()
+        toml::from_str(&std::fs::read_to_string(record_path(dir)).ok()?).ok()
     }
 
     pub fn save(&self, dir: &Path) -> Result<(), Failure> {
         std::fs::create_dir_all(dir).map_err(Failure::runtime)?;
         std::fs::write(
-            dir.join(RECORD),
+            record_path(dir),
             toml::to_string(self).expect("a record serializes"),
         )
         .map_err(Failure::runtime)
@@ -93,7 +100,7 @@ pub fn assess(
     }
 }
 
-pub fn walkthrough_text(check: &AccessCheck, ca_path: &Path) -> String {
+pub fn walkthrough_text(check: &AccessCheck, ca_path: &Path, record: &Path) -> String {
     let mut out = Vec::new();
     if !check.missing_hosts.is_empty() {
         out.push(format!(
@@ -106,8 +113,12 @@ pub fn walkthrough_text(check: &AccessCheck, ca_path: &Path) -> String {
             "Trust the sandbox's certificate authority in your browser or OS (hpy does not edit trust stores):\n\n  {}\n\n\
              On macOS: open it in Keychain Access, add it to the System keychain, and set it to Always Trust.\n\
              On Linux: import it in your browser's certificate settings, under Authorities.\n\
-             Import only this file; never the sandbox's private key.",
-            ca_path.display()
+             Import only this file; never the sandbox's private key.\n\n\
+             hpy records that you trusted it in {}. If you remove that trust later, or your browser \
+             reports a certificate error for the local HappyView, delete that file and hpy walks you \
+             through this again.",
+            ca_path.display(),
+            record.display()
         ));
     }
     out.join("\n")
@@ -126,7 +137,7 @@ pub async fn ensure_access(
         let ca = ca_sha256(&sandbox.checkout)?;
         let record = AccessRecord::load(network_dir);
         let check = assess(&block, &hosts, &ca, record.as_ref());
-        let text = walkthrough_text(&check, &ca_path);
+        let text = walkthrough_text(&check, &ca_path, &record_path(network_dir));
         if text.is_empty() {
             break;
         }
@@ -154,7 +165,7 @@ pub async fn ensure_access(
 mod tests {
     use super::*;
 
-    const BLOCK: &str = "# sandbox hv-app host access: begin\n127.0.0.1 happyview.atmosbox.test\n127.0.0.1 pds1.atmosbox.test\n# sandbox hv-app host access: end\n";
+    const BLOCK: &str = "# sandbox hv-app host access: begin\n127.0.0.1 happyview.atmosbox.internal\n127.0.0.1 pds1.atmosbox.test\n# sandbox hv-app host access: end\n";
 
     #[test]
     fn the_block_parses_to_entries() {
@@ -163,7 +174,7 @@ mod tests {
             [
                 (
                     "127.0.0.1".to_string(),
-                    "happyview.atmosbox.test".to_string()
+                    "happyview.atmosbox.internal".to_string()
                 ),
                 ("127.0.0.1".to_string(), "pds1.atmosbox.test".to_string()),
             ]
@@ -173,7 +184,7 @@ mod tests {
     #[test]
     fn hosts_lines_match_by_ip_and_any_name_and_ignore_comments() {
         let wanted = parse_hosts_block(BLOCK);
-        let hosts = "127.0.0.1 localhost\n# 127.0.0.1 pds1.atmosbox.test\n127.0.0.1\tfoo happyview.atmosbox.test # mine\n";
+        let hosts = "127.0.0.1 localhost\n# 127.0.0.1 pds1.atmosbox.test\n127.0.0.1\tfoo happyview.atmosbox.internal # mine\n";
         assert_eq!(
             missing_hosts(hosts, &wanted),
             ["127.0.0.1 pds1.atmosbox.test"]
@@ -198,16 +209,25 @@ mod tests {
             missing_hosts: vec!["127.0.0.1 pds1.atmosbox.test".into()],
             ca_trusted: false,
         };
-        let text = walkthrough_text(&check, Path::new("/data/x/state/ca/root.crt"));
+        let text = walkthrough_text(
+            &check,
+            Path::new("/data/x/state/ca/root.crt"),
+            &record_path(Path::new("/data/x")),
+        );
         assert!(text.contains("127.0.0.1 pds1.atmosbox.test"));
         assert!(text.contains("/data/x/state/ca/root.crt"));
         assert!(text.contains("hpy does not edit"));
+        // Removed trust cannot be detected, so the remedy is in the text.
+        assert!(text.contains("delete that file"), "{text}");
+        assert!(text.contains("/data/x/access.toml"), "{text}");
+        assert!(text.contains("certificate error"), "{text}");
         let done = walkthrough_text(
             &AccessCheck {
                 missing_hosts: vec![],
                 ca_trusted: true,
             },
             Path::new("/x"),
+            Path::new("/x/access.toml"),
         );
         assert!(done.is_empty());
     }

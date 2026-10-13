@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 
 use crate::failure::Failure;
-use crate::project::network::runner::{Runner, must};
+use crate::project::network::runner::{Runner, must_with_env};
 
 pub const VERSION: &str = "v0.7.1";
 pub const DENO_FLOOR: &str = "2.8.0";
@@ -25,13 +25,32 @@ pub const PINNED: Pinned<'static> = Pinned {
     top: "atmosphereinabox-v0.7.1",
 };
 
+/// Holds the sha256 of the archive the checkout was installed from, so a
+/// checkout from any other archive is installed again.
 const INSTALLED: &str = ".hpy-installed";
+
+/// The third octet Atmosphere in a Box's own default subnet uses, which a
+/// sandbox created by hand would already hold.
+const DEFAULT_SUBNET_OCTET: u8 = 249;
 
 pub struct NetworkDir {
     pub dir: PathBuf,
     /// The sandbox's Compose project name: Atmosphere in a Box requires
     /// `^[a-z][a-z0-9-]*$`.
     pub project: String,
+    /// The sandbox's network, chosen here because Atmosphere in a Box's
+    /// `--subnet auto` needs a local Linux Docker engine and refuses Docker
+    /// Desktop. Derived from the project's path, so it never changes for one
+    /// project and two projects rarely share one.
+    pub subnet: String,
+}
+
+fn subnet_for(digest: &[u8]) -> String {
+    let octet = match digest[0] {
+        DEFAULT_SUBNET_OCTET => DEFAULT_SUBNET_OCTET + 1,
+        n => n,
+    };
+    format!("172.30.{octet}.0/24")
 }
 
 pub fn data_root() -> Result<PathBuf, Failure> {
@@ -47,8 +66,8 @@ pub fn data_root() -> Result<PathBuf, Failure> {
 /// symlinks and trailing slashes all land on the same one.
 pub fn network_dir(data_root: &Path, project_root: &Path) -> Result<NetworkDir, Failure> {
     let canonical = std::fs::canonicalize(project_root).map_err(Failure::runtime)?;
-    let hash =
-        data_encoding::HEXLOWER.encode(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
+    let digest = Sha256::digest(canonical.to_string_lossy().as_bytes());
+    let hash = data_encoding::HEXLOWER.encode(&digest);
     let name: String = canonical
         .file_name()
         .map(|n| n.to_string_lossy().to_ascii_lowercase())
@@ -78,6 +97,7 @@ pub fn network_dir(data_root: &Path, project_root: &Path) -> Result<NetworkDir, 
     Ok(NetworkDir {
         dir: data_root.join("networks").join(&slug),
         project: format!("hv-{slug}"),
+        subnet: subnet_for(&digest),
     })
 }
 
@@ -118,15 +138,21 @@ pub async fn check_tools(r: &dyn Runner, cwd: &Path) -> Result<(), Failure> {
     Ok(())
 }
 
-pub async fn ensure_checkout(
+fn installed(checkout: &Path, pinned: &Pinned<'_>) -> bool {
+    std::fs::read_to_string(checkout.join(INSTALLED)).is_ok_and(|sum| sum.trim() == pinned.sha256)
+}
+
+/// Downloads and unpacks the pinned archive unless the checkout is already
+/// there. Runs no child, so it can be abandoned part way; `install_checkout`
+/// finishes the job.
+pub async fn fetch_checkout(
     http: &reqwest::Client,
     pinned: &Pinned<'_>,
     net: &NetworkDir,
-    r: &dyn Runner,
     status: &dyn Fn(&str),
 ) -> Result<PathBuf, Failure> {
     let checkout = net.dir.join(pinned.top);
-    if checkout.join(INSTALLED).is_file() {
+    if installed(&checkout, pinned) {
         return Ok(checkout);
     }
     // A checkout with state in it is a sandbox; re-extracting over it could
@@ -161,9 +187,40 @@ pub async fn ensure_checkout(
             .unpack(&net.dir)
             .map_err(|e| Failure::runtime(format!("could not unpack Atmosphere in a Box: {e}")))?;
     }
-    must(r, "deno", &["task".into(), "install".into()], &checkout).await?;
-    std::fs::write(checkout.join(INSTALLED), VERSION).map_err(Failure::runtime)?;
     Ok(checkout)
+}
+
+/// Caches the checkout's dependencies at exactly the versions its shipped
+/// `deno.lock` names, once per archive.
+///
+/// This is the `install` task's own command rather than `deno task install
+/// --frozen`: the task runner also reads `package.json`, whose
+/// devDependencies the shipped lock leaves out, so it refuses a frozen
+/// install of the pristine v0.7.1 archive.
+pub async fn install_checkout(
+    r: &dyn Runner,
+    pinned: &Pinned<'_>,
+    checkout: &Path,
+) -> Result<(), Failure> {
+    if installed(checkout, pinned) {
+        return Ok(());
+    }
+    must_with_env(
+        r,
+        "deno",
+        &[
+            "install",
+            "--frozen",
+            "--entrypoint",
+            "bin/sandbox.ts",
+            "runtime/accounts.mjs",
+        ]
+        .map(String::from),
+        &[("DENO_NO_PACKAGE_JSON", "1")],
+        checkout,
+    )
+    .await?;
+    std::fs::write(checkout.join(INSTALLED), pinned.sha256).map_err(Failure::runtime)
 }
 
 #[cfg(test)]
@@ -173,6 +230,8 @@ mod tests {
     use sha2::{Digest, Sha256};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const FROZEN_INSTALL: &str = "DENO_NO_PACKAGE_JSON=1 deno install --frozen --entrypoint bin/sandbox.ts runtime/accounts.mjs";
 
     #[test]
     fn deno_versions_parse() {
@@ -217,6 +276,27 @@ mod tests {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         );
         assert!(a.dir.starts_with(data.path().join("networks")));
+        assert_eq!(a.subnet, b.subnet);
+    }
+
+    #[test]
+    fn each_project_gets_its_own_subnet_and_never_the_default() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let subnets: std::collections::BTreeSet<String> = (0..64)
+            .map(|i| {
+                let app = project.path().join(format!("app-{i}"));
+                std::fs::create_dir(&app).unwrap();
+                network_dir(data.path(), &app).unwrap().subnet
+            })
+            .collect();
+        // Derived from a hash: 64 projects land on well over one /24.
+        assert!(subnets.len() > 32, "{subnets:?}");
+        for subnet in &subnets {
+            assert!(subnet.starts_with("172.30.") && subnet.ends_with(".0/24"));
+        }
+        assert_eq!(subnet_for(&[249]), "172.30.250.0/24");
+        assert_eq!(subnet_for(&[7]), "172.30.7.0/24");
     }
 
     #[test]
@@ -262,6 +342,7 @@ mod tests {
         let net = NetworkDir {
             dir: data.path().join("networks/x"),
             project: "hv-x".into(),
+            subnet: "172.30.1.0/24".into(),
         };
         let runner = FakeRunner::default();
         let good = Pinned {
@@ -270,26 +351,36 @@ mod tests {
             top: "atmosphereinabox-v0.7.1",
         };
         let http = crate::project::binary::http_client();
-        let checkout = ensure_checkout(&http, &good, &net, &runner, &|_| {})
-            .await
-            .unwrap();
+        let checkout = fetch_checkout(&http, &good, &net, &|_| {}).await.unwrap();
         assert!(checkout.join("deno.json").is_file());
-        assert_eq!(runner.calls(), ["deno task install"]);
-        ensure_checkout(&http, &good, &net, &runner, &|_| {})
-            .await
-            .unwrap();
+        assert!(runner.calls().is_empty(), "fetching runs nothing");
+        install_checkout(&runner, &good, &checkout).await.unwrap();
+        assert_eq!(runner.calls(), [FROZEN_INSTALL]);
+        assert_eq!(
+            std::fs::read_to_string(checkout.join(INSTALLED)).unwrap(),
+            sum
+        );
+        fetch_checkout(&http, &good, &net, &|_| {}).await.unwrap();
+        install_checkout(&runner, &good, &checkout).await.unwrap();
         assert_eq!(runner.calls().len(), 1, "a second run reinstalled");
+
+        // A marker from another archive (or the version-only marker an
+        // earlier hpy wrote) is not this archive's install.
+        std::fs::write(checkout.join(INSTALLED), VERSION).unwrap();
+        install_checkout(&runner, &good, &checkout).await.unwrap();
+        assert_eq!(runner.calls().len(), 2, "a stale marker was trusted");
 
         let other = NetworkDir {
             dir: data.path().join("networks/y"),
             project: "hv-y".into(),
+            subnet: "172.30.2.0/24".into(),
         };
         let bad = Pinned {
             url: &url,
             sha256: &"0".repeat(64),
             top: "atmosphereinabox-v0.7.1",
         };
-        let err = ensure_checkout(&http, &bad, &other, &runner, &|_| {})
+        let err = fetch_checkout(&http, &bad, &other, &|_| {})
             .await
             .unwrap_err();
         assert!(format!("{:?}", err.report).contains("does not match the pinned"));
@@ -303,6 +394,7 @@ mod tests {
         let net = NetworkDir {
             dir: data.path().join("networks/x"),
             project: "hv-x".into(),
+            subnet: "172.30.1.0/24".into(),
         };
         let checkout = net.dir.join("atmosphereinabox-v0.7.1");
         std::fs::create_dir_all(checkout.join("state")).unwrap();
@@ -314,19 +406,19 @@ mod tests {
             sha256: &"0".repeat(64),
             top: "atmosphereinabox-v0.7.1",
         };
-        ensure_checkout(
+        let fetched = fetch_checkout(
             &crate::project::binary::http_client(),
             &pinned,
             &net,
-            &runner,
             &|_| {},
         )
         .await
         .unwrap();
+        install_checkout(&runner, &pinned, &fetched).await.unwrap();
         assert_eq!(
             std::fs::read_to_string(checkout.join("state/accounts.json")).unwrap(),
             "{}"
         );
-        assert_eq!(runner.calls(), ["deno task install"]);
+        assert_eq!(runner.calls(), [FROZEN_INSTALL]);
     }
 }
