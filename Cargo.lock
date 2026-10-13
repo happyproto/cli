@@ -1954,6 +1954,7 @@ dependencies = [
  "assert_cmd",
  "async-trait",
  "clap",
+ "etcetera",
  "hpy-atproto",
  "hpy-plugin",
  "hpy-project",

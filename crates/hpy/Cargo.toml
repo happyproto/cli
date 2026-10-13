@@ -16,6 +16,7 @@ hpy-plugin.workspace = true
 hpy-atproto.workspace = true
 hpy-project.workspace = true
 async-trait.workspace = true
+etcetera.workspace = true
 clap.workspace = true
 inquire.workspace = true
 miette.workspace = true
