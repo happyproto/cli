@@ -9,15 +9,15 @@ use std::path::{Path, PathBuf};
 use crate::failure::Failure;
 
 pub fn cache_root() -> Result<PathBuf, Failure> {
-    let root = match std::env::var_os("HPY_CACHE_DIR").filter(|d| !d.is_empty()) {
-        Some(dir) => PathBuf::from(dir),
+    let (root, origin) = match std::env::var_os("HPY_CACHE_DIR").filter(|d| !d.is_empty()) {
+        Some(dir) => (PathBuf::from(dir), RootOrigin::Named),
         None => {
             use etcetera::BaseStrategy;
             let strategy = etcetera::choose_base_strategy().map_err(Failure::runtime)?;
-            strategy.cache_dir().join("hpy")
+            (strategy.cache_dir().join("hpy"), RootOrigin::Default)
         }
     };
-    prepare_root(&root).map_err(|e| {
+    prepare_root(&root, origin).map_err(|e| {
         Failure::runtime(format!(
             "the cache directory {} cannot be trusted: {e}",
             root.display()
@@ -56,47 +56,94 @@ fn create_private_dirs(path: &Path) -> std::io::Result<()> {
     builder.create(path)
 }
 
-/// Makes sure the cache root and its `plugins/` directory exist and are this
-/// user's alone. The cache holds code that gets executed, so a directory
-/// another user owns, or can write to, or a symlink that could be repointed,
-/// is refused rather than used. A looser mode on a directory this user owns
-/// is tightened to 0700.
-pub fn prepare_root(root: &Path) -> std::io::Result<()> {
-    create_private_dirs(&root.join("plugins"))?;
-    create_private_dirs(&root.join("happyview"))?;
-    #[cfg(unix)]
-    for dir in [
-        root.to_path_buf(),
-        root.join("plugins"),
-        root.join("happyview"),
-    ] {
-        use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        let meta = std::fs::symlink_metadata(&dir)?;
-        let refuse = |why: String| {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                why,
-            ))
-        };
-        if meta.file_type().is_symlink() {
-            return refuse(format!("{} is a symlink", dir.display()));
-        }
-        if !meta.is_dir() {
-            return refuse(format!("{} is not a directory", dir.display()));
-        }
-        // SAFETY: `geteuid` reads a process attribute and cannot fail.
-        let euid = unsafe { libc::geteuid() };
-        if meta.uid() != euid {
-            return refuse(format!(
-                "{} is owned by uid {}, not by this user",
-                dir.display(),
-                meta.uid()
-            ));
-        }
-        if meta.mode() & 0o077 != 0 {
-            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
-        }
+/// Whether a cache root is one the user named (`HPY_CACHE_DIR`), whose mode
+/// is theirs to decide, or hpy's own default, which hpy may tighten.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RootOrigin {
+    Named,
+    Default,
+}
+
+fn refuse(why: String) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::PermissionDenied, why)
+}
+
+/// Makes sure the cache root and its `plugins/` and `happyview/` directories
+/// exist and are this user's alone. The cache holds code that gets executed,
+/// so a directory another user owns, a symlink that could be repointed, or
+/// anything that is not a directory is refused before anything is created
+/// inside it. A loose mode is tightened to 0700 only on a directory hpy owns:
+/// one it just created, its default root, or the two beneath the root. A root
+/// the user named with a loose mode is refused instead, since its mode is
+/// theirs.
+pub fn prepare_root(root: &Path, origin: RootOrigin) -> std::io::Result<()> {
+    let root_created = prepare_dir(root, true)?;
+    let tighten_root = root_created || origin == RootOrigin::Default;
+    check_private(root, tighten_root)?;
+    for sub in ["plugins", "happyview"] {
+        let dir = root.join(sub);
+        prepare_dir(&dir, false)?;
+        check_private(&dir, true)?;
     }
+    Ok(())
+}
+
+/// Creates `dir` 0700 when it is absent, and refuses a symlink or anything
+/// that is not a directory. Answers whether it was created.
+fn prepare_dir(dir: &Path, with_parents: bool) -> std::io::Result<bool> {
+    match std::fs::symlink_metadata(dir) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            Err(refuse(format!("{} is a symlink", dir.display())))
+        }
+        Ok(meta) if !meta.is_dir() => Err(refuse(format!("{} is not a directory", dir.display()))),
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if with_parents {
+                create_private_dirs(dir)?;
+            } else {
+                let mut builder = std::fs::DirBuilder::new();
+                #[cfg(unix)]
+                std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+                builder.create(dir)?;
+            }
+            // Someone else may have put a link there in between.
+            prepare_dir(dir, false).map(|_| true)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(unix)]
+fn check_private(dir: &Path, may_tighten: bool) -> std::io::Result<()> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let meta = std::fs::symlink_metadata(dir)?;
+    // SAFETY: `geteuid` reads a process attribute and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    if meta.uid() != euid {
+        return Err(refuse(format!(
+            "{} is owned by uid {}, not by this user",
+            dir.display(),
+            meta.uid()
+        )));
+    }
+    let mode = meta.mode() & 0o777;
+    if mode & 0o077 != 0 {
+        if !may_tighten {
+            return Err(refuse(format!(
+                "{} has mode {mode:o}, so other users can reach the code hpy keeps there; \
+                 hpy does not change the mode of a directory you named, so run \
+                 `chmod 700 {}` or point HPY_CACHE_DIR somewhere private",
+                dir.display(),
+                dir.display()
+            )));
+        }
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn check_private(_dir: &Path, _may_tighten: bool) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -356,36 +403,71 @@ mod tests {
     #[test]
     fn a_root_that_is_not_this_users_to_trust_is_refused() {
         use std::os::unix::fs::PermissionsExt;
+        let mode = |d: &Path| std::fs::metadata(d).unwrap().permissions().mode() & 0o777;
         let base = tempfile::tempdir().unwrap();
         let real = base.path().join("real");
         std::fs::create_dir(&real).unwrap();
         let link = base.path().join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
-        assert!(prepare_root(&link).is_err());
+        for origin in [RootOrigin::Named, RootOrigin::Default] {
+            let err = prepare_root(&link, origin).unwrap_err();
+            assert!(err.to_string().contains("is a symlink"), "{err}");
+        }
+        // Refused before anything was made through the link.
+        assert_eq!(std::fs::read_dir(&real).unwrap().count(), 0);
 
+        // A directory the user named keeps its mode, and is refused.
         let loose = base.path().join("loose");
         std::fs::create_dir(&loose).unwrap();
-        std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o777)).unwrap();
-        prepare_root(&loose).unwrap();
+        std::fs::set_permissions(&loose, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let err = prepare_root(&loose, RootOrigin::Named).unwrap_err();
+        assert!(err.to_string().contains("chmod 700"), "{err}");
+        assert_eq!(mode(&loose), 0o755);
+        assert_eq!(std::fs::read_dir(&loose).unwrap().count(), 0);
+
+        // hpy's own default root is tightened, with what it holds.
+        std::fs::create_dir(loose.join("plugins")).unwrap();
+        std::fs::set_permissions(
+            loose.join("plugins"),
+            std::fs::Permissions::from_mode(0o777),
+        )
+        .unwrap();
+        prepare_root(&loose, RootOrigin::Default).unwrap();
         for d in [
             loose.clone(),
             loose.join("plugins"),
             loose.join("happyview"),
         ] {
-            assert_eq!(
-                std::fs::metadata(d).unwrap().permissions().mode() & 0o777,
-                0o700
-            );
+            assert_eq!(mode(&d), 0o700, "{}", d.display());
         }
 
         let linked = base.path().join("linked");
         std::fs::create_dir_all(&linked).unwrap();
         std::os::unix::fs::symlink(&real, linked.join("happyview")).unwrap();
-        assert!(prepare_root(&linked).is_err());
+        assert!(prepare_root(&linked, RootOrigin::Named).is_err());
 
         let file = base.path().join("file");
         std::fs::write(&file, b"").unwrap();
-        assert!(prepare_root(&file).is_err());
+        let err = prepare_root(&file, RootOrigin::Named).unwrap_err();
+        assert!(err.to_string().contains("not a directory"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_named_root_hpy_creates_is_private_and_its_subdirectories_tightened() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |d: &Path| std::fs::metadata(d).unwrap().permissions().mode() & 0o777;
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("a/b/cache");
+        prepare_root(&root, RootOrigin::Named).unwrap();
+        for d in [root.clone(), root.join("plugins"), root.join("happyview")] {
+            assert_eq!(mode(&d), 0o700, "{}", d.display());
+        }
+        // Beneath a named root, the two directories are hpy's.
+        std::fs::set_permissions(root.join("plugins"), std::fs::Permissions::from_mode(0o775))
+            .unwrap();
+        prepare_root(&root, RootOrigin::Named).unwrap();
+        assert_eq!(mode(&root.join("plugins")), 0o700);
     }
 
     #[cfg(unix)]

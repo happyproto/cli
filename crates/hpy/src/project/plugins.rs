@@ -45,7 +45,9 @@ pub async fn ensure_plugin(
             p.id, p.version
         )));
     }
-    cache::prepare_root(root).map_err(|e| {
+    // `root` came from `cache_root`, which has already tightened a default
+    // root, so a loose one here is refused rather than changed.
+    cache::prepare_root(root, cache::RootOrigin::Named).map_err(|e| {
         Failure::runtime(format!(
             "the cache directory {} cannot be trusted: {e}",
             root.display()
@@ -163,7 +165,7 @@ mod tests {
     #[tokio::test]
     async fn downloads_verifies_and_writes_the_manifest() {
         let reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let p = locked(&reg).await;
         let dir = ensure_plugin(&reg, cache.path(), &p).await.unwrap();
         assert_eq!(dir, cache.path().join("plugins/happyview-lua/1.0.0"));
@@ -180,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn a_cache_hit_asks_the_registry_nothing() {
         let reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let p = locked(&reg).await;
         ensure_plugin(&reg, cache.path(), &p).await.unwrap();
         reg.calls.lock().unwrap().clear();
@@ -191,7 +193,7 @@ mod tests {
     #[tokio::test]
     async fn a_tampered_cache_entry_is_fetched_again() {
         let reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let p = locked(&reg).await;
         let dir = ensure_plugin(&reg, cache.path(), &p).await.unwrap();
         std::fs::write(dir.join("happyview-lua.wasm"), b"tampered").unwrap();
@@ -205,7 +207,7 @@ mod tests {
     #[tokio::test]
     async fn a_tampered_manifest_is_written_again() {
         let reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let p = locked(&reg).await;
         let dir = ensure_plugin(&reg, cache.path(), &p).await.unwrap();
         let original = std::fs::read(dir.join("manifest.json")).unwrap();
@@ -221,7 +223,7 @@ mod tests {
     #[tokio::test]
     async fn bytes_that_do_not_match_the_lock_install_nothing() {
         let mut reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let p = locked(&reg).await;
         reg.artifacts.insert(
             ("did:plc:hv".into(), "happyview-lua".into(), "1.0.0".into()),
@@ -235,7 +237,7 @@ mod tests {
     #[tokio::test]
     async fn a_record_whose_checksum_changed_is_refused() {
         let reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let mut p = locked(&reg).await;
         p.checksum = hpy_plugin::checksum::checksum(b"what the lock remembers");
         let err = ensure_plugin(&reg, cache.path(), &p).await.unwrap_err();
@@ -245,7 +247,7 @@ mod tests {
     #[tokio::test]
     async fn a_withdrawn_release_is_named() {
         let mut reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let p = locked(&reg).await;
         reg.releases.clear();
         let err = ensure_plugin(&reg, cache.path(), &p).await.unwrap_err();
@@ -256,7 +258,7 @@ mod tests {
     #[tokio::test]
     async fn a_lock_naming_a_path_is_refused() {
         let reg = registry();
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let mut p = locked(&reg).await;
         p.version = "../../x".into();
         let err = ensure_plugin(&reg, cache.path(), &p).await.unwrap_err();
@@ -352,7 +354,7 @@ mod tests {
         let reg = registry();
         let p = locked(&reg).await;
         for release in [true, false] {
-            let cache = tempfile::tempdir().unwrap();
+            let cache = crate::testing::private_tempdir();
             let err = ensure_plugin(
                 &Gone {
                     inner: &reg,
@@ -384,6 +386,10 @@ mod tests {
             .await
             .unwrap_err();
         assert!(format!("{:?}", err.report).contains("cannot be trusted"));
-        assert!(!base.path().join("real/plugins/happyview-lua").exists());
+        // Refused before anything was made through the link.
+        assert_eq!(
+            std::fs::read_dir(base.path().join("real")).unwrap().count(),
+            0
+        );
     }
 }

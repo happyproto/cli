@@ -462,3 +462,14 @@ pub fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
     }
     w.finish().unwrap().into_inner()
 }
+
+/// A temporary directory only this user can reach, as a cache root must be.
+pub fn private_tempdir() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    dir
+}

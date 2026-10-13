@@ -585,7 +585,7 @@ mod tests {
         let first = "at://did:plc:happyview/at.happyproto.plugin.profile/happyview-lua";
         let second = "at://did:plc:x/at.happyproto.plugin.profile/other-lua";
         let dir = project("[happyview]\nversion = \"3.0.0\"\n");
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         add_in(
             dir.path(),
             &reg,
@@ -635,7 +635,7 @@ mod tests {
     async fn adding_nothing_locks_and_downloads_what_the_file_names() {
         let reg = registry();
         let dir = project("[happyview]\nversion = \"3.0.0\"\n\n[interpreters]\nlua = \"=1.4.0\"\n");
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         let (adds, lock) = add_in(
             dir.path(),
             &reg,
@@ -665,7 +665,7 @@ mod tests {
         let reg = registry();
         let toml = "[happyview]\nversion = \"3.0.0\"\n\n[interpreters]\nlua = \"=1.4.0\"\n";
         let dir = project(toml);
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         add_in(
             dir.path(),
             &reg,
@@ -713,7 +713,7 @@ mod tests {
         );
         let original = "at://did:plc:happyview/at.happyproto.plugin.profile/happyview-lua";
         let dir = project("[happyview]\nversion = \"3.0.0\"\n");
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         add_in(
             dir.path(),
             &reg,
@@ -768,7 +768,7 @@ mod tests {
             b"a",
         );
         let dir = project("[happyview]\nversion = \"3.0.0\"\n");
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         add_in(
             dir.path(),
             &reg,
@@ -843,7 +843,7 @@ mod tests {
     async fn a_failed_download_leaves_both_files_alone() {
         let mut reg = registry();
         let dir = project("[happyview]\nversion = \"3.0.0\"\n");
-        let cache = tempfile::tempdir().unwrap();
+        let cache = crate::testing::private_tempdir();
         add_in(
             dir.path(),
             &reg,
