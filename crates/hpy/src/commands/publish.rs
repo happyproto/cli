@@ -553,7 +553,7 @@ pub async fn run(ctx: &Ctx, args: PublishArgs) -> Result<(), Failure> {
 
 /// Polls the registry until the release is `active` or `timing.limit`
 /// passes, reporting each status change. Answers the last status seen.
-async fn wait_for_active(
+pub async fn wait_for_active(
     registry: &dyn Registry,
     did: &str,
     slug: &str,

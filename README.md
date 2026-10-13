@@ -127,6 +127,7 @@ hpy registry plugin init --no-input --license MIT \
 | `hpy registry plugin pull` | Copies the PDS profile into `hpy.toml`. |
 | `hpy registry plugin publish` | Publishes a new release. `--dry-run` prints the record without publishing, `--wait` polls until the release is active, `--version` overrides the version, `--wasm` points at the module. |
 | `hpy registry plugin status [version]` | Lists releases from your repo and from the registry, with the registry's status for each. |
+| `hpy registry plugin retry <version>` | Asks the registry to copy a pending release's artifact again, when its first copy failed. `--wait` polls until the release is active. |
 | `hpy registry plugin withdraw <version>` | Deletes a release record. The release stays installable by its exact version, but that version can never be reused. |
 | `hpy update` | Updates `hpy` to the newest release on your channel (see [Updates](#updates)). |
 | `hpy channel [stable\|beta\|alpha]` | Shows your release channel, or switches to another. `--yes` skips the confirmation. |
