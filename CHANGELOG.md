@@ -1,3 +1,10 @@
+# [1.0.0-alpha.4](https://github.com/happyproto/cli/compare/v1.0.0-alpha.3...v1.0.0-alpha.4) (2026-10-13)
+
+
+### Features
+
+* hpy registry plugin retry ([2714c91](https://github.com/happyproto/cli/commit/2714c918c2974f585386c0db9e6d4f4a1fcb729d))
+
 # [1.0.0-alpha.3](https://github.com/happyproto/cli/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2026-10-13)
 
 
