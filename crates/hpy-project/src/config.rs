@@ -108,24 +108,84 @@ pub fn find_root(start: &Path) -> Option<PathBuf> {
 /// Replaces `path` with `text` through a temporary file and a rename, so an
 /// interrupted write cannot leave a truncated file, and leaves it alone when
 /// it already holds `text`, so a watcher sees no change that is not one.
-/// Returns whether it wrote.
+/// A symlinked `path` is written where it points, so the link survives, and
+/// the file keeps its mode. Returns whether it wrote.
 pub fn write_if_changed(path: &Path, text: &str) -> std::io::Result<bool> {
+    use std::io::Write;
     if std::fs::read(path).is_ok_and(|old| old == text.as_bytes()) {
         return Ok(false);
     }
-    let name = path
-        .file_name()
-        .ok_or_else(|| std::io::Error::other(format!("{} names no file", path.display())))?;
-    let tmp = path.with_file_name(format!(
-        ".{}.{}",
-        name.to_string_lossy(),
-        std::process::id()
-    ));
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
+    let (target, permissions) = match std::fs::canonicalize(path) {
+        Ok(real) => {
+            let permissions = std::fs::metadata(&real)?.permissions();
+            (real, Some(permissions))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err(std::io::Error::other(format!(
+                    "{} is a symlink to a file that does not exist",
+                    path.display()
+                )));
+            }
+            (path.to_path_buf(), None)
+        }
+        Err(e) => return Err(e),
+    };
+    let (tmp, mut file) = create_temp_beside(&target, permissions.as_ref())?;
+    let written = file
+        .write_all(text.as_bytes())
+        .and_then(|()| match &permissions {
+            // The umask may have narrowed the mode the file was opened with.
+            Some(p) => file.set_permissions(p.clone()),
+            None => Ok(()),
+        })
+        .and_then(|()| {
+            drop(file);
+            std::fs::rename(&tmp, &target)
+        });
+    if let Err(e) = written {
         let _ = std::fs::remove_file(&tmp);
-    })?;
+        return Err(e);
+    }
     Ok(true)
+}
+
+/// A new file beside `target`, under a name nobody else is using, opened so
+/// that nothing already at that name (a link included) is followed.
+fn create_temp_beside(
+    target: &Path,
+    permissions: Option<&std::fs::Permissions>,
+) -> std::io::Result<(PathBuf, std::fs::File)> {
+    let name = target
+        .file_name()
+        .ok_or_else(|| std::io::Error::other(format!("{} names no file", target.display())))?
+        .to_string_lossy()
+        .into_owned();
+    let mut last = None;
+    for attempt in 0..16u32 {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos());
+        let tmp = target.with_file_name(format!(
+            ".{name}.{}-{attempt}-{nanos:x}",
+            std::process::id()
+        ));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        if let Some(p) = permissions {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            options.mode(p.mode() & 0o7777);
+        }
+        #[cfg(not(unix))]
+        let _ = permissions;
+        match options.open(&tmp) {
+            Ok(file) => return Ok((tmp, file)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::other("no free temporary name")))
 }
 
 /// `text` with `key = "version"` in the kind's table and nothing else changed:
@@ -399,5 +459,62 @@ path = "modules/shared"
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, [CONFIG_FILE], "no temporary file is left behind");
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_if_changed_writes_through_a_link_and_keeps_the_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let shared = dir.path().join("dotfiles");
+        std::fs::create_dir(&shared).unwrap();
+        let real = shared.join("real.toml");
+        std::fs::write(&real, "a = 1\n").unwrap();
+        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        let path = project.join(CONFIG_FILE);
+        std::os::unix::fs::symlink("../dotfiles/real.toml", &path).unwrap();
+
+        assert!(write_if_changed(&path, "a = 2\n").unwrap());
+        assert!(
+            std::fs::symlink_metadata(&path)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "a = 2\n");
+        assert_eq!(
+            std::fs::metadata(&real).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(names(&shared), ["real.toml"]);
+        assert_eq!(names(&project), [CONFIG_FILE]);
+
+        std::fs::remove_file(&real).unwrap();
+        let err = write_if_changed(&path, "a = 3\n").unwrap_err();
+        assert!(err.to_string().contains("does not exist"), "{err}");
+        assert!(names(&shared).is_empty());
+    }
+
+    #[test]
+    fn write_if_changed_leaves_no_temporary_file_when_it_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory at the name: the temporary file is written, and the
+        // rename onto it fails.
+        let path = dir.path().join(CONFIG_FILE);
+        std::fs::create_dir(&path).unwrap();
+        assert!(write_if_changed(&path, "a = 1\n").is_err());
+        assert_eq!(names(dir.path()), [CONFIG_FILE]);
+        assert!(path.is_dir());
     }
 }
