@@ -96,6 +96,35 @@ fn match_packages(
     Ok(pins)
 }
 
+/// The libraries to add: `--library` values, each a namespace or a package
+/// id as `add` takes them, else a choice among the namespaces found.
+fn choose_libraries(
+    ctx: &Ctx,
+    given: Vec<String>,
+    found: &[Candidate],
+) -> Result<Vec<String>, Failure> {
+    let mut keys: Vec<String> = found.iter().map(|c| c.key(PluginKind::Library)).collect();
+    keys.sort();
+    keys.dedup();
+    if given.is_empty() {
+        return ctx
+            .prompter
+            .multi("--library", "Libraries:", given, &keys, &[]);
+    }
+    // With nothing found, resolution names the one nobody answers to.
+    if !found.is_empty()
+        && let Some(bad) = given
+            .iter()
+            .find(|v| !found.iter().any(|c| c.answers(PluginKind::Library, v)))
+    {
+        return Err(Failure::usage(format!(
+            "--library: `{bad}` is not one of {}",
+            keys.join(", ")
+        )));
+    }
+    Ok(given)
+}
+
 /// The package each key means and its newest release, as `add` would write
 /// it: the newest stable, else the newest prerelease.
 async fn pick(
@@ -142,6 +171,12 @@ async fn pick(
 
 pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
     let dir = ctx.dir.join(&args.name);
+    if std::fs::metadata(&dir).is_ok_and(|m| !m.is_dir()) {
+        return Err(Failure::usage(format!(
+            "{} already exists and is not a directory",
+            dir.display()
+        )));
+    }
     if std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()) {
         return Err(Failure::usage(format!(
             "{} already exists and is not empty",
@@ -189,21 +224,10 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
         ));
     }
     let libraries_found = candidates(&registry, PluginKind::Library).await?;
-    let mut library_keys: Vec<String> = libraries_found
-        .iter()
-        .map(|c| c.key(PluginKind::Library))
-        .collect();
-    library_keys.sort();
-    library_keys.dedup();
-    let libraries = ctx.prompter.multi(
-        "--library",
-        "Libraries:",
-        args.libraries,
-        &library_keys,
-        &[],
-    )?;
-    let default_name = args
-        .name
+    let libraries = choose_libraries(ctx, args.libraries, &libraries_found)?;
+    // `--name .` names the directory it is run in.
+    let default_name = std::fs::canonicalize(&dir)
+        .unwrap_or_else(|_| dir.clone())
         .file_name()
         .map(|n| n.to_string_lossy().into_owned());
     let app_name = ctx.prompter.required(
@@ -295,10 +319,11 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
             ));
         }
     }
-    human.push_str(&format!(
-        "\n\n  cd {}\n  hpy happyview dev",
-        args.name.display()
-    ));
+    human.push_str("\n\n");
+    if args.name != std::path::Path::new(".") {
+        human.push_str(&format!("  cd {}\n", args.name.display()));
+    }
+    human.push_str("  hpy happyview dev");
     ctx.out.done(
         &human,
         json!({

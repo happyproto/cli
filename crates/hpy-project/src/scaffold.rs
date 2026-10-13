@@ -79,20 +79,38 @@ pub fn render(s: &Scaffold) -> Vec<(PathBuf, String)> {
 }
 
 /// Writes a project into a directory that is absent or empty, so `create`
-/// never mixes its files into someone else's. Every file lands in a private
-/// sibling directory that is renamed onto `dir` only once it is complete, so
-/// a failure leaves nothing at `dir` and a retry starts clean.
+/// never mixes its files into someone else's, and a failure leaves `dir` as
+/// it was so a retry starts clean.
+///
+/// An empty directory is filled where it is, so it keeps its owner, mode and
+/// place (it may be the working directory or a mount point), and is emptied
+/// again on failure. An absent one is filled as a sibling and renamed into
+/// place once complete.
 pub fn write_new(dir: &Path, files: &[(PathBuf, String)]) -> Result<(), Problem> {
     let path = dir.display().to_string();
-    let existing_empty = match std::fs::read_dir(dir) {
-        Ok(mut entries) => {
+    match std::fs::metadata(dir) {
+        Ok(meta) if !meta.is_dir() => {
+            Err(Problem::new(path, "already exists and is not a directory"))
+        }
+        Ok(_) => {
+            let mut entries = std::fs::read_dir(dir)
+                .map_err(|e| Problem::new(&path, format!("reading it: {e}")))?;
             if entries.next().is_some() {
                 return Err(Problem::new(path, "already exists and is not empty"));
             }
-            true
+            fill(dir, files).map_err(|why| {
+                // It was empty on entry, so everything in it is ours.
+                empty_out(dir);
+                Problem::new(path, why)
+            })
         }
-        Err(_) => false,
-    };
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => write_absent(dir, files),
+        Err(e) => Err(Problem::new(path, format!("reading it: {e}"))),
+    }
+}
+
+fn write_absent(dir: &Path, files: &[(PathBuf, String)]) -> Result<(), Problem> {
+    let path = dir.display().to_string();
     let name = dir
         .file_name()
         .ok_or_else(|| Problem::new(&path, "names no directory to create"))?;
@@ -108,24 +126,9 @@ pub fn write_new(dir: &Path, files: &[(PathBuf, String)]) -> Result<(), Problem>
         std::process::id(),
         random()
     ));
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder
-        .create(&partial)
+    std::fs::create_dir(&partial)
         .map_err(|e| Problem::new(&path, format!("creating {}: {e}", partial.display())))?;
     let result = fill(&partial, files).and_then(|()| {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))
-                .map_err(|e| format!("opening up {}: {e}", partial.display()))?;
-        }
-        // Renaming onto an existing directory fails on Windows even when it
-        // is empty.
-        if existing_empty {
-            std::fs::remove_dir(dir).map_err(|e| format!("replacing the empty directory: {e}"))?;
-        }
         std::fs::rename(&partial, dir)
             .map_err(|e| format!("moving {} into place: {e}", partial.display()))
     });
@@ -133,6 +136,19 @@ pub fn write_new(dir: &Path, files: &[(PathBuf, String)]) -> Result<(), Problem>
         let _ = std::fs::remove_dir_all(&partial);
         Problem::new(path, why)
     })
+}
+
+fn empty_out(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let _ = if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            std::fs::remove_dir_all(entry.path())
+        } else {
+            std::fs::remove_file(entry.path())
+        };
+    }
 }
 
 fn fill(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
@@ -222,7 +238,12 @@ mod tests {
     fn ignores_and_example_env_are_there() {
         let files = render(&scaffold(None));
         assert_eq!(file(&files, ".gitignore").unwrap(), ".env\n.happyview/\n");
-        assert!(file(&files, ".env.example").unwrap().contains("ctx.env"));
+        let env = file(&files, ".env.example").unwrap();
+        assert!(env.contains("ctx.env"));
+        // Every line is a comment, so copying it sets nothing by accident.
+        for line in env.lines().filter(|l| !l.trim().is_empty()) {
+            assert!(line.trim_start().starts_with('#'), "{line:?}");
+        }
     }
 
     #[test]
@@ -260,9 +281,7 @@ mod tests {
     fn a_failure_partway_leaves_nothing_behind() {
         let parent = tempfile::tempdir().unwrap();
         let dir = parent.path().join("app");
-        let mut files = render(&scaffold(Some("lua")));
-        // `happyview.toml` is a file by now, so nothing can go under it.
-        files.push((PathBuf::from("happyview.toml/oops"), String::new()));
+        let files = failing_files();
         let err = write_new(&dir, &files).unwrap_err();
         assert!(err.message.contains("happyview.toml/oops"), "{err}");
         assert!(
@@ -270,15 +289,53 @@ mod tests {
             "{:?}",
             entries(parent.path())
         );
+        write_new(&dir, &render(&scaffold(Some("lua")))).unwrap();
+        assert!(dir.join("happyview.toml").is_file());
+    }
 
-        // The same with an empty directory waiting: it is the one thing left.
+    /// A project whose last file cannot be written: `happyview.toml` is a
+    /// file by then, so nothing can go under it.
+    fn failing_files() -> Vec<(PathBuf, String)> {
+        let mut files = render(&scaffold(Some("lua")));
+        files.push((PathBuf::from("happyview.toml/oops"), String::new()));
+        files
+    }
+
+    #[test]
+    fn a_failure_in_an_empty_directory_empties_it_again_in_place() {
+        let parent = tempfile::tempdir().unwrap();
+        let dir = parent.path().join("app");
         std::fs::create_dir(&dir).unwrap();
-        write_new(&dir, &files).unwrap_err();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o750)).unwrap();
+        }
+        let inode = identity(&dir);
+        let err = write_new(&dir, &failing_files()).unwrap_err();
+        assert!(err.message.contains("happyview.toml/oops"), "{err}");
         assert_eq!(entries(parent.path()), ["app"]);
-        assert!(entries(&dir).is_empty());
+        assert!(entries(&dir).is_empty(), "{:?}", entries(&dir));
+        assert_eq!(identity(&dir), inode, "the directory was replaced");
 
         write_new(&dir, &render(&scaffold(Some("lua")))).unwrap();
         assert!(dir.join("happyview.toml").is_file());
+        assert_eq!(identity(&dir), inode, "the directory was replaced");
+    }
+
+    /// What tells one directory from another put at the same path.
+    fn identity(dir: &Path) -> (u64, u32) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            let meta = std::fs::metadata(dir).unwrap();
+            (meta.ino(), meta.permissions().mode() & 0o777)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = dir;
+            (0, 0)
+        }
     }
 
     #[test]
@@ -286,14 +343,33 @@ mod tests {
         let parent = tempfile::tempdir().unwrap();
         let dir = parent.path().join("app");
         std::fs::create_dir(&dir).unwrap();
-        write_new(&dir, &render(&scaffold(Some("lua")))).unwrap();
-        assert!(dir.join("src/lexicons/com/example/hello.lua").is_file());
-        assert_eq!(entries(parent.path()), ["app"]);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode, 0o755);
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
+        let before = identity(&dir);
+        write_new(&dir, &render(&scaffold(Some("lua")))).unwrap();
+        assert!(dir.join("src/lexicons/com/example/hello.lua").is_file());
+        assert_eq!(entries(parent.path()), ["app"]);
+        assert_eq!(identity(&dir), before, "the directory was replaced");
+    }
+
+    #[test]
+    fn the_working_directory_can_be_filled_through_dot() {
+        let dir = tempfile::tempdir().unwrap();
+        write_new(&dir.path().join("."), &render(&scaffold(Some("lua")))).unwrap();
+        assert!(dir.path().join("happyview.toml").is_file());
+    }
+
+    #[test]
+    fn a_file_at_the_name_is_refused_and_kept() {
+        let parent = tempfile::tempdir().unwrap();
+        let file = parent.path().join("app");
+        std::fs::write(&file, "mine").unwrap();
+        let err = write_new(&file, &render(&scaffold(Some("lua")))).unwrap_err();
+        assert!(err.message.contains("not a directory"), "{err}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine");
+        assert_eq!(entries(parent.path()), ["app"]);
     }
 }

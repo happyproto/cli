@@ -95,11 +95,18 @@ impl Stack {
         )
         .unwrap();
         let log = project.path().join("hv.log");
+        // A cache directory the user names must be theirs alone.
+        let cache = tempfile::tempdir().unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(cache.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
         Stack {
             rt,
             server,
             config: tempfile::tempdir().unwrap(),
-            cache: tempfile::tempdir().unwrap(),
+            cache,
             project,
             log,
         }
@@ -857,4 +864,167 @@ fn create_fills_an_existing_empty_directory() {
         ["my-app"],
         "a temporary directory was left beside it"
     );
+}
+
+#[test]
+fn create_fills_the_directory_it_is_run_in() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let parent = tempfile::tempdir().unwrap();
+    let app = parent.path().join("my-app");
+    std::fs::create_dir(&app).unwrap();
+    stack
+        .hpy()
+        .current_dir(&app)
+        .args([
+            "hv",
+            "create",
+            "--name",
+            ".",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+            "--happyview-version",
+            VERSION,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("cd .").not());
+    let toml = read(&app.join("happyview.toml"));
+    assert!(toml.contains("app_name = \"my-app\""), "{toml}");
+    assert!(app.join("happyview.lock").is_file());
+    let names: Vec<_> = std::fs::read_dir(parent.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names, ["my-app"]);
+}
+
+#[test]
+fn create_refuses_a_name_that_is_a_file() {
+    let stack = Stack::new();
+    let parent = tempfile::tempdir().unwrap();
+    std::fs::write(parent.path().join("my-app"), "mine").unwrap();
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--superadmin",
+            "did:plc:me",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("is not a directory"));
+    assert_eq!(read(&parent.path().join("my-app")), "mine");
+}
+
+#[test]
+fn create_takes_a_library_by_namespace_or_id() {
+    use wiremock::matchers::query_param;
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let slug = "http-lib";
+    let release = serde_json::json!({
+        "uri": format!("at://did:plc:hv/at.happyproto.plugin.release/{slug}:1.0.3"),
+        "status": "active",
+        "record": {
+            "package": slug, "version": "1.0.3",
+            "artifacts": { "package": { "checksum": hpy_plugin::checksum::checksum(b"http") } },
+            "extensions": { "at.happyproto.plugin.releaseExtension": {
+                "pluginType": "library", "apiVersion": "2", "namespace": "happyview.http",
+                "capabilities": []
+            } }
+        }
+    });
+    stack.rt.block_on(async {
+        // Ahead of the empty library search `mount_lua` mounts.
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
+            .and(query_param("pluginType", "library"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "packages": [{
+                    "uri": format!("at://did:plc:hv/at.happyproto.plugin.profile/{slug}"),
+                    "did": "did:plc:hv", "record": { "name": "HTTP" }, "status": "active",
+                    "latestVersion": "1.0.3"
+                }]
+            })))
+            .with_priority(1)
+            .mount(&stack.server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.getRelease"))
+            .and(query_param("slug", slug))
+            .respond_with(ResponseTemplate::new(200).set_body_json(release.clone()))
+            .mount(&stack.server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.listReleases"))
+            .and(query_param("slug", slug))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "releases": [release] })),
+            )
+            .mount(&stack.server)
+            .await;
+    });
+    let parent = tempfile::tempdir().unwrap();
+    let create = |name: &str, library: &str| {
+        stack
+            .hpy()
+            .current_dir(parent.path())
+            .args([
+                "hv",
+                "create",
+                "--name",
+                name,
+                "--no-input",
+                "--superadmin",
+                "did:plc:me",
+                "--happyview-version",
+                VERSION,
+                "--library",
+                library,
+            ])
+            .assert()
+    };
+    for (name, library) in [("by-namespace", "happyview.http"), ("by-id", slug)] {
+        create(name, library).success();
+        let toml = read(&parent.path().join(name).join("happyview.toml"));
+        assert!(
+            toml.contains(&format!("\"{library}\" = \"1.0.3\""))
+                || toml.contains(&format!("{library} = \"1.0.3\"")),
+            "{toml}"
+        );
+        let lock = read(&parent.path().join(name).join("happyview.lock"));
+        assert!(lock.contains("id = \"http-lib\""), "{lock}");
+    }
+    create("neither", "happyview.nope")
+        .code(2)
+        .stderr(predicate::str::contains("--library: `happyview.nope`"));
+    assert!(!parent.path().join("neither").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_loose_cache_directory_the_user_named_is_refused_not_changed() {
+    use std::os::unix::fs::PermissionsExt;
+    let stack = Stack::new();
+    std::fs::set_permissions(stack.cache.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    stack
+        .hpy()
+        .args(["hv", "check"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("chmod 700"));
+    let mode = std::fs::metadata(stack.cache.path())
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o755);
+    assert_eq!(std::fs::read_dir(stack.cache.path()).unwrap().count(), 0);
 }
