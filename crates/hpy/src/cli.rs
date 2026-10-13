@@ -27,6 +27,9 @@ pub enum Command {
     Update,
     /// Show or choose the release channel hpy updates from.
     Channel(ChannelArgs),
+    /// Build HappyView apps: a project directory, run and tested locally.
+    #[command(subcommand, alias = "hv")]
+    Happyview(HappyviewCommand),
 }
 
 #[derive(Args)]
@@ -177,6 +180,32 @@ pub struct WithdrawArgs {
     /// Do not ask for confirmation.
     #[arg(long, short)]
     pub yes: bool,
+}
+
+#[derive(Subcommand)]
+pub enum HappyviewCommand {
+    /// Build the project's snapshot without serving it; exits non-zero on any error.
+    Check(RunArgs),
+    /// Run the project's tests.
+    Test(TestArgs),
+}
+
+#[derive(Args, Default)]
+pub struct RunArgs {
+    /// Fail rather than update happyview.lock when it no longer matches happyview.toml.
+    #[arg(long)]
+    pub locked: bool,
+}
+
+#[derive(Args)]
+pub struct TestArgs {
+    #[command(flatten)]
+    pub run: RunArgs,
+    /// Rerun the affected tests whenever the project changes.
+    #[arg(long)]
+    pub watch: bool,
+    /// Only run tests whose path or name contains this.
+    pub filter: Option<String>,
 }
 
 #[cfg(test)]

@@ -140,6 +140,23 @@ impl Prompter {
         Ok(items)
     }
 
+    /// One of `options`, by index: a prompt with a terminal, otherwise an
+    /// error listing them and naming the flag that decides.
+    pub fn choose(&self, flag: &str, label: &str, options: &[String]) -> Result<usize, Failure> {
+        if self.interactive {
+            return inquire::Select::new(label, options.to_vec())
+                .raw_prompt()
+                .map(|o| o.index)
+                .map_err(prompt_err);
+        }
+        let list: Vec<String> = options.iter().map(|o| format!("  • {o}")).collect();
+        Err(Failure::usage(format!(
+            "{label} pass {flag} to choose ({}):\n{}",
+            self.why_not,
+            list.join("\n")
+        )))
+    }
+
     pub fn confirm(&self, label: &str, yes: bool) -> Result<bool, Failure> {
         if yes {
             return Ok(true);
@@ -183,5 +200,18 @@ mod tests {
             "{:?}",
             err.report
         );
+    }
+
+    #[test]
+    fn choose_without_a_terminal_names_the_flag_and_lists_the_options() {
+        let err = Prompter::new(true)
+            .choose("--package", "Which `lua`?", &["one".into(), "two".into()])
+            .unwrap_err();
+        let msg = format!("{:?}", err.report);
+        assert!(
+            msg.contains("--package") && msg.contains("one") && msg.contains("two"),
+            "{msg}"
+        );
+        assert_eq!(err.code, 2);
     }
 }

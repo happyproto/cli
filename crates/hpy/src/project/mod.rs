@@ -4,5 +4,6 @@
 pub mod binary;
 pub mod cache;
 pub mod plugins;
+pub mod prepare;
 pub mod resolve;
 pub mod run;

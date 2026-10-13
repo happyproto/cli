@@ -1,87 +1,73 @@
-//! The HappyView binary as a foreground child: its output goes straight to
-//! this terminal, signals meant for `hpy` reach it, and its exit code becomes
+//! The HappyView binary in the foreground: its output goes straight to this
+//! terminal, signals meant for `hpy` reach it, and its exit code becomes
 //! `hpy`'s.
 
 use std::ffi::OsString;
 use std::path::Path;
-use std::process::{ExitStatus, Stdio};
 
 use crate::failure::Failure;
 
+/// On unix this replaces `hpy` with the binary and returns only if that
+/// fails. The process then *is* HappyView, so the kernel delivers every
+/// signal and reports the exit status exactly as it would had HappyView been
+/// started by hand, and there is no parent left to die and orphan it. Nothing
+/// `hpy` would have done after the child exits runs.
+#[cfg(unix)]
 pub async fn run_foreground(
     program: &Path,
     args: &[OsString],
     cwd: &Path,
     envs: &[(String, String)],
+    remove_env: &[&str],
+) -> Result<i32, Failure> {
+    use std::os::unix::process::CommandExt;
+
+    let mut cmd = std::process::Command::new(program);
+    for key in remove_env {
+        cmd.env_remove(key);
+    }
+    cmd.args(args)
+        .current_dir(cwd)
+        .envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    let e = cmd.exec();
+    Err(could_not_start(program, e))
+}
+
+/// Windows has no `exec`, so `hpy` waits for the child. The console sends
+/// Ctrl-C to every process attached to it; `hpy` only has to outlive the
+/// child to report its code.
+#[cfg(not(unix))]
+pub async fn run_foreground(
+    program: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    envs: &[(String, String)],
+    remove_env: &[&str],
 ) -> Result<i32, Failure> {
     let mut cmd = tokio::process::Command::new(program);
+    for key in remove_env {
+        cmd.env_remove(key);
+    }
     cmd.args(args)
         .current_dir(cwd)
         .envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
         .kill_on_drop(true);
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| Failure::runtime(format!("could not start {}: {e}", program.display())))?;
-    let status = wait_forwarding(&mut child).await?;
-    Ok(exit_code(status))
-}
-
-#[cfg(unix)]
-async fn wait_forwarding(child: &mut tokio::process::Child) -> Result<ExitStatus, Failure> {
-    use std::io::IsTerminal;
-    use tokio::signal::unix::{SignalKind, signal};
-
-    let pid = child.id().map(|p| p as libc::pid_t);
-    let forward = |sig: libc::c_int| {
-        if let Some(pid) = pid {
-            // SAFETY: kill(2) with a pid we spawned and a valid signal number.
-            unsafe { libc::kill(pid, sig) };
-        }
-    };
-    let mut term = signal(SignalKind::terminate()).map_err(Failure::runtime)?;
-    let mut hup = signal(SignalKind::hangup()).map_err(Failure::runtime)?;
-    let mut int = signal(SignalKind::interrupt()).map_err(Failure::runtime)?;
-    // A terminal delivers Ctrl-C to the whole foreground process group, so the
-    // child already has it; a second copy reads as "stop now" to most servers.
-    // Without a terminal the SIGINT was aimed at hpy alone, so it is passed on.
-    let from_terminal = std::io::stdin().is_terminal();
+    let mut child = cmd.spawn().map_err(|e| could_not_start(program, e))?;
     loop {
         tokio::select! {
-            status = child.wait() => return status.map_err(Failure::runtime),
-            _ = term.recv() => forward(libc::SIGTERM),
-            _ = hup.recv() => forward(libc::SIGHUP),
-            _ = int.recv() => if !from_terminal { forward(libc::SIGINT) },
-        }
-    }
-}
-
-#[cfg(not(unix))]
-async fn wait_forwarding(child: &mut tokio::process::Child) -> Result<ExitStatus, Failure> {
-    // The console sends Ctrl-C to every process attached to it; hpy only has
-    // to outlive the child to report its code.
-    loop {
-        tokio::select! {
-            status = child.wait() => return status.map_err(Failure::runtime),
+            status = child.wait() => return Ok(exit_code(status.map_err(Failure::runtime)?)),
             _ = tokio::signal::ctrl_c() => {}
         }
     }
 }
 
-pub fn exit_code(status: ExitStatus) -> i32 {
-    if let Some(code) = status.code() {
-        return code;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(sig) = status.signal() {
-            return 128 + sig;
-        }
-    }
-    1
+fn could_not_start(program: &Path, e: std::io::Error) -> Failure {
+    Failure::runtime(format!("could not start {}: {e}", program.display()))
+}
+
+#[cfg(not(unix))]
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    status.code().unwrap_or(1)
 }
 
 pub fn finish(code: i32) -> Result<(), Failure> {
@@ -91,60 +77,16 @@ pub fn finish(code: i32) -> Result<(), Failure> {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
 
-    fn script(dir: &Path, body: &str) -> PathBuf {
-        let path = dir.join("happyview");
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        path
-    }
-
-    #[tokio::test]
-    async fn passes_args_cwd_env_and_the_exit_code_through() {
-        let dir = tempfile::tempdir().unwrap();
-        let bin = script(
-            dir.path(),
-            "echo \"$PWD|$*|$HV_FLAVOUR\" > \"$HV_OUT\"; exit 3",
-        );
-        let out = dir.path().join("out");
-        let code = run_foreground(
-            &bin,
-            &["check".into(), ".".into()],
-            dir.path(),
-            &[
-                ("HV_OUT".into(), out.display().to_string()),
-                ("HV_FLAVOUR".into(), "dev".into()),
-            ],
-        )
-        .await
-        .unwrap();
-        assert_eq!(code, 3);
-        let canonical = std::fs::canonicalize(dir.path()).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&out).unwrap().trim(),
-            format!("{}|check .|dev", canonical.display())
-        );
-    }
-
-    #[tokio::test]
-    async fn a_child_killed_by_a_signal_exits_128_plus_it() {
-        let dir = tempfile::tempdir().unwrap();
-        let bin = script(dir.path(), "kill -TERM $$");
-        assert_eq!(
-            run_foreground(&bin, &[], dir.path(), &[]).await.unwrap(),
-            143
-        );
-    }
-
+    // The rest of this path ends in `exec`, which would replace the test
+    // process; `tests/happyview.rs` drives it through the binary instead.
     #[tokio::test]
     async fn a_missing_binary_says_which() {
         let dir = tempfile::tempdir().unwrap();
-        let err = run_foreground(&dir.path().join("nope"), &[], dir.path(), &[])
+        let err = run_foreground(&dir.path().join("nope"), &[], dir.path(), &[], &[])
             .await
             .unwrap_err();
         assert!(format!("{:?}", err.report).contains("could not start"));
