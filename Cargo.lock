@@ -1986,6 +1986,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hpy-project"
+version = "1.0.0-alpha.2"
+dependencies = [
+ "hpy-plugin",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "toml_edit",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
