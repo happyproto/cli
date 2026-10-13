@@ -4,8 +4,9 @@ use crate::cli::{RunArgs, TestArgs};
 use crate::commands::happyview::build::build_modules;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
+use crate::project::modules::read_modules;
 use crate::project::prepare::{PrepareOptions, REMOVED_ENV, prepare, project_root};
-use crate::project::run::{finish, run_foreground};
+use crate::project::run::{finish, run_foreground, run_rebuilding_modules};
 
 // `happyview check` reads a `.env` from its working directory, which is the
 // project root here.
@@ -37,5 +38,11 @@ pub async fn test(ctx: &Ctx, args: TestArgs) -> Result<(), Failure> {
     if let Some(filter) = args.filter {
         argv.push(filter.into());
     }
-    finish(run_foreground(&p.binary, &argv, &p.root, &[], REMOVED_ENV).await?)
+    if !args.watch {
+        return finish(run_foreground(&p.binary, &argv, &p.root, &[], REMOVED_ENV).await?);
+    }
+    // HappyView re-runs the tests when a module's build file changes, so
+    // keeping the builds current is what makes a source edit re-run them.
+    let specs = read_modules(&p.root)?;
+    finish(run_rebuilding_modules(&p.binary, &argv, &p.root, specs).await?)
 }

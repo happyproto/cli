@@ -3,9 +3,14 @@
 //! `hpy`'s.
 
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use crate::failure::Failure;
+use crate::project::modules::{self, ModuleSpec, Toolchain};
+use crate::project::prepare::REMOVED_ENV;
 
 /// On unix this replaces `hpy` with the binary and returns only if that
 /// fails. The process then *is* HappyView, so the kernel delivers every
@@ -61,6 +66,136 @@ pub async fn run_foreground(
     }
 }
 
+/// Runs the binary as a child that `hpy` waits for, for a run where `hpy`
+/// has work of its own to do while the binary runs and so cannot `exec`.
+/// It stays in `hpy`'s process group, so a terminal's Ctrl-C and Ctrl-\
+/// reach it directly and are not passed on a second time; a SIGTERM or
+/// SIGHUP is passed on once. A handler cannot tell a signal sent to `hpy`
+/// alone from one sent to its whole group, so a SIGTERM or SIGHUP sent to
+/// the group, as a closing terminal's hangup is, reaches the binary twice.
+/// The exit code is the child's, or 128 plus the signal that ended it, as a
+/// shell reports it.
+#[cfg(unix)]
+pub async fn run_supervised(
+    program: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    envs: &[(String, String)],
+    remove_env: &[&str],
+) -> Result<i32, Failure> {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    // Installed before the child exists, so no signal can arrive while `hpy`
+    // still has the default action of dying and leaving the child behind.
+    let mut term = signal(SignalKind::terminate()).map_err(Failure::runtime)?;
+    let mut hup = signal(SignalKind::hangup()).map_err(Failure::runtime)?;
+    let mut int = signal(SignalKind::interrupt()).map_err(Failure::runtime)?;
+    let mut quit = signal(SignalKind::quit()).map_err(Failure::runtime)?;
+
+    let mut cmd = tokio::process::Command::new(program);
+    for key in remove_env {
+        cmd.env_remove(key);
+    }
+    cmd.args(args)
+        .current_dir(cwd)
+        .envs(envs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .kill_on_drop(true);
+    // Covers an `hpy` that dies without unwinding, which `kill_on_drop` does
+    // not. The kernel fires it when the thread that forked exits, and the
+    // fork happens on whichever runtime thread polls this future, which
+    // lives as long as `hpy`. Called inside `spawn_blocking` it would fork on
+    // a pool thread that exits once idle, killing the binary with it. macOS
+    // has no equivalent, so there any signal `hpy` does not handle (SIGKILL,
+    // but also SIGUSR1 or SIGALRM) ends `hpy` and leaves the binary running.
+    #[cfg(target_os = "linux")]
+    {
+        let parent = std::process::id();
+        // SAFETY: the closure makes only async-signal-safe calls.
+        unsafe {
+            cmd.pre_exec(move || {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // A parent that died before the call above went unnoticed.
+                if libc::getppid() as u32 != parent {
+                    libc::_exit(1);
+                }
+                Ok(())
+            });
+        }
+    }
+    let mut child = cmd.spawn().map_err(|e| could_not_start(program, e))?;
+    let pid = child
+        .id()
+        .ok_or_else(|| Failure::runtime("the binary exited before it could be watched"))?;
+    let forward = |sig: libc::c_int| {
+        // SAFETY: kill(2) on a child not yet reaped, whose pid therefore
+        // still names it.
+        unsafe { libc::kill(pid as libc::pid_t, sig) };
+    };
+    loop {
+        tokio::select! {
+            status = child.wait() => return Ok(exit_code(status.map_err(Failure::runtime)?)),
+            _ = term.recv() => forward(libc::SIGTERM),
+            _ = hup.recv() => forward(libc::SIGHUP),
+            _ = int.recv() => {}
+            _ = quit.recv() => {}
+        }
+    }
+}
+
+/// Windows already waits for the child, and the console reaches it directly.
+#[cfg(not(unix))]
+pub async fn run_supervised(
+    program: &Path,
+    args: &[OsString],
+    cwd: &Path,
+    envs: &[(String, String)],
+    remove_env: &[&str],
+) -> Result<i32, Failure> {
+    run_foreground(program, args, cwd, envs, remove_env).await
+}
+
+/// Runs the binary while rebuilding each of `specs` whenever its source
+/// changes, and answers the binary's exit code. Without modules there is
+/// nothing to watch, and the binary replaces `hpy` as `run_foreground` does.
+/// Once the binary exits, a rebuild under way is stopped rather than waited
+/// out.
+pub async fn run_rebuilding_modules(
+    binary: &Path,
+    args: &[OsString],
+    root: &Path,
+    specs: Vec<ModuleSpec>,
+) -> Result<i32, Failure> {
+    if specs.is_empty() {
+        return run_foreground(binary, args, root, &[], REMOVED_ENV).await;
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let watcher = {
+        let (stop, root) = (stop.clone(), PathBuf::from(root));
+        tokio::task::spawn_blocking(move || {
+            modules::watch(
+                &Toolchain::from_env(),
+                &root,
+                &specs,
+                Duration::from_millis(300),
+                &stop,
+                &mut |module, result| match result {
+                    Ok(_) => eprintln!("rebuilt module '{}'", module.name),
+                    Err(f) => eprintln!(
+                        "{:?}\nmodule '{}' failed to build; the previous build keeps serving",
+                        f.report, module.name
+                    ),
+                },
+            )
+        })
+    };
+    let exit = run_supervised(binary, args, root, &[], REMOVED_ENV).await;
+    stop.store(true, Ordering::SeqCst);
+    let _ = watcher.await;
+    exit
+}
+
 fn could_not_start(program: &Path, e: std::io::Error) -> Failure {
     Failure::runtime(format!("could not start {}: {e}", program.display()))
 }
@@ -68,6 +203,15 @@ fn could_not_start(program: &Path, e: std::io::Error) -> Failure {
 #[cfg(not(unix))]
 fn exit_code(status: std::process::ExitStatus) -> i32 {
     status.code().unwrap_or(1)
+}
+
+#[cfg(unix)]
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status
+        .code()
+        .or_else(|| status.signal().map(|s| 128 + s))
+        .unwrap_or(1)
 }
 
 pub fn finish(code: i32) -> Result<(), Failure> {

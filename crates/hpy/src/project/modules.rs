@@ -4,9 +4,11 @@
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Read};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -183,13 +185,24 @@ pub fn build_module(
     project: &Path,
     module: &ModuleSpec,
 ) -> Result<PathBuf, Failure> {
+    build_module_unless(tc, project, module, &AtomicBool::new(false))
+}
+
+/// As `build_module`, but a set `stop` ends cargo at once rather than
+/// waiting out the build, and nothing is installed.
+fn build_module_unless(
+    tc: &Toolchain,
+    project: &Path,
+    module: &ModuleSpec,
+    stop: &AtomicBool,
+) -> Result<PathBuf, Failure> {
     check_toolchain(tc, project, module)?;
     let dir = project.join(&module.path);
     let manifest = dir.join("Cargo.toml");
     require_panic_abort(project, module)?;
     // Diagnostics render to stderr, which the developer sees as they would
     // from cargo itself; stdout carries the JSON that names the artifact.
-    let output = Command::new(&tc.cargo)
+    let mut child = Command::new(&tc.cargo)
         .args([
             "build",
             "--release",
@@ -203,15 +216,40 @@ pub fn build_module(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
-        .output()
+        .spawn()
         .map_err(Failure::runtime)?;
-    if !output.status.success() {
+    let mut pipe = child.stdout.take().expect("stdout is piped");
+    // Drained on its own thread, so a full pipe cannot stall cargo while
+    // this one watches for `stop`.
+    let reader = std::thread::spawn(move || {
+        let mut out = Vec::new();
+        pipe.read_to_end(&mut out).map(|_| out)
+    });
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(Failure::runtime)? {
+            break status;
+        }
+        if stop.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Failure::runtime(format!(
+                "the build of module '{}' was stopped",
+                module.name
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let stdout = reader
+        .join()
+        .map_err(|_| Failure::runtime("reading cargo's output panicked"))?
+        .map_err(Failure::runtime)?;
+    if !status.success() {
         return Err(Failure::runtime(format!(
             "module '{}' failed to build",
             module.name
         )));
     }
-    let built = find_artifact(&output.stdout, &manifest).ok_or_else(|| {
+    let built = find_artifact(&stdout, &manifest).ok_or_else(|| {
         Failure::usage(format!(
             "module '{}' built no wasm library; set crate-type = [\"cdylib\"] under [lib] in {}",
             module.name,
@@ -372,6 +410,72 @@ pub fn build_all(tc: &Toolchain, project: &Path) -> Result<Vec<(String, PathBuf)
             ),
             quiet: false,
         }),
+    }
+}
+
+/// Every file under a module's crate that a build reads, with its size and
+/// modification time. A module is tens of files, so polling this is cheaper
+/// than a platform watcher's dependency and gives every platform the same
+/// behaviour. `target/` and dot-directories are build output and tooling.
+pub fn fingerprint(dir: &Path) -> BTreeMap<PathBuf, (u64, std::time::SystemTime)> {
+    let mut out = BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(next) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&next) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                if name != "target" && !name.starts_with('.') {
+                    stack.push(path);
+                }
+            } else if let Ok(modified) = meta.modified() {
+                out.insert(path, (meta.len(), modified));
+            }
+        }
+    }
+    out
+}
+
+/// Poll each module's crate every `interval` and rebuild the ones that
+/// changed, until `stop` is set. A build that fails leaves the previous
+/// module installed, so HappyView keeps serving it. Edits made during a
+/// build are seen by the next poll. Setting `stop` ends a build under way,
+/// so whoever sets it waits only for cargo to die, not for it to finish.
+pub fn watch(
+    tc: &Toolchain,
+    project: &Path,
+    modules: &[ModuleSpec],
+    interval: Duration,
+    stop: &AtomicBool,
+    on_build: &mut dyn FnMut(&ModuleSpec, Result<PathBuf, Failure>),
+) {
+    let mut last: Vec<_> = modules
+        .iter()
+        .map(|m| fingerprint(&project.join(&m.path)))
+        .collect();
+    while !stop.load(Ordering::SeqCst) {
+        std::thread::sleep(interval);
+        for (module, seen) in modules.iter().zip(last.iter_mut()) {
+            if stop.load(Ordering::SeqCst) {
+                return;
+            }
+            let now = fingerprint(&project.join(&module.path));
+            if now != *seen {
+                *seen = now;
+                let result = build_module_unless(tc, project, module, stop);
+                if stop.load(Ordering::SeqCst) {
+                    return;
+                }
+                on_build(module, result);
+            }
+        }
     }
 }
 
@@ -728,6 +832,135 @@ pub(crate) mod tests {
         .unwrap();
         let module = &read_modules(p.path()).unwrap()[0];
         build_module(&tc, p.path(), module).unwrap();
+    }
+
+    #[test]
+    fn the_fingerprint_sees_a_source_change_and_ignores_build_output() {
+        let p = project(REGISTRY);
+        let dir = p.path().join("modules/registry");
+        std::fs::write(dir.join("src/lib.rs"), "a").unwrap();
+        let before = fingerprint(&dir);
+
+        std::fs::create_dir_all(dir.join("target/release")).unwrap();
+        std::fs::write(dir.join("target/release/x.wasm"), "built").unwrap();
+        assert_eq!(fingerprint(&dir), before, "build output is not source");
+
+        std::fs::write(dir.join("src/lib.rs"), "ab").unwrap();
+        assert_ne!(fingerprint(&dir), before);
+    }
+
+    #[test]
+    fn watch_rebuilds_a_changed_module_once_and_keeps_the_old_build_on_failure() {
+        use std::sync::atomic::AtomicBool;
+        use std::time::Duration;
+
+        let p = project(REGISTRY);
+        let dest = p.path().join(".happyview/build/registry.wasm");
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::write(&dest, b"\0asm-old").unwrap();
+        let count = p.path().join("count");
+        let tc = fake_cargo(p.path(), Path::new("/unused"), true, &count);
+        let modules = read_modules(p.path()).unwrap();
+        let stop = AtomicBool::new(false);
+        let src = p.path().join("modules/registry/src/lib.rs");
+        std::fs::write(&src, "a").unwrap();
+
+        let mut outcomes = Vec::new();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(150));
+                std::fs::write(&src, "changed").unwrap();
+                // A build still under way when `stop` is set is not
+                // reported, so the polls that follow are timed from the
+                // build rather than from the edit.
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                while !count.exists() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                std::thread::sleep(Duration::from_millis(400));
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+            watch(
+                &tc,
+                p.path(),
+                &modules,
+                Duration::from_millis(50),
+                &stop,
+                &mut |m, r| {
+                    outcomes.push((m.name.clone(), r.is_ok()));
+                },
+            );
+        });
+
+        assert_eq!(outcomes, vec![("registry".to_string(), false)]);
+        assert_eq!(std::fs::read_to_string(&count).unwrap().lines().count(), 1);
+        assert_eq!(std::fs::read(&dest).unwrap(), b"\0asm-old");
+    }
+
+    #[test]
+    fn stopping_the_watch_ends_a_build_under_way() {
+        use std::time::{Duration, Instant};
+
+        let p = project(REGISTRY);
+        let pid = p.path().join("cargo.pid");
+        let body = format!(
+            "if [ \"$1\" = --version ]; then exit 0; fi\necho $$ > '{}'\nexec sleep 30",
+            pid.display()
+        );
+        let tc = Toolchain {
+            cargo: script(p.path(), "cargo-slow", &body).into(),
+            rustup: script(p.path(), "rustup", "echo wasm32-wasip1").into(),
+        };
+        let modules = read_modules(p.path()).unwrap();
+        let stop = AtomicBool::new(false);
+        let src = p.path().join("modules/registry/src/lib.rs");
+        std::fs::write(&src, "a").unwrap();
+
+        let mut outcomes = 0;
+        let (cargo, stopped_at) = std::thread::scope(|s| {
+            let stopper = s.spawn(|| {
+                std::thread::sleep(Duration::from_millis(150));
+                std::fs::write(&src, "changed").unwrap();
+                let deadline = Instant::now() + Duration::from_secs(10);
+                let cargo: libc::pid_t = loop {
+                    if let Some(pid) = std::fs::read_to_string(&pid)
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok())
+                    {
+                        break pid;
+                    }
+                    assert!(Instant::now() < deadline, "cargo never started");
+                    std::thread::sleep(Duration::from_millis(20));
+                };
+                stop.store(true, Ordering::SeqCst);
+                (cargo, Instant::now())
+            });
+            watch(
+                &tc,
+                p.path(),
+                &modules,
+                Duration::from_millis(50),
+                &stop,
+                &mut |_, _| {
+                    outcomes += 1;
+                },
+            );
+            let (cargo, stopped_at) = stopper.join().unwrap();
+            (cargo, stopped_at)
+        });
+        let waited = stopped_at.elapsed();
+        // SAFETY: kill(2) with signal 0 only asks whether the pid exists.
+        let alive = unsafe { libc::kill(cargo, 0) } == 0;
+        if alive {
+            // SAFETY: as above, ending the fake this test started.
+            unsafe { libc::kill(cargo, libc::SIGKILL) };
+        }
+        assert!(!alive, "the stopped build's cargo is still running");
+        assert!(
+            waited < Duration::from_secs(5),
+            "watch waited {waited:?} for the build"
+        );
+        assert_eq!(outcomes, 0, "a stopped build is not reported");
     }
 
     #[test]

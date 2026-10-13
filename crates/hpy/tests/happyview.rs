@@ -13,6 +13,11 @@ const VERSION: &str = "3.0.0-alpha.12";
 
 /// Records its arguments, its working directory, and `PLUGIN_DIR` when it
 /// arrives. With `HV_MODE=trap` it runs until a SIGTERM, which it records.
+/// With `HV_MODE=signals` it records every SIGTERM, SIGHUP, SIGINT and
+/// SIGQUIT, one line each, and runs on until `$HV_LOG.quit` exists, so a
+/// second copy of a signal is recorded too; it then exits 7 if a SIGTERM
+/// came and 0 otherwise. Waiting on a background `sleep` lets a trap run as
+/// its signal arrives. With `HV_MODE=die` a signal ends it.
 const FAKE_HAPPYVIEW: &str = r#"#!/bin/sh
 echo "$*" >> "$HV_LOG"
 pwd -P > "$HV_LOG.cwd"
@@ -23,6 +28,19 @@ if [ "$HV_MODE" = trap ]; then
   trap 'echo got >> "$HV_LOG.term"; exit 7' TERM
   echo $$ > "$HV_LOG.ready"
   while :; do sleep 0.1; done
+fi
+if [ "$HV_MODE" = signals ]; then
+  code=0
+  trap 'echo TERM >> "$HV_LOG.sig"; code=7' TERM
+  trap 'echo HUP >> "$HV_LOG.sig"' HUP
+  trap 'echo INT >> "$HV_LOG.sig"' INT
+  trap 'echo QUIT >> "$HV_LOG.sig"' QUIT
+  echo $$ > "$HV_LOG.ready"
+  while [ ! -e "$HV_LOG.quit" ]; do sleep 0.1 & wait $!; done
+  exit $code
+fi
+if [ "$HV_MODE" = die ]; then
+  kill -KILL $$
 fi
 exit "${HV_EXIT:-0}"
 "#;
@@ -148,6 +166,20 @@ impl Stack {
 
 fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap()
+}
+
+/// Output that holds `needle` once an error report's wrapping is undone. A
+/// report wraps to the terminal's width, breaking long words as well, so
+/// where its lines break moves with the length of any path in it; both sides
+/// are compared without whitespace or the report's `│` gutter.
+fn says(needle: impl Into<String>) -> impl Predicate<[u8]> {
+    fn flat(text: &str) -> String {
+        text.chars()
+            .filter(|c| !c.is_whitespace() && *c != '│')
+            .collect()
+    }
+    let needle = flat(&needle.into());
+    predicate::function(move |out: &[u8]| flat(&String::from_utf8_lossy(out)).contains(&needle))
 }
 
 #[cfg(unix)]
@@ -437,7 +469,7 @@ fn outside_a_project_is_a_usage_error() {
         .args(["hv", "check"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("hpy happyview create"));
+        .stderr(says("hpy happyview create"));
 }
 
 #[test]
@@ -453,9 +485,7 @@ fn locked_refuses_a_lock_that_no_longer_matches() {
         .args(["hv", "check", "--locked"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains(
-            "interpreter `lua` is not in the lock",
-        ));
+        .stderr(says("interpreter `lua` is not in the lock"));
     assert!(!read(&stack.project.path().join("happyview.lock")).contains("lua"));
 }
 
@@ -523,9 +553,21 @@ fn dev_receives_sigterm_and_exits_with_the_childs_code() {
         assert!(Instant::now() < deadline, "the binary never became ready");
         std::thread::sleep(Duration::from_millis(20));
     }
-    // The pid file can be seen before its line is written.
-    while read(&ready).trim().is_empty() {
+    let binary: libc::pid_t = loop {
+        // The pid file can be seen before its line is written.
+        if let Ok(pid) = read(&ready).trim().parse() {
+            break pid;
+        }
         std::thread::sleep(Duration::from_millis(20));
+    };
+    // Without modules there is nothing for `hpy` to do alongside the binary.
+    if binary != child.id() as libc::pid_t {
+        // SAFETY: kill(2) on the pids this test spawned or was told of.
+        unsafe {
+            libc::kill(binary, libc::SIGKILL);
+            libc::kill(child.id() as libc::pid_t, libc::SIGKILL);
+        }
+        panic!("hpy did not become the binary");
     }
     // SAFETY: kill(2) with the pid of a child this test spawned and has not reaped.
     assert_eq!(
@@ -546,6 +588,307 @@ fn dev_receives_sigterm_and_exits_with_the_childs_code() {
     assert_eq!(read(&stack.log.with_extension("log.term")), "got\n");
 }
 
+/// Declares one Rust module whose builds, by a fake cargo that `HPY_CARGO`
+/// names, install whatever `built.wasm` holds at the time. Answers the
+/// environment that fake needs, and the path the module installs to.
+#[cfg(unix)]
+fn declare_module(stack: &Stack) -> (Vec<(&'static str, PathBuf)>, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = stack.project.path();
+    std::fs::write(
+        root.join("happyview.toml"),
+        format!(
+            "[happyview]\nversion = \"{VERSION}\"\n\
+             [modules.registry]\nlanguage = \"rust\"\npath = \"modules/registry\"\n"
+        ),
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("modules/registry/src")).unwrap();
+    std::fs::write(
+        root.join("modules/registry/Cargo.toml"),
+        "[package]\nname = \"registry\"\n[profile.release]\npanic = \"abort\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("modules/registry/src/lib.rs"), "").unwrap();
+    let built = root.join("built.wasm");
+    std::fs::write(&built, b"\0asm-1").unwrap();
+    let cargo = root.join("cargo");
+    std::fs::write(
+        &cargo,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then exit 0; fi\n\
+             manifest=''; while [ $# -gt 0 ]; do [ \"$1\" = --manifest-path ] && manifest=\"$2\"; shift; done\n\
+             printf '{{\"reason\":\"compiler-artifact\",\"manifest_path\":\"%s\",\"target\":{{\"crate_types\":[\"cdylib\"]}},\"filenames\":[\"{}\"]}}\\n' \"$manifest\"\n",
+            built.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (
+        vec![
+            ("HPY_CARGO", cargo),
+            ("HPY_RUSTUP", PathBuf::from("/nonexistent/rustup")),
+        ],
+        root.join(".happyview/build/registry.wasm"),
+    )
+}
+
+/// A running `hpy` and the fake binary under it.
+#[cfg(unix)]
+struct Running {
+    hpy: std::process::Child,
+    binary: libc::pid_t,
+}
+
+#[cfg(unix)]
+impl Running {
+    /// Starts `hpy` with `args` in a process group of its own, as a terminal
+    /// would, and waits until the fake binary in `HV_MODE=signals` is up.
+    fn start(stack: &Stack, args: &[&str], envs: &[(&str, PathBuf)]) -> Running {
+        use std::os::unix::process::CommandExt;
+        use std::time::{Duration, Instant};
+
+        let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
+        stack.env(&mut cmd);
+        let mut hpy = cmd
+            .args(args)
+            .envs(envs.iter().map(|(k, v)| (*k, v)))
+            .env("HV_MODE", "signals")
+            .stdin(std::process::Stdio::null())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let ready = stack.log.with_extension("log.ready");
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let binary: libc::pid_t = loop {
+            // The file can be seen before its line is written.
+            if let Some(pid) = std::fs::read_to_string(&ready)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+            {
+                break pid;
+            }
+            if hpy.try_wait().unwrap().is_some() || Instant::now() >= deadline {
+                // SAFETY: kill(2) on the group of a child this test spawned.
+                unsafe { libc::kill(-(hpy.id() as libc::pid_t), libc::SIGKILL) };
+                panic!("the binary never became ready");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        if binary == hpy.id() as libc::pid_t {
+            // SAFETY: as above.
+            unsafe { libc::kill(-binary, libc::SIGKILL) };
+            panic!("hpy became the binary instead of watching the modules");
+        }
+        Running { hpy, binary }
+    }
+
+    fn signal(&self, signal: libc::c_int) {
+        // SAFETY: kill(2) on a child this test spawned and has not reaped.
+        assert_eq!(
+            unsafe { libc::kill(self.hpy.id() as libc::pid_t, signal) },
+            0
+        );
+    }
+
+    fn signal_group(&self, signal: libc::c_int) {
+        // SAFETY: as above, on its process group.
+        assert_eq!(
+            unsafe { libc::kill(-(self.hpy.id() as libc::pid_t), signal) },
+            0
+        );
+    }
+
+    /// Lets any further copy of a signal just sent land, then tells the
+    /// binary to exit, and answers `hpy`'s exit status.
+    fn settle_and_quit(self, stack: &Stack) -> std::process::ExitStatus {
+        // Long enough for a forwarded copy to land after the first has been
+        // handled, rather than merging with it while pending.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::fs::write(stack.log.with_extension("log.quit"), "").unwrap();
+        self.wait()
+    }
+
+    /// `hpy`'s exit status, after which the binary must be gone too.
+    fn wait(mut self) -> std::process::ExitStatus {
+        use std::time::{Duration, Instant};
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let status = loop {
+            if let Some(status) = self.hpy.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                self.signal_group(libc::SIGKILL);
+                panic!("hpy did not exit");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        // SAFETY: kill(2) on a pid the fake binary reported for itself.
+        if unsafe { libc::kill(self.binary, 0) } == 0 {
+            unsafe { libc::kill(self.binary, libc::SIGKILL) };
+            panic!("hpy exited ({status}) and left the binary running");
+        }
+        status
+    }
+}
+
+#[cfg(unix)]
+fn signals_received(stack: &Stack) -> String {
+    std::fs::read_to_string(stack.log.with_extension("log.sig")).unwrap_or_default()
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_modules_passes_the_childs_exit_code_through() {
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let mut cmd = stack.hpy();
+    cmd.args(["hv", "dev"]).env("HV_EXIT", "3");
+    for (k, v) in &envs {
+        cmd.env(k, v);
+    }
+    cmd.assert().code(3);
+    assert_eq!(stack.log().trim(), "dev .");
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_modules_reports_a_signal_death_as_a_shell_does() {
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let mut cmd = stack.hpy();
+    cmd.args(["hv", "dev"]).env("HV_MODE", "die");
+    for (k, v) in &envs {
+        cmd.env(k, v);
+    }
+    // A `hpy` that had become the binary would itself die by the signal and
+    // have no exit code at all.
+    cmd.assert().code(128 + libc::SIGKILL);
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_modules_forwards_one_sigterm_and_exits_with_the_childs_code() {
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let running = Running::start(&stack, &["hv", "dev"], &envs);
+    running.signal(libc::SIGTERM);
+    assert_eq!(running.settle_and_quit(&stack).code(), Some(7));
+    assert_eq!(signals_received(&stack), "TERM\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_modules_forwards_a_sighup_once() {
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let running = Running::start(&stack, &["hv", "dev"], &envs);
+    running.signal(libc::SIGHUP);
+    assert_eq!(running.settle_and_quit(&stack).code(), Some(0));
+    assert_eq!(signals_received(&stack), "HUP\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_c_reaches_the_binary_once_through_the_terminals_group() {
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let running = Running::start(&stack, &["hv", "dev"], &envs);
+    running.signal_group(libc::SIGINT);
+    // `hpy` outlived the Ctrl-C, and reports the binary's own exit.
+    assert_eq!(running.settle_and_quit(&stack).code(), Some(0));
+    assert_eq!(signals_received(&stack), "INT\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_backslash_reaches_the_binary_once_through_the_terminals_group() {
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let running = Running::start(&stack, &["hv", "dev"], &envs);
+    running.signal_group(libc::SIGQUIT);
+    assert_eq!(running.settle_and_quit(&stack).code(), Some(0));
+    assert_eq!(signals_received(&stack), "QUIT\n");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_killed_hpy_takes_the_binary_with_it() {
+    use std::time::{Duration, Instant};
+
+    let stack = Stack::new();
+    let (envs, _) = declare_module(&stack);
+    let mut running = Running::start(&stack, &["hv", "dev"], &envs);
+    running.hpy.kill().unwrap();
+    running.hpy.wait().unwrap();
+    // A zombie is already dead; it stays one only under a parent that does
+    // not reap, as a container's first process may not.
+    let alive = |pid: libc::pid_t| {
+        std::fs::read_to_string(format!("/proc/{pid}/stat"))
+            .ok()
+            .and_then(|stat| {
+                let state = stat
+                    .rsplit_once(')')?
+                    .1
+                    .split_whitespace()
+                    .next()?
+                    .to_owned();
+                Some(state != "Z")
+            })
+            .unwrap_or(false)
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(running.binary) {
+        if Instant::now() >= deadline {
+            // SAFETY: kill(2) on a pid the fake binary reported for itself.
+            unsafe { libc::kill(running.binary, libc::SIGKILL) };
+            panic!("the binary outlived hpy");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Changes the module's source with `next` as what its next build installs,
+/// and waits for `dest` to hold it.
+#[cfg(unix)]
+fn edit_and_await_rebuild(stack: &Stack, dest: &Path, next: &[u8]) {
+    use std::time::{Duration, Instant};
+
+    let root = stack.project.path();
+    std::fs::write(root.join("built.wasm"), next).unwrap();
+    std::fs::write(root.join("modules/registry/src/lib.rs"), "// edited\n").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while std::fs::read(dest).ok().as_deref() != Some(next) {
+        assert!(Instant::now() < deadline, "the module was never rebuilt");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_rebuilds_a_module_when_its_source_changes() {
+    let stack = Stack::new();
+    let (envs, dest) = declare_module(&stack);
+    let running = Running::start(&stack, &["hv", "dev"], &envs);
+    assert_eq!(std::fs::read(&dest).unwrap(), b"\0asm-1");
+    edit_and_await_rebuild(&stack, &dest, b"\0asm-2");
+    assert_eq!(running.settle_and_quit(&stack).code(), Some(0));
+}
+
+#[cfg(unix)]
+#[test]
+fn test_watch_rebuilds_a_module_when_its_source_changes() {
+    let stack = Stack::new();
+    let (envs, dest) = declare_module(&stack);
+    let running = Running::start(&stack, &["hv", "test", "--watch"], &envs);
+    assert_eq!(std::fs::read(&dest).unwrap(), b"\0asm-1");
+    edit_and_await_rebuild(&stack, &dest, b"\0asm-2");
+    assert_eq!(running.settle_and_quit(&stack).code(), Some(0));
+    assert_eq!(stack.log().trim(), "test . --watch");
+}
+
 #[test]
 fn add_validates_package_before_touching_the_network() {
     let stack = Stack::new();
@@ -554,7 +897,7 @@ fn add_validates_package_before_touching_the_network() {
         .args(["hv", "add", "lua", "--package", "not-a-uri"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--package"));
+        .stderr(says("--package"));
     assert!(!read(&stack.project.path().join("happyview.toml")).contains("lua"));
 }
 
@@ -714,7 +1057,7 @@ fn create_resolves_before_writing_anything() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("happyview.nope"));
+        .stderr(says("happyview.nope"));
     assert!(!parent.path().join("my-app").exists());
 }
 
@@ -747,7 +1090,7 @@ fn create_writes_nothing_when_resolution_refuses_the_release() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("declares no file extensions"));
+        .stderr(says("declares no file extensions"));
     assert!(!parent.path().join("my-app").exists());
 }
 
@@ -761,7 +1104,7 @@ fn create_without_a_login_or_flag_names_superadmin() {
         .args(["hv", "create", "--name", "my-app", "--no-input"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--superadmin"));
+        .stderr(says("--superadmin"));
 }
 
 #[test]
@@ -784,7 +1127,7 @@ fn create_refuses_a_directory_with_files_in_it() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("not empty"));
+        .stderr(says("not empty"));
     assert_eq!(read(&parent.path().join("taken/notes.txt")), "mine");
 }
 
@@ -813,10 +1156,8 @@ fn create_takes_a_package_where_several_answer() {
     };
     create("asked", None)
         .code(2)
-        .stderr(predicate::str::contains(
-            "pass --package <AT-URI> to choose",
-        ))
-        .stderr(predicate::str::contains("hpy happyview add").not());
+        .stderr(says("pass --package <AT-URI> to choose"))
+        .stderr(says("hpy happyview add").not());
     let other = "at://did:plc:hv/at.happyproto.plugin.profile/other-lua";
     create("pinned", Some(other)).success();
     let lock = read(&parent.path().join("pinned/happyview.lock"));
@@ -829,7 +1170,7 @@ fn create_takes_a_package_where_several_answer() {
         Some("at://did:plc:hv/at.happyproto.plugin.profile/nobody"),
     )
     .code(2)
-    .stderr(predicate::str::contains("nobody answers to"));
+    .stderr(says("nobody answers to"));
     assert!(!parent.path().join("stray").exists());
 }
 
@@ -851,8 +1192,8 @@ fn create_refuses_a_superadmin_that_is_not_a_did() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--superadmin"))
-        .stderr(predicate::str::contains("is not a DID"));
+        .stderr(says("--superadmin"))
+        .stderr(says("is not a DID"));
     assert!(!parent.path().join("my-app").exists());
 }
 
@@ -879,8 +1220,8 @@ fn create_refuses_a_blank_app_name() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--app-name"))
-        .stderr(predicate::str::contains("must not be empty"));
+        .stderr(says("--app-name"))
+        .stderr(says("must not be empty"));
     assert!(!parent.path().join("my-app").exists());
 }
 
@@ -972,7 +1313,7 @@ fn create_refuses_a_name_that_is_a_file() {
         ])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("is not a directory"));
+        .stderr(says("is not a directory"));
     assert_eq!(read(&parent.path().join("my-app")), "mine");
 }
 
@@ -1058,7 +1399,7 @@ fn create_takes_a_library_by_namespace_or_id() {
     }
     create("neither", "happyview.nope")
         .code(2)
-        .stderr(predicate::str::contains("--library: `happyview.nope`"));
+        .stderr(says("--library: `happyview.nope`"));
     assert!(!parent.path().join("neither").exists());
 }
 
@@ -1073,7 +1414,7 @@ fn a_loose_cache_directory_the_user_named_is_refused_not_changed() {
         .args(["hv", "check"])
         .assert()
         .code(1)
-        .stderr(predicate::str::contains("chmod 700"));
+        .stderr(says("chmod 700"));
     let mode = std::fs::metadata(stack.cache.path())
         .unwrap()
         .permissions()
@@ -1090,7 +1431,7 @@ fn reset_needs_the_local_network() {
         .args(["hv", "dev", "--reset"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--network"));
+        .stderr(says("--network"));
 }
 
 #[cfg(unix)]
@@ -1104,7 +1445,7 @@ fn local_without_deno_names_what_to_install() {
         .args(["hv", "dev", "--network", "local"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("Deno 2.8"));
+        .stderr(says("Deno 2.8"));
 }
 
 /// A `deno` standing in for Atmosphere in a Box's CLI: it logs every call and
@@ -1402,17 +1743,18 @@ fn a_local_run_without_a_terminal_prints_no_password() {
     );
     let stack_file = read(&net.checkout.join("stacks/happyview.yaml"));
     assert!(stack_file.contains("did:plc:user1"), "{stack_file}");
-    // The Linux release, not this computer's own binary.
+    // The release for the fake Docker's architecture, which the cache files
+    // beside the host's own release, under its target, unless it is the
+    // host's.
     assert!(net.checkout.join("stacks/happyview/happyview").is_file());
-    assert!(
-        net.stack
-            .cache
-            .path()
-            .join(format!(
-                "happyview/{VERSION}/aarch64-unknown-linux-musl/happyview"
-            ))
-            .is_file()
-    );
+    let docker_target = "aarch64-unknown-linux-musl";
+    let releases = net.stack.cache.path().join(format!("happyview/{VERSION}"));
+    let release = if target() == docker_target {
+        releases
+    } else {
+        releases.join(docker_target)
+    };
+    assert!(release.join("happyview").is_file(), "{}", release.display());
     assert!(
         net.stack
             .project
@@ -1503,10 +1845,7 @@ esac"#,
         .args(["hv", "dev", "--network", "local"])
         .assert()
         .code(2)
-        .stderr(
-            predicate::str::contains("hv-other-12345678")
-                .and(predicate::str::contains("127.0.0.1:443")),
-        );
+        .stderr(says("hv-other-12345678").and(says("127.0.0.1:443")));
 
     // Anything else on the relay's port is refused before the relay starts,
     // and the network that was brought up is stopped again.
@@ -1517,9 +1856,7 @@ esac"#,
         .env("HPY_NETWORK_ACCESS_ADDR", &addr)
         .assert()
         .code(2)
-        .stderr(predicate::str::contains(format!(
-            "something else is listening on {addr}"
-        )));
+        .stderr(says(format!("something else is listening on {addr}")));
     let calls = net.sandbox_calls();
     assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
     assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
@@ -1529,10 +1866,11 @@ esac"#,
 #[test]
 fn a_failed_up_shows_happyviews_last_log_lines_and_stops_the_network() {
     let net = LocalNet::new();
-    net.hpy().env("NET_UP_FAILS", "1").assert().code(1).stderr(
-        predicate::str::contains("could not open the database")
-            .and(predicate::str::contains("deno task sandbox up")),
-    );
+    net.hpy()
+        .env("NET_UP_FAILS", "1")
+        .assert()
+        .code(1)
+        .stderr(says("could not open the database").and(says("deno task sandbox up")));
     assert!(
         net.calls()
             .contains("docker logs --tail 50 hv-test-happyview-1")
@@ -1601,7 +1939,7 @@ fn without_a_terminal_a_missing_hosts_entry_stops_before_the_relay() {
         .env("NET_HOSTS", line)
         .assert()
         .code(2)
-        .stderr(predicate::str::contains(line).and(predicate::str::contains("/etc/hosts")));
+        .stderr(says(line).and(says("/etc/hosts")));
     let calls = net.sandbox_calls();
     assert!(calls.iter().any(|c| c == "access hosts"), "{calls:?}");
     assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
@@ -1612,11 +1950,11 @@ fn without_a_terminal_a_missing_hosts_entry_stops_before_the_relay() {
     let net = LocalNet::new();
     std::fs::remove_file(net.checkout.parent().unwrap().join("access.toml")).unwrap();
     net.hpy().assert().code(2).stderr(
-        predicate::str::contains("cannot reach the local network yet")
-            .and(predicate::str::contains("state/ca/root.crt"))
+        says("cannot reach the local network yet")
+            .and(says("state/ca/root.crt"))
             // How to ask again once that trust is gone.
-            .and(predicate::str::contains("access.toml"))
-            .and(predicate::str::contains("delete that file")),
+            .and(says("access.toml"))
+            .and(says("delete that file")),
     );
     let calls = net.sandbox_calls();
     assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
@@ -1709,7 +2047,7 @@ fn a_failure_that_leaves_a_step_pending_stops_nothing() {
         .env("NET_SEED_FAILS", "1")
         .assert()
         .code(1)
-        .stderr(predicate::str::contains("until the next run resumes it"));
+        .stderr(says("until the next run resumes it"));
     // The sandbox would refuse both while the step is pending.
     assert_eq!(net.sandbox_calls().last().map(String::as_str), Some("seed"));
 }
