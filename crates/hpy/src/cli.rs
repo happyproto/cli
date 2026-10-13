@@ -187,6 +187,10 @@ pub enum HappyviewCommand {
     /// Scaffold a new HappyView project.
     Create(CreateArgs),
     /// Run the project with its pinned HappyView; a saved file is live on the next request.
+    ///
+    /// A compiled module is rebuilt when a file under its own directory changes. A path
+    /// dependency outside that directory, or a workspace's Cargo.lock above it, is not
+    /// watched: after changing one, save a file in the module to rebuild it.
     Dev(DevArgs),
     /// Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to date and download it.
     #[command(alias = "install")]

@@ -52,8 +52,19 @@ fn is_contained_path(raw: &str) -> bool {
 /// cannot leave that directory. HappyView applies the same rule.
 fn is_valid_module_name(name: &str) -> bool {
     let mut chars = name.chars();
-    matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c.is_ascii_digit())
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+}
+
+/// Whether `raw` still names somewhere inside `project` once symlinks are
+/// followed. A path that does not exist yet has nothing to follow, and is
+/// left to the build to report as missing.
+fn resolves_inside(project: &Path, raw: &str) -> Result<bool, Failure> {
+    let Ok(dir) = project.join(raw).canonicalize() else {
+        return Ok(true);
+    };
+    let root = project.canonicalize().map_err(Failure::runtime)?;
+    Ok(dir.starts_with(root))
 }
 
 pub fn read_modules(project: &Path) -> Result<Vec<ModuleSpec>, Failure> {
@@ -76,11 +87,11 @@ pub fn read_modules(project: &Path) -> Result<Vec<ModuleSpec>, Failure> {
         .map(|(name, entry)| {
             if !is_valid_module_name(&name) {
                 return Err(Failure::usage(format!(
-                    "module '{name}' needs a name of lowercase letters, digits, '-' and '_', \
-                     since it names its build file"
+                    "module '{name}' must be lowercase letters, digits, '-' or '_', starting \
+                     with a letter"
                 )));
             }
-            if !is_contained_path(&entry.path) {
+            if !is_contained_path(&entry.path) || !resolves_inside(project, &entry.path)? {
                 return Err(Failure::usage(format!(
                     "module '{name}': module path '{}' must be relative to the project root \
                      and stay inside it",
@@ -185,16 +196,20 @@ pub fn build_module(
     project: &Path,
     module: &ModuleSpec,
 ) -> Result<PathBuf, Failure> {
-    build_module_unless(tc, project, module, &AtomicBool::new(false))
+    build_module_unless(tc, project, module, &AtomicBool::new(false), false)
 }
 
 /// As `build_module`, but a set `stop` ends cargo at once rather than
-/// waiting out the build, and nothing is installed.
+/// waiting out the build, and nothing is installed. With `own_group`, cargo
+/// runs in a process group of its own, which a terminal's Ctrl-C does not
+/// reach, and `stop` ends the whole group, since killing cargo alone leaves
+/// its rustc children running.
 fn build_module_unless(
     tc: &Toolchain,
     project: &Path,
     module: &ModuleSpec,
     stop: &AtomicBool,
+    own_group: bool,
 ) -> Result<PathBuf, Failure> {
     check_toolchain(tc, project, module)?;
     let dir = project.join(&module.path);
@@ -202,7 +217,15 @@ fn build_module_unless(
     require_panic_abort(project, module)?;
     // Diagnostics render to stderr, which the developer sees as they would
     // from cargo itself; stdout carries the JSON that names the artifact.
-    let mut child = Command::new(&tc.cargo)
+    let mut cmd = Command::new(&tc.cargo);
+    #[cfg(unix)]
+    if own_group {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(not(unix))]
+    let _ = own_group;
+    let mut child = cmd
         .args([
             "build",
             "--release",
@@ -230,6 +253,12 @@ fn build_module_unless(
             break status;
         }
         if stop.load(Ordering::SeqCst) {
+            #[cfg(unix)]
+            if own_group {
+                // SAFETY: killpg(2) on the group cargo leads, which exists
+                // while cargo is unreaped.
+                unsafe { libc::killpg(child.id() as libc::pid_t, libc::SIGKILL) };
+            }
             let _ = child.kill();
             let _ = child.wait();
             return Err(Failure::runtime(format!(
@@ -263,22 +292,32 @@ fn build_module_unless(
 /// at load, so it is refused here, where the fix is a line in a manifest.
 fn require_panic_abort(project: &Path, module: &ModuleSpec) -> Result<(), Failure> {
     let manifest = profile_manifest(&project.join(&module.path))?;
-    let panic = read_manifest(&manifest)?
-        .get("profile")
-        .and_then(|p| p.get("release"))
+    let parsed = read_manifest(&manifest)?;
+    let release = parsed.get("profile").and_then(|p| p.get("release"));
+    if release
         .and_then(|r| r.get("panic"))
         .and_then(|v| v.as_str())
-        .map(str::to_string);
-    if panic.as_deref() == Some("abort") {
+        == Some("abort")
+    {
         return Ok(());
     }
     let project = project.canonicalize().map_err(Failure::runtime)?;
     let shown = manifest.strip_prefix(&project).unwrap_or(&manifest);
+    let fix = if release.is_some() {
+        format!(
+            "set `panic = \"abort\"` under the existing `[profile.release]` in {}",
+            shown.display()
+        )
+    } else {
+        format!(
+            "add to {}:\n  [profile.release]\n  panic = \"abort\"",
+            shown.display()
+        )
+    };
     Err(Failure::usage(format!(
         "module '{}' must build with panic = \"abort\", since HappyView refuses a module that \
-         unwinds; add to {}:\n  [profile.release]\n  panic = \"abort\"",
-        module.name,
-        shown.display()
+         unwinds; {fix}",
+        module.name
     )))
 }
 
@@ -302,8 +341,10 @@ fn profile_manifest(dir: &Path) -> Result<PathBuf, Failure> {
         .and_then(|p| p.get("workspace"))
         .and_then(|w| w.as_str())
     {
-        return Ok(dir.join(root).join("Cargo.toml"));
+        return Ok(normalize(&dir.join(root)).join("Cargo.toml"));
     }
+    // Cargo keeps looking above a workspace that excludes the crate, unless
+    // the crate is also one of its members.
     for ancestor in dir.ancestors().skip(1) {
         let candidate = ancestor.join("Cargo.toml");
         if !candidate.is_file() {
@@ -316,16 +357,40 @@ fn profile_manifest(dir: &Path) -> Result<PathBuf, Failure> {
         else {
             continue;
         };
-        let excluded = workspace
-            .get("exclude")
-            .and_then(|e| e.as_array())
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.as_str())
-            .any(|e| dir.starts_with(ancestor.join(e)));
-        return Ok(if excluded { own } else { candidate });
+        let listed = |key: &str| {
+            workspace
+                .get(key)
+                .and_then(|e| e.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.as_str())
+                .map(|e| normalize(&ancestor.join(e)))
+                .collect::<Vec<_>>()
+        };
+        let excluded = listed("exclude").iter().any(|e| dir.starts_with(e));
+        // Cargo compares a member literally here, without expanding a glob.
+        let member = listed("members").iter().any(|m| dir.starts_with(m));
+        if excluded && !member {
+            continue;
+        }
+        return Ok(candidate);
     }
     Ok(own)
+}
+
+/// `path` with `.` and `..` resolved lexically, without following symlinks.
+fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 #[derive(Deserialize)]
@@ -377,8 +442,11 @@ pub fn install_artifact(project: &Path, name: &str, built: &Path) -> Result<Path
     std::fs::create_dir_all(&dir).map_err(Failure::runtime)?;
     let dest = dir.join(format!("{name}.wasm"));
     let staging = dir.join(format!(".{name}.wasm.partial"));
-    std::fs::copy(built, &staging).map_err(Failure::runtime)?;
-    std::fs::rename(&staging, &dest).map_err(Failure::runtime)?;
+    let installed = std::fs::copy(built, &staging).and_then(|_| std::fs::rename(&staging, &dest));
+    if let Err(e) = installed {
+        let _ = std::fs::remove_file(&staging);
+        return Err(Failure::runtime(e));
+    }
     Ok(dest)
 }
 
@@ -469,7 +537,7 @@ pub fn watch(
             let now = fingerprint(&project.join(&module.path));
             if now != *seen {
                 *seen = now;
-                let result = build_module_unless(tc, project, module, stop);
+                let result = build_module_unless(tc, project, module, stop, true);
                 if stop.load(Ordering::SeqCst) {
                     return;
                 }
@@ -547,6 +615,45 @@ pub(crate) mod tests {
         let err = read_modules(p.path()).unwrap_err();
         assert_eq!(err.code, 2);
         assert!(err.report.to_string().contains("'../x'"));
+    }
+
+    #[test]
+    fn a_module_name_must_start_with_a_letter_as_happyview_requires() {
+        let p = project("[modules.2fa]\nlanguage = \"rust\"\npath = \"modules/registry\"\n");
+        let err = read_modules(p.path()).unwrap_err();
+        assert_eq!(err.code, 2);
+        assert_eq!(
+            err.report.to_string(),
+            "module '2fa' must be lowercase letters, digits, '-' or '_', starting with a letter"
+        );
+        let p = project("[modules.t2-f_a]\nlanguage = \"rust\"\npath = \"modules/registry\"\n");
+        assert_eq!(read_modules(p.path()).unwrap()[0].name, "t2-f_a");
+    }
+
+    #[test]
+    fn a_module_path_whose_symlink_leaves_the_project_is_refused() {
+        let outside = tempfile::tempdir().unwrap();
+        let p = project("[modules.registry]\nlanguage = \"rust\"\npath = \"modules/link\"\n");
+        std::os::unix::fs::symlink(outside.path(), p.path().join("modules/link")).unwrap();
+        let err = read_modules(p.path()).unwrap_err();
+        assert_eq!(err.code, 2);
+        assert_eq!(
+            err.report.to_string(),
+            "module 'registry': module path 'modules/link' must be relative to the project root \
+             and stay inside it"
+        );
+
+        // A symlink that stays inside is only another name for the module.
+        std::fs::remove_file(p.path().join("modules/link")).unwrap();
+        std::os::unix::fs::symlink(
+            p.path().join("modules/registry"),
+            p.path().join("modules/link"),
+        )
+        .unwrap();
+        assert_eq!(
+            read_modules(p.path()).unwrap()[0].path,
+            PathBuf::from("modules/link")
+        );
     }
 
     #[test]
@@ -765,9 +872,21 @@ pub(crate) mod tests {
 
     #[test]
     fn a_module_that_unwinds_is_refused_before_cargo_builds_it() {
-        for manifest in [
-            "[package]\nname = \"registry\"\n",
-            "[package]\nname = \"registry\"\n[profile.release]\npanic = \"unwind\"\n",
+        for (manifest, fix) in [
+            (
+                "[package]\nname = \"registry\"\n",
+                "add to modules/registry/Cargo.toml:\n  [profile.release]\n  panic = \"abort\"",
+            ),
+            (
+                "[package]\nname = \"registry\"\n[profile.release]\npanic = \"unwind\"\n",
+                "set `panic = \"abort\"` under the existing `[profile.release]` in \
+                 modules/registry/Cargo.toml",
+            ),
+            (
+                "[package]\nname = \"registry\"\n[profile.release]\nopt-level = 3\n",
+                "set `panic = \"abort\"` under the existing `[profile.release]` in \
+                 modules/registry/Cargo.toml",
+            ),
         ] {
             let p = project(REGISTRY);
             std::fs::write(p.path().join("modules/registry/Cargo.toml"), manifest).unwrap();
@@ -778,11 +897,7 @@ pub(crate) mod tests {
             assert_eq!(err.code, 2);
             let text = err.report.to_string();
             assert!(text.contains("'registry'"), "{text}");
-            assert!(text.contains("modules/registry/Cargo.toml"), "{text}");
-            assert!(
-                text.contains("[profile.release]\n  panic = \"abort\""),
-                "{text}"
-            );
+            assert!(text.ends_with(fix), "{text}");
             assert!(!count.exists(), "cargo built a module that unwinds");
         }
     }
@@ -832,6 +947,91 @@ pub(crate) mod tests {
         .unwrap();
         let module = &read_modules(p.path()).unwrap()[0];
         build_module(&tc, p.path(), module).unwrap();
+    }
+
+    #[test]
+    fn the_root_search_passes_an_excluding_workspace_unless_it_also_lists_the_member() {
+        let p = project(REGISTRY);
+        let tc = fake_cargo(
+            p.path(),
+            Path::new("/unused"),
+            false,
+            &p.path().join("count"),
+        );
+        let module = &read_modules(p.path()).unwrap()[0];
+        // Cargo carries on above the workspace that excludes the crate and
+        // finds the one that lists it, whose profile is the one it applies.
+        std::fs::write(
+            p.path().join("modules/Cargo.toml"),
+            "[workspace]\nexclude = [\"registry\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            p.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"modules/registry\"]\n",
+        )
+        .unwrap();
+        let text = build_module(&tc, p.path(), module)
+            .unwrap_err()
+            .report
+            .to_string();
+        assert!(text.contains("add to Cargo.toml:"), "{text}");
+
+        // Listed as a member as well, the crate belongs to the nearer one.
+        std::fs::write(
+            p.path().join("modules/Cargo.toml"),
+            "[workspace]\nmembers = [\"registry\"]\nexclude = [\"registry\"]\n",
+        )
+        .unwrap();
+        let text = build_module(&tc, p.path(), module)
+            .unwrap_err()
+            .report
+            .to_string();
+        assert!(text.contains("add to modules/Cargo.toml:"), "{text}");
+    }
+
+    #[test]
+    fn a_package_workspace_path_is_named_without_dot_segments() {
+        let p = project(REGISTRY);
+        let tc = fake_cargo(
+            p.path(),
+            Path::new("/unused"),
+            false,
+            &p.path().join("count"),
+        );
+        let module = &read_modules(p.path()).unwrap()[0];
+        std::fs::write(
+            p.path().join("modules/registry/Cargo.toml"),
+            "[package]\nname = \"registry\"\nworkspace = \"./../\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            p.path().join("modules/Cargo.toml"),
+            "[workspace]\nmembers = [\"registry\"]\n",
+        )
+        .unwrap();
+        let text = build_module(&tc, p.path(), module)
+            .unwrap_err()
+            .report
+            .to_string();
+        assert!(text.contains("add to modules/Cargo.toml:"), "{text}");
+    }
+
+    #[test]
+    fn a_failed_install_leaves_no_staging_file_and_the_previous_build() {
+        let p = project(REGISTRY);
+        let built = p.path().join("built.wasm");
+        std::fs::write(&built, b"\0asm").unwrap();
+        // A non-empty directory where the module goes makes the rename fail.
+        let dest = p.path().join(".happyview/build/registry.wasm");
+        std::fs::create_dir_all(dest.join("kept")).unwrap();
+        install_artifact(p.path(), "registry", &built).unwrap_err();
+        assert!(dest.join("kept").is_dir());
+        let left: Vec<_> = std::fs::read_dir(p.path().join(".happyview/build"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["registry.wasm"]);
     }
 
     #[test]
@@ -897,14 +1097,49 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), b"\0asm-old");
     }
 
+    /// Sets `stop` when dropped, so a test thread that panics still ends the
+    /// watch it is driving instead of leaving it to run forever.
+    struct StopOnDrop<'a>(&'a AtomicBool);
+
+    impl Drop for StopOnDrop<'_> {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// A zombie is already dead; on Linux it stays one under a subreaper
+    /// that does not reap, which a CI runner can be.
+    fn alive(pid: libc::pid_t) -> bool {
+        if cfg!(target_os = "linux") {
+            return std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .ok()
+                .and_then(|stat| {
+                    let state = stat
+                        .rsplit_once(')')?
+                        .1
+                        .split_whitespace()
+                        .next()?
+                        .to_owned();
+                    Some(state != "Z")
+                })
+                .unwrap_or(false);
+        }
+        // SAFETY: kill(2) with signal 0 only asks whether the pid exists.
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
     #[test]
-    fn stopping_the_watch_ends_a_build_under_way() {
+    fn stopping_the_watch_ends_a_build_under_way_with_its_children() {
         use std::time::{Duration, Instant};
 
         let p = project(REGISTRY);
         let pid = p.path().join("cargo.pid");
+        let grandchild = p.path().join("rustc.pid");
+        // A cargo that starts a child of its own, as cargo starts rustc.
         let body = format!(
-            "if [ \"$1\" = --version ]; then exit 0; fi\necho $$ > '{}'\nexec sleep 30",
+            "if [ \"$1\" = --version ]; then exit 0; fi\n\
+             sleep 30 &\necho $! > '{}'\necho $$ > '{}'\nwait",
+            grandchild.display(),
             pid.display()
         );
         let tc = Toolchain {
@@ -917,23 +1152,25 @@ pub(crate) mod tests {
         std::fs::write(&src, "a").unwrap();
 
         let mut outcomes = 0;
-        let (cargo, stopped_at) = std::thread::scope(|s| {
+        let (cargo, rustc, stopped_at) = std::thread::scope(|s| {
             let stopper = s.spawn(|| {
+                let _stop = StopOnDrop(&stop);
                 std::thread::sleep(Duration::from_millis(150));
                 std::fs::write(&src, "changed").unwrap();
                 let deadline = Instant::now() + Duration::from_secs(10);
-                let cargo: libc::pid_t = loop {
-                    if let Some(pid) = std::fs::read_to_string(&pid)
-                        .ok()
-                        .and_then(|s| s.trim().parse().ok())
-                    {
+                let read = |path: &Path| -> Option<libc::pid_t> {
+                    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+                };
+                let cargo = loop {
+                    if let Some(pid) = read(&pid) {
                         break pid;
                     }
                     assert!(Instant::now() < deadline, "cargo never started");
                     std::thread::sleep(Duration::from_millis(20));
                 };
+                let rustc = read(&grandchild).expect("cargo's child is written first");
                 stop.store(true, Ordering::SeqCst);
-                (cargo, Instant::now())
+                (cargo, rustc, Instant::now())
             });
             watch(
                 &tc,
@@ -945,17 +1182,22 @@ pub(crate) mod tests {
                     outcomes += 1;
                 },
             );
-            let (cargo, stopped_at) = stopper.join().unwrap();
-            (cargo, stopped_at)
+            stopper.join().unwrap()
         });
         let waited = stopped_at.elapsed();
-        // SAFETY: kill(2) with signal 0 only asks whether the pid exists.
-        let alive = unsafe { libc::kill(cargo, 0) } == 0;
-        if alive {
-            // SAFETY: as above, ending the fake this test started.
-            unsafe { libc::kill(cargo, libc::SIGKILL) };
+        // An orphan is reaped by whichever process adopts it, which takes a
+        // moment after the kill.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while alive(rustc) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(!alive, "the stopped build's cargo is still running");
+        let (cargo_alive, rustc_alive) = (alive(cargo), alive(rustc));
+        for pid in [cargo, rustc] {
+            // SAFETY: ending the fakes this test started, if still running.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+        assert!(!cargo_alive, "the stopped build's cargo is still running");
+        assert!(!rustc_alive, "the stopped build's child is still running");
         assert!(
             waited < Duration::from_secs(5),
             "watch waited {waited:?} for the build"
