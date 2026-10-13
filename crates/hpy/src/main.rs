@@ -31,7 +31,9 @@ async fn main() -> ExitCode {
     let code = match run(cli).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {
-            eprintln!("{:?}", f.report);
+            if !f.quiet {
+                eprintln!("{:?}", f.report);
+            }
             ExitCode::from(f.code)
         }
     };

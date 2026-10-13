@@ -6,6 +6,9 @@ use hpy_plugin::Problem;
 pub struct Failure {
     pub code: u8,
     pub report: miette::Report,
+    /// Already explained on the terminal, by a child process whose output
+    /// went straight there, so `main` prints nothing more.
+    pub quiet: bool,
 }
 
 impl Failure {
@@ -13,6 +16,7 @@ impl Failure {
         Failure {
             code: 2,
             report: miette::miette!("{msg}"),
+            quiet: false,
         }
     }
 
@@ -20,6 +24,7 @@ impl Failure {
         Failure {
             code: 1,
             report: miette::miette!("{msg}"),
+            quiet: false,
         }
     }
 
@@ -27,6 +32,15 @@ impl Failure {
         Failure {
             code: 3,
             report: miette::miette!("not logged in; run `hpy registry login`"),
+            quiet: false,
+        }
+    }
+
+    pub fn exit(code: u8) -> Failure {
+        Failure {
+            code,
+            report: miette::miette!("exited with {code}"),
+            quiet: true,
         }
     }
 
@@ -48,6 +62,7 @@ impl From<hpy_atproto::Error> for Failure {
         Failure {
             code,
             report: miette::miette!("{e}"),
+            quiet: false,
         }
     }
 }
@@ -55,5 +70,19 @@ impl From<hpy_atproto::Error> for Failure {
 impl From<Problem> for Failure {
     fn from(p: Problem) -> Failure {
         Failure::usage(p)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exit_failures_are_quiet_and_others_are_not() {
+        let f = Failure::exit(7);
+        assert_eq!(f.code, 7);
+        assert!(f.quiet);
+        assert!(!Failure::usage("x").quiet);
+        assert!(!Failure::runtime("x").quiet);
     }
 }
