@@ -214,6 +214,7 @@ installs `hpy` and does the above in one step:
   with:
     version: 1.2.0
     credential: ${{ secrets.HPY_CREDENTIAL }}
+    hpy-channel: alpha   # until hpy 1.0.0 is out
 ```
 
 ## Updates
