@@ -43,11 +43,21 @@ pub struct ProjectToml {
     pub interpreters: BTreeMap<String, String>,
     #[serde(default)]
     pub libraries: BTreeMap<String, String>,
+    #[serde(default)]
+    pub dev: DevTable,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct HappyviewTable {
     pub version: Option<String>,
+}
+
+/// `[dev]`: HappyView reads all of it; `hpy` reads `backfill` to pass it on
+/// to an instance it runs itself.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct DevTable {
+    #[serde(default)]
+    pub backfill: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,6 +273,17 @@ pub fn version_matches(req: &str, version: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dev_backfill_defaults_off() {
+        assert!(!ProjectToml::parse("").unwrap().dev.backfill);
+        assert!(
+            ProjectToml::parse("[dev]\nbackfill = true\n")
+                .unwrap()
+                .dev
+                .backfill
+        );
+    }
 
     const PROJECT: &str = r#"# The registry's own instance.
 [happyview]

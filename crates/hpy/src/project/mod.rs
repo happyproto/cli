@@ -3,8 +3,8 @@
 
 pub mod binary;
 pub mod cache;
-// Goes once `dev --network local` uses the module.
-#[allow(dead_code)]
+// `dev --network local` is refused off unix.
+#[cfg(unix)]
 pub mod network;
 pub mod plugins;
 pub mod prepare;

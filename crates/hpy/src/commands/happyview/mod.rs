@@ -2,6 +2,8 @@ pub mod add;
 pub mod check;
 pub mod create;
 pub mod dev;
+#[cfg(unix)]
+pub mod network;
 
 use crate::cli::HappyviewCommand;
 use crate::ctx::Ctx;

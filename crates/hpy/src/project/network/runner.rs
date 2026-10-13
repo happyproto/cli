@@ -11,6 +11,14 @@ use crate::failure::Failure;
 pub trait Runner: Send + Sync {
     /// Runs to completion with its output on this terminal; answers the exit code.
     async fn show(&self, program: &str, args: &[String], cwd: &Path) -> Result<i32, Failure>;
+    /// As `show`, with the child's stdout sent to this process's stderr, for
+    /// output that must stay off a stdout reserved for JSON.
+    async fn show_on_stderr(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+    ) -> Result<i32, Failure>;
     /// Runs to completion and answers its stdout; a non-zero exit is a
     /// failure carrying its stderr.
     async fn capture(&self, program: &str, args: &[String], cwd: &Path) -> Result<String, Failure>;
@@ -20,33 +28,26 @@ fn not_installed(program: &str) -> Failure {
     Failure::usage(format!("`{program}` is not installed or not on PATH"))
 }
 
-pub struct SystemRunner;
+#[derive(Default)]
+pub struct SystemRunner {
+    /// Sends every `show` child's stdout to stderr, for a run whose stdout
+    /// is reserved for one JSON document.
+    pub stdout_to_stderr: bool,
+}
 
 #[async_trait]
 impl Runner for SystemRunner {
-    // Not `run_foreground`: that replaces this process on unix, and the
-    // caller has more to do once the child is done.
     async fn show(&self, program: &str, args: &[String], cwd: &Path) -> Result<i32, Failure> {
-        if which(program).is_none() {
-            return Err(not_installed(program));
-        }
-        let mut child = tokio::process::Command::new(program)
-            .args(args)
-            .current_dir(cwd)
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    not_installed(program)
-                } else {
-                    Failure::runtime(format!("could not run `{program}`: {e}"))
-                }
-            })?;
-        let status = child
-            .wait()
-            .await
-            .map_err(|e| Failure::runtime(format!("could not wait for `{program}`: {e}")))?;
-        Ok(status.code().unwrap_or(1))
+        spawn_and_wait(program, args, cwd, self.stdout_to_stderr).await
+    }
+
+    async fn show_on_stderr(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+    ) -> Result<i32, Failure> {
+        spawn_and_wait(program, args, cwd, true).await
     }
 
     async fn capture(&self, program: &str, args: &[String], cwd: &Path) -> Result<String, Failure> {
@@ -71,6 +72,36 @@ impl Runner for SystemRunner {
         }
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
+}
+
+// Not `run_foreground`: that replaces this process on unix, and the caller
+// has more to do once the child is done.
+async fn spawn_and_wait(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    stdout_to_stderr: bool,
+) -> Result<i32, Failure> {
+    if which(program).is_none() {
+        return Err(not_installed(program));
+    }
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(args).current_dir(cwd).kill_on_drop(true);
+    if stdout_to_stderr {
+        cmd.stdout(std::io::stderr());
+    }
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            not_installed(program)
+        } else {
+            Failure::runtime(format!("could not run `{program}`: {e}"))
+        }
+    })?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| Failure::runtime(format!("could not wait for `{program}`: {e}")))?;
+    Ok(status.code().unwrap_or(1))
 }
 
 /// `program` on PATH, so a missing tool is a usage error naming it rather
@@ -146,6 +177,15 @@ impl Runner for FakeRunner {
         })
     }
 
+    async fn show_on_stderr(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+    ) -> Result<i32, Failure> {
+        self.show(program, args, cwd).await
+    }
+
     async fn capture(&self, program: &str, args: &[String], _: &Path) -> Result<String, Failure> {
         self.answer(program, args).map_err(Failure::runtime)
     }
@@ -158,12 +198,12 @@ mod tests {
     #[tokio::test]
     async fn capture_answers_stdout_and_failures_carry_stderr() {
         let dir = tempfile::tempdir().unwrap();
-        let out = SystemRunner
+        let out = SystemRunner::default()
             .capture("sh", &["-c".into(), "echo hi".into()], dir.path())
             .await
             .unwrap();
         assert_eq!(out, "hi\n");
-        let err = SystemRunner
+        let err = SystemRunner::default()
             .capture(
                 "sh",
                 &["-c".into(), "echo nope >&2; exit 4".into()],
@@ -177,7 +217,7 @@ mod tests {
     #[tokio::test]
     async fn a_missing_program_is_named() {
         let dir = tempfile::tempdir().unwrap();
-        let err = SystemRunner
+        let err = SystemRunner::default()
             .capture("no-such-tool-hpy", &[], dir.path())
             .await
             .unwrap_err();
@@ -189,7 +229,7 @@ mod tests {
     async fn must_turns_a_non_zero_show_into_a_failure() {
         let dir = tempfile::tempdir().unwrap();
         let err = must(
-            &SystemRunner,
+            &SystemRunner::default(),
             "sh",
             &["-c".into(), "exit 5".into()],
             dir.path(),

@@ -49,6 +49,28 @@ fn tar_xz(name: &str, body: &[u8]) -> Vec<u8> {
     builder.into_inner().unwrap().finish().unwrap()
 }
 
+/// Serves the fake release's asset for `target`.
+fn serve_release(rt: &tokio::runtime::Runtime, server: &MockServer, target: &str) {
+    let asset = format!("happyview-{target}.tar.xz");
+    let archive = tar_xz(
+        &format!("happyview-{target}/happyview"),
+        FAKE_HAPPYVIEW.as_bytes(),
+    );
+    let sum = data_encoding::HEXLOWER.encode(&Sha256::digest(&archive));
+    rt.block_on(async {
+        Mock::given(method("GET"))
+            .and(path(format!("/dl/v{VERSION}/{asset}")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(archive))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/dl/v{VERSION}/{asset}.sha256")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!("{sum}  {asset}\n")))
+            .mount(server)
+            .await;
+    });
+}
+
 struct Stack {
     /// The runtime the mock server runs on, and that tests mount more mocks on.
     rt: tokio::runtime::Runtime,
@@ -63,26 +85,7 @@ impl Stack {
     fn new() -> Stack {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let server = rt.block_on(MockServer::start());
-        let asset = format!("happyview-{}.tar.xz", target());
-        let archive = tar_xz(
-            &format!("happyview-{}/happyview", target()),
-            FAKE_HAPPYVIEW.as_bytes(),
-        );
-        let sum = data_encoding::HEXLOWER.encode(&Sha256::digest(&archive));
-        rt.block_on(async {
-            Mock::given(method("GET"))
-                .and(path(format!("/dl/v{VERSION}/{asset}")))
-                .respond_with(ResponseTemplate::new(200).set_body_bytes(archive))
-                .mount(&server)
-                .await;
-            Mock::given(method("GET"))
-                .and(path(format!("/dl/v{VERSION}/{asset}.sha256")))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_string(format!("{sum}  {asset}\n")),
-                )
-                .mount(&server)
-                .await;
-        });
+        serve_release(&rt, &server, &target());
         let project = tempfile::tempdir().unwrap();
         std::fs::write(
             project.path().join("happyview.toml"),
@@ -127,6 +130,7 @@ impl Stack {
             .env("HPY_NO_UPDATE_CHECK", "1")
             .env("HPY_REGISTRY_URL", self.server.uri())
             .env("HPY_CACHE_DIR", self.cache.path())
+            .env("HPY_DATA_DIR", self.cache.path().join("data"))
             .env(
                 "HPY_HAPPYVIEW_DOWNLOAD",
                 format!("{}/dl", self.server.uri()),
@@ -1027,4 +1031,649 @@ fn a_loose_cache_directory_the_user_named_is_refused_not_changed() {
         .mode();
     assert_eq!(mode & 0o777, 0o755);
     assert_eq!(std::fs::read_dir(stack.cache.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn reset_needs_the_local_network() {
+    let stack = Stack::new();
+    stack
+        .hpy()
+        .args(["hv", "dev", "--reset"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--network"));
+}
+
+#[cfg(unix)]
+#[test]
+fn local_without_deno_names_what_to_install() {
+    let stack = Stack::new();
+    let empty_path = tempfile::tempdir().unwrap();
+    stack
+        .hpy()
+        .env("PATH", empty_path.path())
+        .args(["hv", "dev", "--network", "local"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("Deno 2.8"));
+}
+
+/// A `deno` standing in for Atmosphere in a Box's CLI: it logs every call and
+/// writes the state files the real one would.
+#[cfg(unix)]
+const FAKE_DENO: &str = r#"echo "deno $*" >> "$NET_LOG"
+# The real CLI reports progress on stdout; `access hosts` is read by hpy and
+# prints only its block.
+case "$*" in
+  "task sandbox access hosts") ;;
+  task*) echo "sandbox progress: $*" ;;
+esac
+case "$*" in
+  --version) echo "deno 2.8.3 (stable, release)" ;;
+  "task sandbox create"*)
+    mkdir -p state/ca
+    echo '{"applications":[]}' > state/manifest.json
+    echo fake-ca > state/ca/root.crt ;;
+  "task sandbox apply --app happyview")
+    echo '{"applications":["happyview"]}' > state/manifest.json ;;
+  "task sandbox seed")
+    if [ -n "$NET_SEED_BLOCK" ]; then
+      if [ "$NET_SEED_BLOCK" = pending ]; then echo '{}' > state/pending-apply.json; fi
+      echo seeding > "$NET_LOG.seeding"
+      sleep 30
+    fi
+    echo '{"version":1,"accounts":{"user1.pds1.atmosbox.test":{"handle":"user1.pds1.atmosbox.test","password":"seeded-secret-pw","phase":"ready","did":"did:plc:user1"}}}' > state/accounts.json ;;
+  "task sandbox resume")
+    rm -f state/pending-create.json state/pending-apply.json
+    mkdir -p state/ca
+    [ -f state/manifest.json ] || echo '{"applications":[]}' > state/manifest.json
+    echo fake-ca > state/ca/root.crt ;;
+  "task sandbox destroy --accept-destructive")
+    # The real one reads the project's name from the manifest.
+    [ -f state/manifest.json ] || { echo "no manifest" >&2; exit 1; }
+    rm -f state/manifest.json state/accounts.json state/pending-create.json state/pending-apply.json ;;
+  "task sandbox access hosts")
+    if [ -n "$NET_HOSTS" ]; then printf '%s\n' '# begin' "$NET_HOSTS" '# end'; fi ;;
+  "task sandbox up"*)
+    if [ -n "$NET_UP_FAILS" ] && grep -q happyview state/manifest.json; then exit 1; fi ;;
+esac
+exit 0"#;
+
+/// A `docker` answering what `hpy` asks of it. `NET_RELAY` names a running
+/// access relay; `NET_BLOCK` keeps `logs --follow` open until a signal.
+#[cfg(unix)]
+const FAKE_DOCKER: &str = r#"echo "docker $*" >> "$NET_LOG"
+case "$*" in
+  "compose version"*) echo "Docker Compose version v2.40.0" ;;
+  "ps --filter label=com.docker.compose.service=host-access"*)
+    if [ -n "$NET_RELAY" ]; then echo "$NET_RELAY"; fi ;;
+  "info"*) echo aarch64 ;;
+  "ps -a"*)
+    if grep -q happyview state/manifest.json 2>/dev/null; then echo hv-test-happyview-1; fi ;;
+  "logs --tail"*) echo "happyview: could not open the database" ;;
+  "logs --follow"*)
+    echo "happyview log line"
+    if [ -n "$NET_BLOCK" ]; then echo following > "$NET_LOG.following"; sleep 30; fi ;;
+  "inspect"*) echo "true 0" ;;
+esac
+exit 0"#;
+
+/// A project ready for `dev --network local` against fakes: `deno` and
+/// `docker` on PATH, the Linux release served, an installed checkout (so
+/// nothing is downloaded), and the access walkthrough already done.
+#[cfg(unix)]
+struct LocalNet {
+    stack: Stack,
+    bin: tempfile::TempDir,
+    log: PathBuf,
+    checkout: PathBuf,
+    /// The sandbox's Compose project name.
+    project: String,
+    /// A port nothing listens on, standing in for 443.
+    free_addr: String,
+}
+
+#[cfg(unix)]
+impl LocalNet {
+    fn new() -> LocalNet {
+        use std::os::unix::fs::PermissionsExt;
+
+        let stack = Stack::new();
+        serve_release(&stack.rt, &stack.server, "aarch64-unknown-linux-musl");
+        let bin = tempfile::tempdir().unwrap();
+        for (name, body) in [("deno", FAKE_DENO), ("docker", FAKE_DOCKER)] {
+            let p = bin.path().join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let net = network_dir(&stack.cache.path().join("data"), stack.project.path());
+        let checkout = net.join("atmosphereinabox-v0.7.1");
+        let project = format!("hv-{}", net.file_name().unwrap().to_string_lossy());
+        std::fs::create_dir_all(checkout.join("stacks")).unwrap();
+        std::fs::write(checkout.join("stacks/components.json"), "[]").unwrap();
+        std::fs::write(checkout.join(".hpy-installed"), "v0.7.1").unwrap();
+        let ca = data_encoding::HEXLOWER.encode(&Sha256::digest(b"fake-ca\n"));
+        std::fs::write(net.join("access.toml"), format!("ca_sha256 = \"{ca}\"\n")).unwrap();
+        let free_addr = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .to_string();
+        let log = bin.path().join("net.log");
+        LocalNet {
+            stack,
+            bin,
+            log,
+            checkout,
+            project,
+            free_addr,
+        }
+    }
+
+    fn env(&self, cmd: &mut std::process::Command) {
+        self.stack.env(cmd);
+        cmd.env(
+            "PATH",
+            format!("{}:/usr/bin:/bin", self.bin.path().display()),
+        )
+        .env("NET_LOG", &self.log)
+        .env("HPY_NETWORK_ACCESS_ADDR", &self.free_addr)
+        .env_remove("NET_RELAY")
+        .env_remove("NET_BLOCK")
+        .env_remove("NET_UP_FAILS")
+        .env_remove("NET_HOSTS")
+        .env_remove("NET_SEED_BLOCK");
+    }
+
+    fn hpy(&self) -> Command {
+        let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
+        self.env(&mut cmd);
+        cmd.args(["hv", "dev", "--network", "local"]);
+        Command::from_std(cmd)
+    }
+
+    /// The sandbox commands run, in order.
+    fn sandbox_calls(&self) -> Vec<String> {
+        std::fs::read_to_string(&self.log)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| l.strip_prefix("deno task sandbox "))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn calls(&self) -> String {
+        std::fs::read_to_string(&self.log).unwrap_or_default()
+    }
+}
+
+/// `atmosbox::network_dir`, which an integration test cannot import.
+#[cfg(unix)]
+fn network_dir(data: &Path, project: &Path) -> PathBuf {
+    let canonical = std::fs::canonicalize(project).unwrap();
+    let hash =
+        data_encoding::HEXLOWER.encode(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
+    let name: String = canonical
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let name = name
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let name: String = name.chars().take(24).collect();
+    let name = name.trim_end_matches('-');
+    let name = if name.is_empty() { "project" } else { name };
+    data.join("networks").join(format!("{name}-{}", &hash[..8]))
+}
+
+#[cfg(unix)]
+#[test]
+fn a_local_run_without_a_terminal_prints_no_password() {
+    let net = LocalNet::new();
+    net.hpy().assert().code(0).stderr(
+        predicate::str::contains("seeded-secret-pw")
+            .not()
+            .and(predicate::str::contains("state/accounts.json"))
+            .and(predicate::str::contains("https://happyview.atmosbox.test")),
+    );
+    // HappyView joins only after the seed, so it first boots knowing its
+    // superadmin; the walkthrough then starts the relay, and the end stops
+    // everything.
+    assert_eq!(
+        net.sandbox_calls(),
+        [
+            format!(
+                "create --pds 1 --users-per-pds 1 --project {} --preset full-stack --subnet auto",
+                net.project
+            ),
+            "check".into(),
+            "up --build --wait-timeout 600".into(),
+            "seed".into(),
+            "apply --app happyview".into(),
+            "check".into(),
+            "up --build --wait-timeout 600".into(),
+            "access hosts".into(),
+            "access start".into(),
+            "access stop".into(),
+            "down".into(),
+        ]
+    );
+    let stack_file = read(&net.checkout.join("stacks/happyview.yaml"));
+    assert!(stack_file.contains("did:plc:user1"), "{stack_file}");
+    // The Linux release, not this computer's own binary.
+    assert!(net.checkout.join("stacks/happyview/happyview").is_file());
+    assert!(
+        net.stack
+            .cache
+            .path()
+            .join(format!(
+                "happyview/{VERSION}/aarch64-unknown-linux-musl/happyview"
+            ))
+            .is_file()
+    );
+    assert!(
+        net.stack
+            .project
+            .path()
+            .join(".happyview/local-network")
+            .is_dir()
+    );
+    // The network directory names its project, so it can be found again
+    // once the project has moved.
+    assert_eq!(
+        PathBuf::from(read(&net.checkout.parent().unwrap().join("project"))),
+        std::fs::canonicalize(net.stack.project.path()).unwrap()
+    );
+
+    // A second run finds the sandbox seeded and only brings it up.
+    std::fs::write(&net.log, "").unwrap();
+    net.hpy().assert().code(0);
+    assert_eq!(
+        net.sandbox_calls(),
+        [
+            "check",
+            "up --build --wait-timeout 600",
+            "access hosts",
+            "access start",
+            "access stop",
+            "down"
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn under_json_stdout_holds_only_the_result() {
+    let net = LocalNet::new();
+    let out = net
+        .hpy()
+        .arg("--json")
+        .assert()
+        .code(0)
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let documents: Vec<serde_json::Value> = serde_json::Deserializer::from_str(&stdout)
+        .into_iter()
+        .collect::<Result<_, _>>()
+        .unwrap_or_else(|e| panic!("stdout is not JSON alone ({e}): {stdout}"));
+    assert_eq!(documents.len(), 1, "{stdout}");
+    let result = &documents[0];
+    assert_eq!(result["url"], "https://happyview.atmosbox.test");
+    assert_eq!(result["handle"], "user1.pds1.atmosbox.test");
+    assert!(!stdout.contains("seeded-secret-pw"));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("happyview log line"), "{stderr}");
+    // The sandbox's own progress is there too, not on stdout.
+    assert!(
+        stderr.contains("sandbox progress: task sandbox up"),
+        "{stderr}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_second_network_is_refused_while_one_runs() {
+    // A fake `docker` that reports another sandbox holding the access relay.
+    let stack = Stack::new();
+    let bin = tempfile::tempdir().unwrap();
+    let write = |name: &str, body: &str| {
+        use std::os::unix::fs::PermissionsExt;
+        let p = bin.path().join(name);
+        std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    write("deno", "echo 'deno 2.8.3 (stable, release)'");
+    write(
+        "docker",
+        r#"case "$*" in
+  "compose version"*) echo "Docker Compose version v2.40.0" ;;
+  "ps --filter label=com.docker.compose.service=host-access"*) echo "hv-other-12345678" ;;
+  *) exit 0 ;;
+esac"#,
+    );
+    stack
+        .hpy()
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.path().display()))
+        .args(["hv", "dev", "--network", "local"])
+        .assert()
+        .code(2)
+        .stderr(
+            predicate::str::contains("hv-other-12345678")
+                .and(predicate::str::contains("127.0.0.1:443")),
+        );
+
+    // Anything else on the relay's port is refused before the relay starts,
+    // and the network that was brought up is stopped again.
+    let net = LocalNet::new();
+    let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = taken.local_addr().unwrap().to_string();
+    net.hpy()
+        .env("HPY_NETWORK_ACCESS_ADDR", &addr)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(format!(
+            "something else is listening on {addr}"
+        )));
+    let calls = net.sandbox_calls();
+    assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_up_shows_happyviews_last_log_lines_and_stops_the_network() {
+    let net = LocalNet::new();
+    net.hpy().env("NET_UP_FAILS", "1").assert().code(1).stderr(
+        predicate::str::contains("could not open the database")
+            .and(predicate::str::contains("deno task sandbox up")),
+    );
+    assert!(
+        net.calls()
+            .contains("docker logs --tail 50 hv-test-happyview-1")
+    );
+    let calls = net.sandbox_calls();
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_c_while_following_stops_the_network() {
+    use std::os::unix::process::CommandExt;
+    use std::time::{Duration, Instant};
+
+    let net = LocalNet::new();
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
+    net.env(&mut cmd);
+    let mut child = cmd
+        .args(["hv", "dev", "--network", "local"])
+        .env("NET_BLOCK", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        // Its own group, which a terminal's Ctrl-C signals as a whole.
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let following = net.log.with_extension("log.following");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !following.exists() {
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "hpy exited before following the logs: {}",
+            net.calls()
+        );
+        assert!(Instant::now() < deadline, "hpy never followed the logs");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let group = child.id() as libc::pid_t;
+    // SAFETY: kill(2) on the process group of a child this test spawned and has not reaped.
+    assert_eq!(unsafe { libc::kill(-group, libc::SIGINT) }, 0);
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            // SAFETY: as above.
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+            panic!("hpy did not exit after Ctrl-C: {}", net.calls());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(status.code(), Some(0), "{}", net.calls());
+    let calls = net.sandbox_calls();
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn without_a_terminal_a_missing_hosts_entry_stops_before_the_relay() {
+    let net = LocalNet::new();
+    let line = "127.0.0.1 happyview.hpy-missing-host.atmosbox.test";
+    net.hpy()
+        .env("NET_HOSTS", line)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(line).and(predicate::str::contains("/etc/hosts")));
+    let calls = net.sandbox_calls();
+    assert!(calls.iter().any(|c| c == "access hosts"), "{calls:?}");
+    assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+
+    // A CA nobody has confirmed trusting is refused the same way; this case
+    // leaves the machine's real /etc/hosts out of it.
+    let net = LocalNet::new();
+    std::fs::remove_file(net.checkout.parent().unwrap().join("access.toml")).unwrap();
+    net.hpy().assert().code(2).stderr(
+        predicate::str::contains("cannot reach the local network yet")
+            .and(predicate::str::contains("state/ca/root.crt")),
+    );
+    let calls = net.sandbox_calls();
+    assert!(!calls.iter().any(|c| c == "access start"), "{calls:?}");
+    assert_eq!(calls[calls.len() - 2..], ["access stop", "down"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_interrupted_first_create_is_resumed_not_created_again() {
+    let net = LocalNet::new();
+    std::fs::create_dir_all(net.checkout.join("state")).unwrap();
+    std::fs::write(net.checkout.join("state/pending-create.json"), "{}").unwrap();
+    assert!(!net.checkout.join("state/manifest.json").exists());
+    net.hpy().assert().code(0);
+    let calls = net.sandbox_calls();
+    assert_eq!(calls[0], "resume", "{calls:?}");
+    assert!(!calls.iter().any(|c| c.starts_with("create")), "{calls:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn reset_destroys_only_a_sandbox_that_exists_or_is_pending() {
+    let destroyed = |net: &LocalNet| {
+        net.sandbox_calls()
+            .iter()
+            .any(|c| c == "destroy --accept-destructive")
+    };
+    // Nothing there yet: nothing to destroy.
+    let net = LocalNet::new();
+    net.hpy().args(["--reset", "--yes"]).assert().code(0);
+    assert!(!destroyed(&net), "{:?}", net.sandbox_calls());
+
+    // Only pending state, with no manifest.
+    let net = LocalNet::new();
+    std::fs::create_dir_all(net.checkout.join("state")).unwrap();
+    std::fs::write(net.checkout.join("state/pending-create.json"), "{}").unwrap();
+    net.hpy().args(["--reset", "--yes"]).assert().code(0);
+    // `resume` writes the manifest that `destroy` needs.
+    assert_eq!(
+        net.sandbox_calls()[..2],
+        ["resume", "destroy --accept-destructive"]
+    );
+
+    // A created sandbox.
+    std::fs::write(&net.log, "").unwrap();
+    net.hpy().args(["--reset", "--yes"]).assert().code(0);
+    assert_eq!(net.sandbox_calls()[0], "destroy --accept-destructive");
+}
+
+/// Runs `dev --network local` with `NET_SEED_BLOCK=mode`, sends Ctrl-C to its
+/// process group once `seed` is under way, and answers its exit code.
+#[cfg(unix)]
+fn interrupt_during_seed(net: &LocalNet, mode: &str) -> Option<i32> {
+    use std::os::unix::process::CommandExt;
+    use std::time::{Duration, Instant};
+
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
+    net.env(&mut cmd);
+    let mut child = cmd
+        .args(["hv", "dev", "--network", "local"])
+        .env("NET_SEED_BLOCK", mode)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let seeding = net.log.with_extension("log.seeding");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !seeding.exists() {
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "hpy exited before seeding: {}",
+            net.calls()
+        );
+        assert!(Instant::now() < deadline, "hpy never seeded");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let group = child.id() as libc::pid_t;
+    // SAFETY: kill(2) on the process group of a child this test spawned and has not reaped.
+    assert_eq!(unsafe { libc::kill(-group, libc::SIGINT) }, 0);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return status.code();
+        }
+        if Instant::now() >= deadline {
+            // SAFETY: as above.
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+            panic!("hpy did not exit after Ctrl-C: {}", net.calls());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_c_during_setup_stops_a_running_network_unless_a_step_is_pending() {
+    let net = LocalNet::new();
+    assert_eq!(
+        interrupt_during_seed(&net, "1"),
+        Some(130),
+        "{}",
+        net.calls()
+    );
+    let calls = net.sandbox_calls();
+    assert_eq!(calls[calls.len() - 3..], ["seed", "access stop", "down"]);
+
+    // A pending step leaves the sandbox for `resume`, which is all it accepts.
+    let net = LocalNet::new();
+    assert_eq!(
+        interrupt_during_seed(&net, "pending"),
+        Some(130),
+        "{}",
+        net.calls()
+    );
+    assert_eq!(net.sandbox_calls().last().map(String::as_str), Some("seed"));
+}
+
+/// `args` under a pseudo-terminal from script(1).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn script_command(args: &[String]) -> std::process::Command {
+    let mut cmd = std::process::Command::new("script");
+    if cfg!(target_os = "macos") {
+        cmd.args(["-q", "/dev/null"]).args(args);
+    } else {
+        let line = args
+            .iter()
+            .map(|a| format!("'{}'", a.replace('\'', r"'\''")))
+            .collect::<Vec<_>>()
+            .join(" ");
+        cmd.args(["-qec", &line, "/dev/null"]);
+    }
+    cmd.stdin(std::process::Stdio::null());
+    cmd
+}
+
+/// Why this host cannot give a child a pseudo-terminal, or `None` when it
+/// can: script(1) is missing, or it ran without a terminal to hand over.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn no_pty_reason() -> Option<String> {
+    const MARK: &str = "hpy-pty-ok";
+    let probe = ["sh", "-c", "test -t 0 && test -t 2 && echo hpy-pty-ok"].map(String::from);
+    match script_command(&probe).output() {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Some("script(1) is not installed".into())
+        }
+        Err(e) => Some(format!("script(1) could not run: {e}")),
+        Ok(out) if !String::from_utf8_lossy(&out.stdout).contains(MARK) => Some(format!(
+            "script(1) could not open a pseudo-terminal: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+        Ok(_) => None,
+    }
+}
+
+/// `dev --network local` under a pseudo-terminal, answering everything the
+/// terminal showed; `None` when this host has no pseudo-terminal to give,
+/// which `HPY_REQUIRE_PTY_TEST=1` (set in CI) turns into a failure so a
+/// green run cannot hide a test that never ran.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn run_on_a_terminal(net: &LocalNet, extra: &[&str]) -> Option<String> {
+    if let Some(why) = no_pty_reason() {
+        assert!(
+            std::env::var_os("HPY_REQUIRE_PTY_TEST").is_none_or(|v| v != "1"),
+            "HPY_REQUIRE_PTY_TEST=1 but {why}"
+        );
+        eprintln!("skipped: {why}");
+        return None;
+    }
+    let hpy = assert_cmd::cargo::cargo_bin("hpy");
+    let mut args = vec![hpy.display().to_string()];
+    args.extend(
+        ["hv", "dev", "--network", "local"]
+            .iter()
+            .chain(extra)
+            .map(|a| a.to_string()),
+    );
+    let mut cmd = script_command(&args);
+    net.env(&mut cmd);
+    let out = cmd.output().unwrap();
+    Some(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[test]
+fn a_terminal_shows_the_password_but_never_under_json() {
+    let net = LocalNet::new();
+    // Without --json the terminal gets it, which shows the pty is real.
+    let Some(shown) = run_on_a_terminal(&net, &[]) else {
+        return;
+    };
+    assert!(shown.contains("seeded-secret-pw"), "{shown}");
+    let Some(json) = run_on_a_terminal(&net, &["--json"]) else {
+        return;
+    };
+    assert!(json.contains("\"url\""), "{json}");
+    assert!(!json.contains("seeded-secret-pw"), "{json}");
 }

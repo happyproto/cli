@@ -281,6 +281,7 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
         },
         interpreters: interpreter_versions.clone(),
         libraries: library_versions.clone(),
+        dev: Default::default(),
     };
     let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
     let r = Resolver {

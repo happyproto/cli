@@ -229,10 +229,30 @@ pub struct RunArgs {
     pub locked: bool,
 }
 
+#[derive(clap::ValueEnum, Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum Network {
+    /// The real atproto network; writes reach your real PDS.
+    #[default]
+    Real,
+    /// A private network on this computer (Atmosphere in a Box; needs Docker and Deno 2.8).
+    Local,
+}
+
 #[derive(Args)]
 pub struct DevArgs {
     #[command(flatten)]
     pub run: RunArgs,
+    /// Which atproto network to run against.
+    #[arg(long, value_enum, default_value_t = Network::Real)]
+    pub network: Network,
+    /// Discard the local network's accounts, records and database, then start fresh.
+    #[arg(long)]
+    pub reset: bool,
+    /// Do not ask for confirmation.
+    #[arg(long, short)]
+    // Only `--network local` asks, and it is unix-only.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub yes: bool,
 }
 
 #[derive(Args)]

@@ -8,6 +8,12 @@ impl Output {
         Output { json }
     }
 
+    // Only `dev --network local` asks, and it is unix-only.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub fn is_json(&self) -> bool {
+        self.json
+    }
+
     pub fn status(&self, msg: &str) {
         eprintln!("{msg}");
     }

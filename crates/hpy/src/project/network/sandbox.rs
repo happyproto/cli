@@ -68,9 +68,12 @@ impl Sandbox<'_> {
             &self.project,
             "--preset",
             "full-stack",
+            // A free /24 rather than the default, which a second project's
+            // sandbox would already hold.
+            "--subnet",
+            "auto",
         ])
-        .await?;
-        self.task(&["apply", "--app", APP_ID]).await
+        .await
     }
 
     pub async fn sync(&self, changed: bool) -> Result<(), Failure> {
@@ -137,7 +140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_new_sandbox_is_created_with_the_full_stack_then_happyview() {
+    async fn a_new_sandbox_is_created_with_the_full_stack_and_happyview_applied_later() {
         let dir = tempfile::tempdir().unwrap();
         let runner = FakeRunner::default();
         let s = sandbox(&runner, dir.path());
@@ -146,10 +149,13 @@ mod tests {
         assert_eq!(
             runner.calls(),
             [
-                "deno task sandbox create --pds 1 --users-per-pds 1 --project hv-app-1234abcd --preset full-stack",
-                "deno task sandbox apply --app happyview",
+                "deno task sandbox create --pds 1 --users-per-pds 1 --project hv-app-1234abcd --preset full-stack --subnet auto",
             ]
         );
+        write_manifest(dir.path(), r#"{"applications":[]}"#);
+        runner.calls.lock().unwrap().clear();
+        s.sync(false).await.unwrap();
+        assert_eq!(runner.calls(), ["deno task sandbox apply --app happyview"]);
         // The fake runs nothing, so stand in for what the real `apply` records.
         write_manifest(dir.path(), r#"{"applications":["happyview"]}"#);
         runner.calls.lock().unwrap().clear();
