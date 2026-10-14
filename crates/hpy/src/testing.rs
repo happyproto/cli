@@ -445,6 +445,10 @@ impl Registry for RegistryFixture {
     async fn withdraw_release(&self, _: &str, _: &str) -> Result<bool> {
         Err(Error::Other("RegistryFixture does not publish".into()))
     }
+
+    async fn retry_release(&self, _: &str, _: &str) -> Result<Option<String>> {
+        Err(Error::Other("RegistryFixture does not publish".into()))
+    }
 }
 
 pub fn interpreter_ext(language: &str, extension: &str) -> Value {

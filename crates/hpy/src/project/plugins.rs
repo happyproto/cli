@@ -347,6 +347,9 @@ mod tests {
         async fn withdraw_release(&self, _: &str, _: &str) -> hpy_atproto::Result<bool> {
             unreachable!()
         }
+        async fn retry_release(&self, _: &str, _: &str) -> hpy_atproto::Result<Option<String>> {
+            unreachable!()
+        }
     }
 
     #[tokio::test]
