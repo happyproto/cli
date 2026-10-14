@@ -378,6 +378,25 @@ mod tests {
         assert_eq!(std::fs::read_dir(dir.parent().unwrap()).unwrap().count(), 1);
     }
 
+    /// A directory opened so its times can be set. Windows opens a directory
+    /// only with backup semantics, and setting a time needs write-attributes
+    /// access, which a plain `File::open` does not ask for.
+    fn open_dir(path: &Path) -> std::fs::File {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x100;
+            const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+            std::fs::OpenOptions::new()
+                .access_mode(FILE_WRITE_ATTRIBUTES)
+                .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+                .open(path)
+                .unwrap()
+        }
+        #[cfg(not(windows))]
+        std::fs::File::open(path).unwrap()
+    }
+
     #[test]
     fn stale_partials_are_swept_and_fresh_ones_kept() {
         let root = tempfile::tempdir().unwrap();
@@ -388,10 +407,7 @@ mod tests {
         std::fs::create_dir(&stale).unwrap();
         std::fs::create_dir(&fresh).unwrap();
         let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
-        std::fs::File::open(&stale)
-            .unwrap()
-            .set_modified(old)
-            .unwrap();
+        open_dir(&stale).set_modified(old).unwrap();
         install_dir(&parent.join("3.0.0"), &[("a", b"x")]).unwrap();
         assert!(!stale.exists());
         assert!(fresh.exists());
