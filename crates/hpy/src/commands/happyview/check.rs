@@ -4,7 +4,7 @@ use crate::cli::{RunArgs, TestArgs};
 use crate::commands::happyview::build::build_modules;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
-use crate::project::modules::read_modules;
+use crate::project::modules::{Snapshot, read_modules};
 use crate::project::prepare::{PrepareOptions, REMOVED_ENV, prepare, project_root};
 use crate::project::run::{finish, run_foreground, run_rebuilding_modules};
 
@@ -28,8 +28,15 @@ pub async fn check(ctx: &Ctx, args: RunArgs) -> Result<(), Failure> {
 }
 
 pub async fn test(ctx: &Ctx, args: TestArgs) -> Result<(), Failure> {
+    let root = project_root(ctx)?;
+    // Before the build, so a save made while it runs is rebuilt.
+    let from = if args.watch {
+        Some(Snapshot::take(&root, read_modules(&root)?))
+    } else {
+        None
+    };
     // A run against a stale build would test code other than the source.
-    build_modules(project_root(ctx)?).await?;
+    build_modules(root).await?;
     let p = prepare(ctx, &PrepareOptions::native(args.run.locked)).await?;
     let mut argv: Vec<OsString> = vec!["test".into(), ".".into()];
     if args.watch {
@@ -38,11 +45,10 @@ pub async fn test(ctx: &Ctx, args: TestArgs) -> Result<(), Failure> {
     if let Some(filter) = args.filter {
         argv.push(filter.into());
     }
-    if !args.watch {
+    let Some(from) = from else {
         return finish(run_foreground(&p.binary, &argv, &p.root, &[], REMOVED_ENV).await?);
-    }
+    };
     // HappyView re-runs the tests when a module's build file changes, so
     // keeping the builds current is what makes a source edit re-run them.
-    let specs = read_modules(&p.root)?;
-    finish(run_rebuilding_modules(&p.binary, &argv, &p.root, specs).await?)
+    finish(run_rebuilding_modules(&p.binary, &argv, &p.root, from).await?)
 }

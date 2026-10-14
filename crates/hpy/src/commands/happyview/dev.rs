@@ -1,7 +1,7 @@
 use crate::cli::{DevArgs, Network};
 use crate::ctx::Ctx;
 use crate::failure::Failure;
-use crate::project::modules;
+use crate::project::modules::{self, Snapshot};
 use crate::project::prepare::{PrepareOptions, prepare};
 use crate::project::run::{finish, first_build, run_rebuilding_modules};
 
@@ -22,7 +22,9 @@ pub async fn run(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
     }
     let p = prepare(ctx, &PrepareOptions::native(args.run.locked)).await?;
     let specs = modules::read_modules(&p.root)?;
+    // Before the first build, so a save made while it runs is rebuilt.
+    let from = Snapshot::take(&p.root, specs);
 
-    first_build(&p.root, &specs).await?;
-    finish(run_rebuilding_modules(&p.binary, &["dev".into(), ".".into()], &p.root, specs).await?)
+    first_build(&p.root, from.modules()).await?;
+    finish(run_rebuilding_modules(&p.binary, &["dev".into(), ".".into()], &p.root, from).await?)
 }

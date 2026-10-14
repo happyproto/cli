@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::failure::Failure;
-use crate::project::modules::{self, ModuleSpec, Toolchain};
+use crate::project::modules::{self, ModuleSpec, Snapshot, Toolchain};
 use crate::project::prepare::REMOVED_ENV;
 
 /// On unix this replaces `hpy` with the binary and returns only if that
@@ -156,16 +156,17 @@ pub async fn run_supervised(
     run_foreground(program, args, cwd, envs, remove_env).await
 }
 
-/// Runs the binary while rebuilding each of `specs` whenever its source
-/// changes, and answers the binary's exit code. Without modules there is
-/// nothing to watch, and the binary replaces `hpy` as `run_foreground` does.
+/// Runs the binary while rebuilding each module in `from` whenever its
+/// source changes, and answers the binary's exit code. Without modules there
+/// is nothing to watch, and the binary replaces `hpy` as `run_foreground`
+/// does.
 pub async fn run_rebuilding_modules(
     binary: &Path,
     args: &[OsString],
     root: &Path,
-    specs: Vec<ModuleSpec>,
+    from: Snapshot,
 ) -> Result<i32, Failure> {
-    let Some(watcher) = ModuleWatcher::spawn(root, specs) else {
+    let Some(watcher) = ModuleWatcher::spawn(root, from) else {
         return run_foreground(binary, args, root, &[], REMOVED_ENV).await;
     };
     let exit = run_supervised(binary, args, root, &[], REMOVED_ENV).await;
@@ -173,8 +174,8 @@ pub async fn run_rebuilding_modules(
     exit
 }
 
-/// Rebuilds a project's modules as their sources change, on a thread of its
-/// own, until stopped.
+/// Rebuilds a project's modules as their sources change from a snapshot, on
+/// a thread of its own, until stopped.
 pub struct ModuleWatcher {
     stop: Arc<AtomicBool>,
     thread: tokio::task::JoinHandle<()>,
@@ -182,8 +183,8 @@ pub struct ModuleWatcher {
 
 impl ModuleWatcher {
     /// `None` when there are no modules to watch.
-    pub fn spawn(root: &Path, specs: Vec<ModuleSpec>) -> Option<ModuleWatcher> {
-        if specs.is_empty() {
+    pub fn spawn(root: &Path, from: Snapshot) -> Option<ModuleWatcher> {
+        if from.modules().is_empty() {
             return None;
         }
         let stop = Arc::new(AtomicBool::new(false));
@@ -193,7 +194,7 @@ impl ModuleWatcher {
                 modules::watch(
                     &Toolchain::from_env(),
                     &root,
-                    &specs,
+                    from,
                     Duration::from_millis(300),
                     &stop,
                     &mut |module, result| match result {

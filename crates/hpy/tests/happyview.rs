@@ -168,6 +168,44 @@ fn read(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap()
 }
 
+/// Waits for the fake binary under `hpy` to report its pid, or answers why it
+/// did not. Fetching and placing the binary has a budget of its own, and the
+/// readiness deadline starts once it is in place: a cold run on a loaded
+/// machine can spend longer starting `hpy` and fetching than everything these
+/// tests check, and how long that takes is not what they are about.
+#[cfg(unix)]
+fn await_binary(stack: &Stack, hpy: &mut std::process::Child) -> Result<libc::pid_t, &'static str> {
+    use std::time::{Duration, Instant};
+
+    let placed = stack
+        .cache
+        .path()
+        .join(format!("happyview/{VERSION}/happyview"));
+    let ready = stack.log.with_extension("log.ready");
+    let mut deadline = Instant::now() + Duration::from_secs(120);
+    let mut in_place = false;
+    loop {
+        // The file can be seen before its line is written.
+        if let Some(pid) = std::fs::read_to_string(&ready)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+        {
+            return Ok(pid);
+        }
+        if !in_place && placed.exists() {
+            in_place = true;
+            deadline = Instant::now() + Duration::from_secs(30);
+        }
+        if hpy.try_wait().unwrap().is_some() {
+            return Err("hpy exited before the binary was ready");
+        }
+        if Instant::now() >= deadline {
+            return Err("the binary never became ready");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// Output that holds `needle` once an error report's wrapping is undone. A
 /// report wraps to the terminal's width, breaking long words as well, so
 /// where its lines break moves with the length of any path in it; both sides
@@ -412,23 +450,11 @@ fn a_sigterm_to_hpy_reaches_the_binary_once_and_its_exit_code_comes_back() {
         .stdin(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let ready = stack.log.with_extension("log.ready");
+    let binary = await_binary(&stack, &mut child).unwrap_or_else(|why| {
+        let _ = child.kill();
+        panic!("{why}")
+    });
     let deadline = Instant::now() + Duration::from_secs(30);
-    while !ready.exists() {
-        assert!(
-            child.try_wait().unwrap().is_none(),
-            "hpy exited before the binary was ready"
-        );
-        assert!(Instant::now() < deadline, "the binary never became ready");
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let binary: libc::pid_t = loop {
-        // The file can be seen before its line is written.
-        if let Ok(pid) = read(&ready).trim().parse() {
-            break pid;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
     // SAFETY: kill(2) with the pid of a child this test spawned and has not reaped.
     assert_eq!(
         unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) },
@@ -544,23 +570,11 @@ fn dev_receives_sigterm_and_exits_with_the_childs_code() {
         .stdin(std::process::Stdio::null())
         .spawn()
         .unwrap();
-    let ready = stack.log.with_extension("log.ready");
+    let binary = await_binary(&stack, &mut child).unwrap_or_else(|why| {
+        let _ = child.kill();
+        panic!("{why}")
+    });
     let deadline = Instant::now() + Duration::from_secs(30);
-    while !ready.exists() {
-        assert!(
-            child.try_wait().unwrap().is_none(),
-            "hpy exited before the binary was ready"
-        );
-        assert!(Instant::now() < deadline, "the binary never became ready");
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let binary: libc::pid_t = loop {
-        // The pid file can be seen before its line is written.
-        if let Ok(pid) = read(&ready).trim().parse() {
-            break pid;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
     // Without modules there is nothing for `hpy` to do alongside the binary.
     if binary != child.id() as libc::pid_t {
         // SAFETY: kill(2) on the pids this test spawned or was told of.
@@ -649,7 +663,6 @@ impl Running {
     /// would, and waits until the fake binary in `HV_MODE=signals` is up.
     fn start(stack: &Stack, args: &[&str], envs: &[(&str, PathBuf)]) -> Running {
         use std::os::unix::process::CommandExt;
-        use std::time::{Duration, Instant};
 
         let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("hpy"));
         stack.env(&mut cmd);
@@ -661,23 +674,11 @@ impl Running {
             .process_group(0)
             .spawn()
             .unwrap();
-        let ready = stack.log.with_extension("log.ready");
-        let deadline = Instant::now() + Duration::from_secs(30);
-        let binary: libc::pid_t = loop {
-            // The file can be seen before its line is written.
-            if let Some(pid) = std::fs::read_to_string(&ready)
-                .ok()
-                .and_then(|s| s.trim().parse().ok())
-            {
-                break pid;
-            }
-            if hpy.try_wait().unwrap().is_some() || Instant::now() >= deadline {
-                // SAFETY: kill(2) on the group of a child this test spawned.
-                unsafe { libc::kill(-(hpy.id() as libc::pid_t), libc::SIGKILL) };
-                panic!("the binary never became ready");
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        };
+        let binary = await_binary(stack, &mut hpy).unwrap_or_else(|why| {
+            // SAFETY: kill(2) on the group of a child this test spawned.
+            unsafe { libc::kill(-(hpy.id() as libc::pid_t), libc::SIGKILL) };
+            panic!("{why}")
+        });
         if binary == hpy.id() as libc::pid_t {
             // SAFETY: as above.
             unsafe { libc::kill(-binary, libc::SIGKILL) };

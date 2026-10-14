@@ -481,11 +481,13 @@ pub fn build_all(tc: &Toolchain, project: &Path) -> Result<Vec<(String, PathBuf)
     }
 }
 
+pub type Fingerprint = BTreeMap<PathBuf, (u64, std::time::SystemTime)>;
+
 /// Every file under a module's crate that a build reads, with its size and
 /// modification time. A module is tens of files, so polling this is cheaper
 /// than a platform watcher's dependency and gives every platform the same
 /// behaviour. `target/` and dot-directories are build output and tooling.
-pub fn fingerprint(dir: &Path) -> BTreeMap<PathBuf, (u64, std::time::SystemTime)> {
+pub fn fingerprint(dir: &Path) -> Fingerprint {
     let mut out = BTreeMap::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(next) = stack.pop() {
@@ -511,26 +513,48 @@ pub fn fingerprint(dir: &Path) -> BTreeMap<PathBuf, (u64, std::time::SystemTime)
     out
 }
 
+/// A project's modules with their sources as they stood when it was taken.
+/// A watch compares against this rather than against whatever it finds when
+/// its thread first runs, so a save made after `take` returns is rebuilt
+/// however late that thread starts. Taken before the first build, it also
+/// catches a save made while that build runs.
+pub struct Snapshot {
+    modules: Vec<ModuleSpec>,
+    seen: Vec<Fingerprint>,
+}
+
+impl Snapshot {
+    pub fn take(project: &Path, modules: Vec<ModuleSpec>) -> Snapshot {
+        let seen = modules
+            .iter()
+            .map(|m| fingerprint(&project.join(&m.path)))
+            .collect();
+        Snapshot { modules, seen }
+    }
+
+    pub fn modules(&self) -> &[ModuleSpec] {
+        &self.modules
+    }
+}
+
 /// Poll each module's crate every `interval` and rebuild the ones that
-/// changed, until `stop` is set. A build that fails leaves the previous
-/// module installed, so HappyView keeps serving it. Edits made during a
-/// build are seen by the next poll. Setting `stop` ends a build under way,
-/// so whoever sets it waits only for cargo to die, not for it to finish.
+/// changed since `from`, until `stop` is set. A build that fails leaves the
+/// previous module installed, so HappyView keeps serving it. Edits made
+/// during a build are seen by the next poll. Setting `stop` ends a build
+/// under way, so whoever sets it waits only for cargo to die, not for it to
+/// finish.
 pub fn watch(
     tc: &Toolchain,
     project: &Path,
-    modules: &[ModuleSpec],
+    from: Snapshot,
     interval: Duration,
     stop: &AtomicBool,
     on_build: &mut dyn FnMut(&ModuleSpec, Result<PathBuf, Failure>),
 ) {
-    let mut last: Vec<_> = modules
-        .iter()
-        .map(|m| fingerprint(&project.join(&m.path)))
-        .collect();
+    let Snapshot { modules, mut seen } = from;
     while !stop.load(Ordering::SeqCst) {
         std::thread::sleep(interval);
-        for (module, seen) in modules.iter().zip(last.iter_mut()) {
+        for (module, seen) in modules.iter().zip(seen.iter_mut()) {
             if stop.load(Ordering::SeqCst) {
                 return;
             }
@@ -1060,15 +1084,14 @@ pub(crate) mod tests {
         std::fs::write(&dest, b"\0asm-old").unwrap();
         let count = p.path().join("count");
         let tc = fake_cargo(p.path(), Path::new("/unused"), true, &count);
-        let modules = read_modules(p.path()).unwrap();
         let stop = AtomicBool::new(false);
         let src = p.path().join("modules/registry/src/lib.rs");
         std::fs::write(&src, "a").unwrap();
+        let from = Snapshot::take(p.path(), read_modules(p.path()).unwrap());
 
         let mut outcomes = Vec::new();
         std::thread::scope(|s| {
             s.spawn(|| {
-                std::thread::sleep(Duration::from_millis(150));
                 std::fs::write(&src, "changed").unwrap();
                 // A build still under way when `stop` is set is not
                 // reported, so the polls that follow are timed from the
@@ -1083,7 +1106,7 @@ pub(crate) mod tests {
             watch(
                 &tc,
                 p.path(),
-                &modules,
+                from,
                 Duration::from_millis(50),
                 &stop,
                 &mut |m, r| {
@@ -1146,16 +1169,15 @@ pub(crate) mod tests {
             cargo: script(p.path(), "cargo-slow", &body).into(),
             rustup: script(p.path(), "rustup", "echo wasm32-wasip1").into(),
         };
-        let modules = read_modules(p.path()).unwrap();
         let stop = AtomicBool::new(false);
         let src = p.path().join("modules/registry/src/lib.rs");
         std::fs::write(&src, "a").unwrap();
+        let from = Snapshot::take(p.path(), read_modules(p.path()).unwrap());
 
         let mut outcomes = 0;
         let (cargo, rustc, stopped_at) = std::thread::scope(|s| {
             let stopper = s.spawn(|| {
                 let _stop = StopOnDrop(&stop);
-                std::thread::sleep(Duration::from_millis(150));
                 std::fs::write(&src, "changed").unwrap();
                 let deadline = Instant::now() + Duration::from_secs(10);
                 let read = |path: &Path| -> Option<libc::pid_t> {
@@ -1175,7 +1197,7 @@ pub(crate) mod tests {
             watch(
                 &tc,
                 p.path(),
-                &modules,
+                from,
                 Duration::from_millis(50),
                 &stop,
                 &mut |_, _| {

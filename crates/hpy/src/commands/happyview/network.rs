@@ -14,7 +14,7 @@ use crate::cli::DevArgs;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 use crate::project::binary::http_client;
-use crate::project::modules::{self, ModuleSpec};
+use crate::project::modules::{self, Snapshot};
 use crate::project::network::access::{ensure_access, record_path};
 use crate::project::network::accounts::{SeededAccount, accounts_path, seeded_superadmin};
 use crate::project::network::app::{
@@ -368,7 +368,7 @@ pub async fn run_local(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
         &mut running,
     )
     .await;
-    let (sandbox, (network_dir, account, root, specs)) = match (started, sandbox) {
+    let (sandbox, (network_dir, account, root, from)) = match (started, sandbox) {
         (Ok(started), Some(sandbox)) => (sandbox, started),
         (Ok(_), None) => unreachable!("a started network has a sandbox"),
         (Err(Halt::Interrupted), sandbox) => {
@@ -411,7 +411,7 @@ pub async fn run_local(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
     // The container runs HappyView from the bind-mounted project, so a host
     // build into its `.happyview/build` is the one it loads: a module is wasm,
     // the same whatever builds it.
-    let watcher = ModuleWatcher::spawn(&root, specs);
+    let watcher = ModuleWatcher::spawn(&root, from);
     let followed = follow(ctx, &mut interrupt, &sandbox, &network_dir, &account).await;
     if let Some(watcher) = watcher {
         watcher.stop().await;
@@ -444,7 +444,7 @@ async fn start<'r>(
     interrupt: &mut Interrupt,
     sandbox_out: &mut Option<Sandbox<'r>>,
     running: &mut bool,
-) -> Result<(PathBuf, SeededAccount, PathBuf, Vec<ModuleSpec>), Halt> {
+) -> Result<(PathBuf, SeededAccount, PathBuf, Snapshot), Halt> {
     step(
         ctx,
         interrupt,
@@ -493,13 +493,14 @@ async fn start<'r>(
     };
     let prepared = abandonable(interrupt, prepare(ctx, &options)).await?;
     // Before HappyView first boots, which refuses a module with no build.
-    let specs = modules::read_modules(&prepared.root)?;
-    if !specs.is_empty() {
+    // Taken before the build, so a save made while it runs is rebuilt.
+    let from = Snapshot::take(&prepared.root, modules::read_modules(&prepared.root)?);
+    if !from.modules().is_empty() {
         step(
             ctx,
             interrupt,
             "building the project's modules",
-            first_build(&prepared.root, &specs),
+            first_build(&prepared.root, from.modules()),
         )
         .await?;
     }
@@ -649,7 +650,7 @@ async fn start<'r>(
             "backfill is off on the local network: its relay cannot list repos by collection",
         );
     }
-    Ok((net.dir, account, prepared.root, specs))
+    Ok((net.dir, account, prepared.root, from))
 }
 
 async fn follow(
