@@ -156,6 +156,16 @@ impl Registry for FakeRegistry {
         Ok(self.releases.lock().unwrap().values().cloned().collect())
     }
 
+    async fn search_packages(&self, _: &str) -> Result<Vec<PackageView>> {
+        self.check()?;
+        Ok(self.package.clone().into_iter().collect())
+    }
+
+    async fn get_artifact(&self, _: &str, _: &str, _: &str) -> Result<Vec<u8>> {
+        self.check()?;
+        Err(Error::Other("FakeRegistry holds no artifacts".into()))
+    }
+
     async fn publish_profile(
         &self,
         slug: &str,
@@ -271,4 +281,217 @@ impl Registry for FakeRegistry {
         }
         Ok(Some(before))
     }
+}
+
+/// A registry holding many packages, for resolution and download tests.
+#[derive(Default)]
+pub struct RegistryFixture {
+    pub packages: Vec<PackageView>,
+    pub releases: BTreeMap<(String, String), Vec<ReleaseView>>,
+    pub artifacts: BTreeMap<(String, String, String), Vec<u8>>,
+    /// Every query answered, as `method slug[@version]`.
+    pub calls: Mutex<Vec<String>>,
+}
+
+impl RegistryFixture {
+    pub fn publish(
+        &mut self,
+        did: &str,
+        slug: &str,
+        version: &str,
+        ext: Value,
+        requires: Value,
+        wasm: &[u8],
+    ) {
+        let record = json!({
+            "$type": hpy_plugin::RELEASE_NSID,
+            "package": slug,
+            "version": version,
+            "artifacts": { "package": { "checksum": hpy_plugin::checksum::checksum(wasm) } },
+            "extensions": { (hpy_plugin::EXTENSION_NSID): ext },
+            "requires": requires,
+        });
+        let key = (did.to_string(), slug.to_string());
+        self.releases
+            .entry(key.clone())
+            .or_default()
+            .push(ReleaseView {
+                uri: format!("at://{did}/{}/{slug}:{version}", hpy_plugin::RELEASE_NSID),
+                status: "active".into(),
+                record,
+                indexed_at: None,
+            });
+        self.artifacts
+            .insert((did.into(), slug.into(), version.into()), wasm.to_vec());
+        self.refresh_package(&key);
+    }
+
+    pub fn withdraw(&mut self, did: &str, slug: &str, version: &str) {
+        let key = (did.to_string(), slug.to_string());
+        for r in self.releases.get_mut(&key).into_iter().flatten() {
+            if r.record["version"] == version {
+                r.status = "deleted".into();
+            }
+        }
+        self.refresh_package(&key);
+    }
+
+    fn refresh_package(&mut self, key: &(String, String)) {
+        let latest = self.releases[key]
+            .iter()
+            .filter(|r| r.status == "active")
+            .filter_map(|r| semver::Version::parse(r.record["version"].as_str()?).ok())
+            .max()
+            .map(|v| v.to_string());
+        let uri = hpy_project::manifest::package_uri(&key.0, &key.1);
+        let handle = self
+            .packages
+            .iter()
+            .find(|p| p.uri == uri)
+            .and_then(|p| p.handle.clone());
+        self.packages.retain(|p| p.uri != uri);
+        self.packages.push(PackageView {
+            uri,
+            did: key.0.clone(),
+            handle,
+            status: "active".into(),
+            latest_version: latest,
+            record: json!({ "name": key.1 }),
+        });
+    }
+
+    fn log(&self, entry: String) {
+        self.calls.lock().unwrap().push(entry);
+    }
+}
+
+#[async_trait]
+impl Registry for RegistryFixture {
+    async fn get_package(&self, did: &str, slug: &str) -> Result<Option<PackageView>> {
+        self.log(format!("getPackage {slug}"));
+        let uri = hpy_project::manifest::package_uri(did, slug);
+        Ok(self.packages.iter().find(|p| p.uri == uri).cloned())
+    }
+
+    async fn get_release(
+        &self,
+        did: &str,
+        slug: &str,
+        version: &str,
+    ) -> Result<Option<ReleaseView>> {
+        self.log(format!("getRelease {slug}@{version}"));
+        Ok(self
+            .releases
+            .get(&(did.into(), slug.into()))
+            .and_then(|rs| rs.iter().find(|r| r.record["version"] == version))
+            .cloned())
+    }
+
+    async fn list_releases(&self, did: &str, slug: &str) -> Result<Vec<ReleaseView>> {
+        self.log(format!("listReleases {slug}"));
+        Ok(self
+            .releases
+            .get(&(did.into(), slug.into()))
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Answers as the deployed registry does: no `latestVersion` and no
+    /// `handle`, which only `getPackage` fills in.
+    async fn search_packages(&self, plugin_type: &str) -> Result<Vec<PackageView>> {
+        self.log(format!("searchPackages {plugin_type}"));
+        let of_type = |p: &PackageView| {
+            let slug = hpy_atproto::rkey_of(&p.uri);
+            self.releases[&(p.did.clone(), slug.to_string())]
+                .iter()
+                .any(|r| {
+                    r.record["version"].as_str() == p.latest_version.as_deref()
+                        && r.record["extensions"][hpy_plugin::EXTENSION_NSID]["pluginType"]
+                            == plugin_type
+                })
+        };
+        Ok(self
+            .packages
+            .iter()
+            .filter(|p| of_type(p))
+            .map(|p| PackageView {
+                latest_version: None,
+                handle: None,
+                ..p.clone()
+            })
+            .collect())
+    }
+
+    async fn get_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
+        self.log(format!("getArtifact {slug}@{version}"));
+        self.artifacts
+            .get(&(did.into(), slug.into(), version.into()))
+            .cloned()
+            .ok_or_else(|| Error::Other(format!("no artifact for {slug}@{version}")))
+    }
+
+    async fn publish_profile(&self, _: &str, _: Value, _: bool) -> Result<Option<WriteResult>> {
+        Err(Error::Other("RegistryFixture does not publish".into()))
+    }
+
+    async fn publish_release(&self, _: Value, _: bool) -> Result<Option<WriteResult>> {
+        Err(Error::Other("RegistryFixture does not publish".into()))
+    }
+
+    async fn update_profile(&self, _: &str, _: Value, _: Option<&str>) -> Result<WriteResult> {
+        Err(Error::Other("RegistryFixture does not publish".into()))
+    }
+
+    async fn withdraw_release(&self, _: &str, _: &str) -> Result<bool> {
+        Err(Error::Other("RegistryFixture does not publish".into()))
+    }
+
+    async fn retry_release(&self, _: &str, _: &str) -> Result<Option<String>> {
+        Err(Error::Other("RegistryFixture does not publish".into()))
+    }
+}
+
+pub fn interpreter_ext(language: &str, extension: &str) -> Value {
+    json!({ "pluginType": "interpreter", "apiVersion": "2", "languageId": language,
+            "fileExtensions": [extension], "capabilities": ["script:host"] })
+}
+
+pub fn library_ext(namespace: &str) -> Value {
+    json!({ "pluginType": "library", "apiVersion": "2", "namespace": namespace,
+            "capabilities": [] })
+}
+
+/// A `.tar.xz` holding `files` as `(path, bytes, mode)`.
+pub fn tar_xz(files: &[(&str, &[u8], u32)]) -> Vec<u8> {
+    let mut builder = tar::Builder::new(xz2::write::XzEncoder::new(Vec::new(), 6));
+    for (path, bytes, mode) in files {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(*mode);
+        header.set_cksum();
+        builder.append_data(&mut header, path, *bytes).unwrap();
+    }
+    builder.into_inner().unwrap().finish().unwrap()
+}
+
+pub fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+    use std::io::Write;
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (path, bytes) in files {
+        w.start_file(*path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        w.write_all(bytes).unwrap();
+    }
+    w.finish().unwrap().into_inner()
+}
+
+/// A temporary directory only this user can reach, as a cache root must be.
+pub fn private_tempdir() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    dir
 }

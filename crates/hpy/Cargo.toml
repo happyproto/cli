@@ -14,16 +14,27 @@ path = "src/main.rs"
 [dependencies]
 hpy-plugin.workspace = true
 hpy-atproto.workspace = true
+hpy-project.workspace = true
 async-trait.workspace = true
+etcetera.workspace = true
 clap.workspace = true
+data-encoding.workspace = true
 inquire.workspace = true
 miette.workspace = true
 reqwest.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+flate2.workspace = true
+tar.workspace = true
 tokio.workspace = true
 toml.workspace = true
+xz2.workspace = true
+zip.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true

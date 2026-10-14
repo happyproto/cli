@@ -317,3 +317,142 @@ fn an_unknown_channel_is_a_usage_error() {
         .code(2)
         .stderr(predicate::str::contains("stable, beta or alpha"));
 }
+
+#[cfg(unix)]
+mod happyview_build {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn script(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    fn project() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("happyview.toml"),
+            "[modules.registry]\nlanguage = \"rust\"\npath = \"modules/registry\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("modules/registry")).unwrap();
+        std::fs::write(
+            dir.path().join("modules/registry/Cargo.toml"),
+            "[package]\nname = \"registry\"\n[profile.release]\npanic = \"abort\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("built.wasm"), b"\0asm").unwrap();
+        dir
+    }
+
+    fn cargo(dir: &std::path::Path) -> std::path::PathBuf {
+        script(
+            dir,
+            "cargo",
+            &format!(
+                "if [ \"$1\" = --version ]; then exit 0; fi\n\
+                 manifest=''; while [ $# -gt 0 ]; do [ \"$1\" = --manifest-path ] && manifest=\"$2\"; shift; done\n\
+                 printf '{{\"reason\":\"compiler-artifact\",\"manifest_path\":\"%s\",\"target\":{{\"crate_types\":[\"cdylib\"]}},\"filenames\":[\"{}\"]}}\\n' \"$manifest\"",
+                dir.join("built.wasm").display()
+            ),
+        )
+    }
+
+    fn failing_cargo(dir: &std::path::Path) -> std::path::PathBuf {
+        script(
+            dir,
+            "cargo",
+            "if [ \"$1\" = --version ]; then exit 0; fi\necho 'error: could not compile' >&2; exit 101",
+        )
+    }
+
+    #[test]
+    fn build_writes_each_module_to_the_build_directory() {
+        let config = tempfile::tempdir().unwrap();
+        let p = project();
+        hpy(config.path())
+            .env("HPY_CARGO", cargo(p.path()))
+            .env(
+                "HPY_RUSTUP",
+                script(p.path(), "rustup", "echo wasm32-wasip1"),
+            )
+            .args(["-C", p.path().to_str().unwrap(), "happyview", "build"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("registry"));
+        assert!(p.path().join(".happyview/build/registry.wasm").exists());
+    }
+
+    #[test]
+    fn build_without_the_target_exits_2_with_the_install_command() {
+        let config = tempfile::tempdir().unwrap();
+        let p = project();
+        hpy(config.path())
+            .env("HPY_CARGO", cargo(p.path()))
+            .env(
+                "HPY_RUSTUP",
+                script(p.path(), "rustup", "echo aarch64-apple-darwin"),
+            )
+            .args(["-C", p.path().to_str().unwrap(), "happyview", "build"])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("rustup target add wasm32-wasip1"));
+    }
+
+    #[test]
+    fn build_refuses_a_module_that_unwinds() {
+        let config = tempfile::tempdir().unwrap();
+        let p = project();
+        std::fs::write(
+            p.path().join("modules/registry/Cargo.toml"),
+            "[package]\nname = \"registry\"\n",
+        )
+        .unwrap();
+        hpy(config.path())
+            .env("HPY_CARGO", cargo(p.path()))
+            .env(
+                "HPY_RUSTUP",
+                script(p.path(), "rustup", "echo wasm32-wasip1"),
+            )
+            .args(["-C", p.path().to_str().unwrap(), "happyview", "build"])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("'registry'"))
+            .stderr(predicate::str::contains("panic = \"abort\""));
+        assert!(!p.path().join(".happyview/build/registry.wasm").exists());
+    }
+
+    #[test]
+    fn check_builds_modules_before_anything_else() {
+        let config = tempfile::tempdir().unwrap();
+        let p = project();
+        hpy(config.path())
+            .env("HPY_CARGO", failing_cargo(p.path()))
+            .env(
+                "HPY_RUSTUP",
+                script(p.path(), "rustup", "echo wasm32-wasip1"),
+            )
+            .args(["-C", p.path().to_str().unwrap(), "happyview", "check"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("'registry' failed to build"));
+    }
+
+    #[test]
+    fn test_builds_modules_before_anything_else() {
+        let config = tempfile::tempdir().unwrap();
+        let p = project();
+        hpy(config.path())
+            .env("HPY_CARGO", failing_cargo(p.path()))
+            .env(
+                "HPY_RUSTUP",
+                script(p.path(), "rustup", "echo wasm32-wasip1"),
+            )
+            .args(["-C", p.path().to_str().unwrap(), "happyview", "test"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("'registry' failed to build"));
+    }
+}

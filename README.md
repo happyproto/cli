@@ -1,9 +1,9 @@
 # hpy
 
 The HappyProto command line. One tool for the HappyProto ecosystem. It
-currently does one thing: it publishes and manages **HappyView plugins** in
-the HappyProto registry. Commands for managing HappyView instances, OAuth
-clients and HappyProto projects will be added later (see
+publishes and manages **HappyView plugins** in the HappyProto registry, and
+builds **HappyView apps** from a project directory. Commands for managing
+HappyView instances and OAuth clients will be added later (see
 [docs/roadmap/happyview-admin.md](docs/roadmap/happyview-admin.md)).
 
 ```sh
@@ -11,6 +11,9 @@ hpy registry login                  # sign in to the registry with your atproto 
 hpy registry plugin init            # describe your plugin for the registry
 hpy registry plugin publish         # publish the plugin in this directory
 hpy registry plugin status          # see what the registry has picked up
+
+hpy happyview create --name my-app  # start a HappyView app
+hpy happyview dev                   # run it, from anywhere inside it
 ```
 
 ## Install
@@ -137,6 +140,36 @@ Global flags: `--json` (machine-readable output on stdout), `--no-input`
 
 Exit codes: `0` ok, `1` runtime or remote failure, `2` usage or validation
 error, `3` not logged in.
+
+## HappyView projects
+
+A HappyView app can be a directory: lexicons and scripts under `src/`,
+configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
+
+| Command | Does |
+| --- | --- |
+| `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--package <at-uri>` picks between packages with one name. Each plugin is pinned to its newest stable release, or its newest prerelease when it has nothing else. Writes the lock but downloads nothing. |
+| `hpy happyview dev` | Runs the project with its pinned HappyView, in the foreground. |
+| `hpy happyview add <plugin>[@version]` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. `--package <at-uri>` picks between packages with one name. With no plugin (or as `install`), brings the lock up to date and downloads it. |
+| `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
+| `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
+
+`hv` is short for `happyview`. `dev`, `check` and `test` take `--locked`,
+which fails instead of updating a lock that no longer matches
+`happyview.toml`; use it in CI. They exit with HappyView's own exit code.
+
+A range in `happyview.toml` such as `"1.4"` or `"*"` never matches a
+prerelease. A plugin that has published only prereleases needs a range that
+names one, such as `"^0.1.0-alpha.3"`.
+
+HappyView binaries are cached at `~/.cache/hpy/happyview/<version>/`
+(`HPY_CACHE_DIR` moves the cache) and checked against the `.sha256`
+published with each release. Plugins come from the registry into
+`~/.cache/hpy/plugins/<id>/<version>/`, checked against the checksum in
+their release record and in `happyview.lock`; a registry that ever states a
+different checksum for a locked version is refused. `dev`, `check` and
+`test` link them into the project's `.happyview/plugins/` (on Windows they
+copy them), which `hpy` owns: anything else placed there is removed.
 
 ## `hpy.toml`
 
@@ -266,6 +299,15 @@ The daily check is skipped in CI, when there's no terminal, and when
 | `oauth.redirect` | `HPY_OAUTH_REDIRECT` | `https://happyproto.at/oauth/hpy/callback` (the relay); or `loopback` |
 | `oauth.client_auth` | `HPY_OAUTH_CLIENT_AUTH` | `assertion` (confidential, signed by HappyView); or `none` (public) |
 | `credentials.store` | `HPY_CREDENTIAL_STORE` | `auto` (the OS keychain, falling back to the file); also `keychain` or `file` |
+
+These are read from the environment only:
+
+| Environment | Default |
+| --- | --- |
+| `HPY_CACHE_DIR` | `~/.cache/hpy` (`%LOCALAPPDATA%\hpy` on Windows): HappyView binaries and plugins |
+| `HPY_HAPPYVIEW_REPO` | `gamesgamesgamesgamesgames/happyview`: the GitHub repository HappyView releases come from |
+| `HPY_GITHUB_API` | `https://api.github.com`: where `create` looks for the newest HappyView release |
+| `HPY_HAPPYVIEW_DOWNLOAD` | `https://github.com/<HPY_HAPPYVIEW_REPO>/releases/download`: where binaries and their `.sha256` are downloaded from |
 
 ### Signing in: how the browser gets back to `hpy`
 

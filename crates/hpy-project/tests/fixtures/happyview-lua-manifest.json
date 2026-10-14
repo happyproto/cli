@@ -1,0 +1,23 @@
+{
+  "id": "happyview-lua",
+  "name": "Lua",
+  "version": "0.1.0",
+  "api_version": "2",
+  "plugin_type": "interpreter",
+  "description": "Lua 5.4 for HappyView scripts.",
+  "language_id": "lua",
+  "file_extension": "lua",
+  "extensions": ["lua"],
+  "monaco_language": "lua",
+  "supports_libraries": ["*"],
+  "capabilities": [
+    "library:call",
+    "script:host",
+    "wasi:clock",
+    "wasi:random",
+    "wasi:stdio"
+  ],
+  "allowed_hosts": [],
+  "dependencies": [],
+  "wasm_file": "happyview-lua.wasm"
+}

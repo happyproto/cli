@@ -5,6 +5,7 @@ mod commands;
 mod ctx;
 mod failure;
 mod output;
+mod project;
 mod prompt;
 #[cfg(test)]
 mod testing;
@@ -21,8 +22,7 @@ use failure::Failure;
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
-    // `update` and `channel` do this themselves, and say so.
-    let checks = !matches!(cli.command, Command::Update | Command::Channel(_));
+    let checks = checks_for_updates(&cli.command);
     let update = hpy_atproto::settings::config_dir()
         .ok()
         .filter(|_| checks)
@@ -30,7 +30,9 @@ async fn main() -> ExitCode {
     let code = match run(cli).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(f) => {
-            eprintln!("{:?}", f.report);
+            if !f.quiet {
+                eprintln!("{:?}", f.report);
+            }
             ExitCode::from(f.code)
         }
     };
@@ -53,6 +55,7 @@ async fn run(cli: Cli) -> Result<(), Failure> {
     let command = match cli.command {
         Command::Update => return commands::update::run(&ctx).await,
         Command::Channel(a) => return commands::channel::run(&ctx, a).await,
+        Command::Happyview(command) => return commands::happyview::run(&ctx, command).await,
         Command::Registry(command) => command,
     };
     match command {
@@ -69,5 +72,30 @@ async fn run(cli: Cli) -> Result<(), Failure> {
             PluginCommand::Withdraw(a) => commands::withdraw::run(&ctx, a).await,
             PluginCommand::Retry(a) => commands::retry::run(&ctx, a).await,
         },
+    }
+}
+
+/// Whether the daily update check runs around this command. `update` and
+/// `channel` do it themselves, and say so. `happyview` ends by becoming the
+/// HappyView binary, so a check started here would record the day as checked
+/// and then be lost with its notice.
+fn checks_for_updates(command: &Command) -> bool {
+    !matches!(
+        command,
+        Command::Update | Command::Channel(_) | Command::Happyview(_)
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn happyview_commands_skip_the_update_check() {
+        let command = |args: &[&str]| Cli::try_parse_from(args).unwrap().command;
+        assert!(!checks_for_updates(&command(&["hpy", "hv", "check"])));
+        assert!(!checks_for_updates(&command(&["hpy", "update"])));
+        assert!(checks_for_updates(&command(&["hpy", "registry", "whoami"])));
     }
 }

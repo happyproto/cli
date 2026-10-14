@@ -27,6 +27,9 @@ pub enum Command {
     Update,
     /// Show or choose the release channel hpy updates from.
     Channel(ChannelArgs),
+    /// Build HappyView apps: a project directory, run and tested locally.
+    #[command(subcommand, alias = "hv")]
+    Happyview(HappyviewCommand),
 }
 
 #[derive(Args)]
@@ -190,6 +193,112 @@ pub struct WithdrawArgs {
     /// Do not ask for confirmation.
     #[arg(long, short)]
     pub yes: bool,
+}
+
+#[derive(Subcommand)]
+pub enum HappyviewCommand {
+    /// Scaffold a new HappyView project.
+    Create(CreateArgs),
+    /// Run the project with its pinned HappyView; a saved file is live on the next request.
+    ///
+    /// A compiled module is rebuilt when a file under its own directory changes. A path
+    /// dependency outside that directory, or a workspace's Cargo.lock above it, is not
+    /// watched: after changing one, save a file in the module to rebuild it.
+    Dev(DevArgs),
+    /// Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to date and download it.
+    #[command(alias = "install")]
+    Add(AddArgs),
+    /// Build every compiled script module in happyview.toml into .happyview/build/.
+    Build,
+    /// Build the project's snapshot without serving it; exits non-zero on any error.
+    Check(RunArgs),
+    /// Run the project's tests.
+    Test(TestArgs),
+}
+
+#[derive(Args)]
+pub struct CreateArgs {
+    /// Directory to create, relative to the current one.
+    #[arg(long, value_name = "DIR")]
+    pub name: PathBuf,
+    /// The superadmin's DID (default: the account `hpy registry login` holds).
+    #[arg(long, value_name = "DID")]
+    pub superadmin: Option<String>,
+    /// Interpreter language id; repeatable (default: lua).
+    #[arg(long = "interpreter", value_name = "LANGUAGE")]
+    pub interpreters: Vec<String>,
+    /// Library namespace or id; repeatable.
+    #[arg(long = "library", value_name = "LIBRARY")]
+    pub libraries: Vec<String>,
+    /// The registry package to use for the interpreter or library it answers to, when several do; repeatable.
+    #[arg(long = "package", value_name = "AT-URI")]
+    pub packages: Vec<String>,
+    /// The app's display name (default: the directory name).
+    #[arg(long)]
+    pub app_name: Option<String>,
+    /// HappyView version to pin (default: the newest with a binary for this machine).
+    #[arg(long, value_name = "VERSION")]
+    pub happyview_version: Option<String>,
+}
+
+#[derive(Args, Default)]
+pub struct RunArgs {
+    /// Fail rather than update happyview.lock when it no longer matches happyview.toml.
+    #[arg(long)]
+    pub locked: bool,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum Network {
+    /// The real atproto network; writes reach your real PDS.
+    #[default]
+    Real,
+    /// A private network on this computer (Atmosphere in a Box; needs Docker and Deno 2.8).
+    Local,
+}
+
+#[derive(Args)]
+pub struct DevArgs {
+    #[command(flatten)]
+    pub run: RunArgs,
+    /// Which atproto network to run against.
+    #[arg(long, value_enum, default_value_t = Network::Real)]
+    pub network: Network,
+    /// Discard the local network's accounts, records and database, then start fresh.
+    #[arg(long)]
+    pub reset: bool,
+    /// Do not ask for confirmation.
+    #[arg(long, short)]
+    // Only `--network local` asks, and it is unix-only.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub yes: bool,
+}
+
+#[derive(Args)]
+pub struct AddArgs {
+    /// A language id (interpreters) or a namespace or id (libraries), optionally `@version`.
+    #[arg(value_name = "PLUGIN")]
+    pub plugins: Vec<String>,
+    /// Treat every PLUGIN as an interpreter.
+    #[arg(long, conflicts_with = "library")]
+    pub interpreter: bool,
+    /// Treat every PLUGIN as a library.
+    #[arg(long)]
+    pub library: bool,
+    /// The registry package to use, when several answer to one name.
+    #[arg(long, value_name = "AT-URI", requires = "plugins")]
+    pub package: Option<String>,
+}
+
+#[derive(Args)]
+pub struct TestArgs {
+    #[command(flatten)]
+    pub run: RunArgs,
+    /// Rerun the affected tests whenever the project changes.
+    #[arg(long)]
+    pub watch: bool,
+    /// Only run test files whose path contains this.
+    pub filter: Option<String>,
 }
 
 #[cfg(test)]

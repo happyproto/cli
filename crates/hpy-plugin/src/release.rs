@@ -192,6 +192,7 @@ mod tests {
             language_id: None,
             capabilities: vec![],
             allowed_hosts: vec![],
+            file_extensions: vec![],
         }
     }
 
