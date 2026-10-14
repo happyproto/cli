@@ -46,14 +46,21 @@ pub fn binary_path(root: &Path, version: &str, target: &str) -> PathBuf {
 /// Creates `path` and any missing parents, 0700 on unix, so nothing another
 /// user could swap a module into is ever world-writable.
 fn create_private_dirs(path: &Path) -> std::io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
+    private_dir_builder().recursive(true).create(path)
+}
+
+/// A builder whose directories only their owner can enter, where the
+/// platform has modes.
+fn private_dir_builder() -> std::fs::DirBuilder {
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
+        let mut builder = std::fs::DirBuilder::new();
         builder.mode(0o700);
+        builder
     }
-    builder.create(path)
+    #[cfg(not(unix))]
+    std::fs::DirBuilder::new()
 }
 
 /// Whether a cache root is one the user named (`HPY_CACHE_DIR`), whose mode
@@ -101,10 +108,7 @@ fn prepare_dir(dir: &Path, with_parents: bool) -> std::io::Result<bool> {
             if with_parents {
                 create_private_dirs(dir)?;
             } else {
-                let mut builder = std::fs::DirBuilder::new();
-                #[cfg(unix)]
-                std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-                builder.create(dir)?;
+                private_dir_builder().create(dir)?;
             }
             // Someone else may have put a link there in between.
             prepare_dir(dir, false).map(|_| true)
@@ -227,13 +231,7 @@ pub fn install_dir(dir: &Path, files: &[(&str, &[u8])]) -> std::io::Result<()> {
     create_private_dirs(parent)?;
     sweep_stale(parent);
     let tmp = partial(dir);
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder.create(&tmp)?;
+    private_dir_builder().create(&tmp)?;
     let written = files.iter().try_for_each(|(name, bytes)| {
         let plain = Path::new(name).components().count() == 1
             && Path::new(name).file_name().is_some_and(|n| n == *name);
