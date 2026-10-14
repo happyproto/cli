@@ -284,7 +284,7 @@ pub struct TestArgs {
     /// Rerun the affected tests whenever the project changes.
     #[arg(long)]
     pub watch: bool,
-    /// Only run tests whose path or name contains this.
+    /// Only run test files whose path contains this.
     pub filter: Option<String>,
 }
 
