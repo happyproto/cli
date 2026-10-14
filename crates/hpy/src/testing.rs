@@ -109,6 +109,8 @@ pub struct FakeRegistry {
     pub profile_missing: Mutex<usize>,
     /// The next real publish fails as if the network dropped.
     pub fail_next_publish: Mutex<bool>,
+    /// Versions whose copy `retry_release` enqueued again.
+    pub retried: Mutex<Vec<String>>,
     /// What `update_profile` was asked: (slug, record, swap_cid).
     pub updated_profiles: Mutex<Vec<(String, Value, Option<String>)>>,
 }
@@ -262,6 +264,22 @@ impl Registry for FakeRegistry {
     async fn withdraw_release(&self, _: &str, version: &str) -> Result<bool> {
         self.check()?;
         Ok(self.releases.lock().unwrap().remove(version).is_some())
+    }
+
+    /// Records the retry in `retried`; a pending release then reads active,
+    /// as if the copy succeeded.
+    async fn retry_release(&self, _: &str, version: &str) -> Result<Option<String>> {
+        self.check()?;
+        let mut releases = self.releases.lock().unwrap();
+        let Some(view) = releases.get_mut(version) else {
+            return Ok(None);
+        };
+        let before = view.status.clone();
+        if before == "pending" {
+            self.retried.lock().unwrap().push(version.into());
+            view.status = "active".into();
+        }
+        Ok(Some(before))
     }
 }
 

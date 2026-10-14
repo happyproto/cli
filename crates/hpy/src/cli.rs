@@ -84,6 +84,8 @@ pub enum PluginCommand {
     Status(StatusArgs),
     /// Withdraw a published release (it stays installable by exact version).
     Withdraw(WithdrawArgs),
+    /// Ask the registry to copy a pending release's artifact again.
+    Retry(RetryArgs),
 }
 
 #[derive(Args, Default)]
@@ -143,7 +145,7 @@ pub struct ProfileEditArgs {
 
 #[derive(Args)]
 pub struct PublishArgs {
-    /// Path to the built .wasm module.
+    /// Path to the built .wasm module, relative to the plugin's directory (-C).
     #[arg(long)]
     pub wasm: Option<PathBuf>,
     /// Version to publish (default: hpy.toml [release] version, then manifest.json version).
@@ -169,6 +171,17 @@ pub struct StatusArgs {
     pub version: Option<String>,
     #[command(flatten)]
     pub slug: SlugArg,
+}
+
+#[derive(Args)]
+pub struct RetryArgs {
+    /// The pending version.
+    pub version: String,
+    #[command(flatten)]
+    pub slug: SlugArg,
+    /// Wait until the registry has copied the artifact.
+    #[arg(long)]
+    pub wait: bool,
 }
 
 #[derive(Args)]

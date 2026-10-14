@@ -14,7 +14,9 @@ pub fn locate_wasm(
     manifest: &Manifest,
 ) -> Result<PathBuf, String> {
     if let Some(p) = explicit {
-        return existing(p.to_path_buf(), "--wasm");
+        // Relative to the plugin's directory, like everything else: `-C`
+        // means "as if started there". An absolute path joins as itself.
+        return existing(dir.join(p), "--wasm");
     }
     if let Some(p) = configured {
         return existing(dir.join(p), "hpy.toml [build] wasm");
@@ -155,6 +157,22 @@ mod tests {
             locate_wasm(dir.path(), None, Some("missing.wasm"), &m)
                 .unwrap_err()
                 .contains("missing.wasm")
+        );
+    }
+
+    #[test]
+    fn a_relative_explicit_path_is_relative_to_the_plugin_dir() {
+        // `hpy -C plugins/mine ... --wasm mine.wasm` means plugins/mine/mine.wasm,
+        // not ./mine.wasm in whatever directory hpy was started from.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("mine.wasm"));
+        let m = Manifest {
+            id: "x".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            locate_wasm(dir.path(), Some(Path::new("mine.wasm")), None, &m).unwrap(),
+            dir.path().join("mine.wasm")
         );
     }
 

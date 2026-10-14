@@ -76,6 +76,12 @@ pub trait Registry: Send + Sync {
     /// Deletes one of the signed-in user's releases; `false` when that
     /// version is not published from their account.
     async fn withdraw_release(&self, slug: &str, version: &str) -> Result<bool>;
+    /// Enqueues the artifact copy of one of the signed-in user's pending
+    /// releases again, and answers the release's status: `pending` when the
+    /// copy was enqueued, `active` when the artifact is already held. `None`
+    /// when that version is not published from their account or was
+    /// withdrawn.
+    async fn retry_release(&self, slug: &str, version: &str) -> Result<Option<String>>;
 }
 
 /// The registry's public XRPC queries, over plain HTTP.
@@ -361,6 +367,23 @@ impl Registry for HttpRegistry {
         {
             Ok(_) => Ok(true),
             Err(Error::Xrpc { name, .. }) if name == "ReleaseNotFound" => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    async fn retry_release(&self, slug: &str, version: &str) -> Result<Option<String>> {
+        let body = serde_json::json!({ "slug": slug, "version": version });
+        match self
+            .procedure("at.happyproto.registry.retryRelease", &body)
+            .await
+        {
+            Ok(out) => match out["status"].as_str() {
+                Some(status) => Ok(Some(status.into())),
+                None => Err(Error::Other(
+                    "at.happyproto.registry.retryRelease answered no status".into(),
+                )),
+            },
+            Err(Error::Xrpc { name, .. }) if name == "ReleaseNotFound" => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -656,6 +679,47 @@ mod publish_tests {
                 .withdraw_release("p", "9.9.9")
                 .await
                 .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_release_goes_through_the_registry_and_answers_the_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/xrpc/at.happyproto.registry.retryRelease"))
+            .and(body_partial_json(
+                serde_json::json!({ "slug": "p", "version": "1.0.0" }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "uri": "at://did:plc:abc/at.happyproto.plugin.release/p:1.0.0",
+                "status": "pending"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert_eq!(
+            registry(&server)
+                .retry_release("p", "1.0.0")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("pending")
+        );
+    }
+
+    #[tokio::test]
+    async fn retrying_an_unpublished_version_answers_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/xrpc/at.happyproto.registry.retryRelease"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "ReleaseNotFound", "message": "that version is not published from your account"
+            })))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            registry(&server).retry_release("p", "9.9.9").await.unwrap(),
+            None
         );
     }
 

@@ -102,7 +102,9 @@ pub async fn run(ctx: &Ctx, args: StatusArgs) -> Result<(), Failure> {
     for r in &rows {
         let note = match (r.in_repo, r.registry.as_str()) {
             (true, "not indexed") => "  ← the registry refused it or has not seen it yet",
-            (true, "pending") => "  ← indexed; artifact not copied yet",
+            (true, "pending") => {
+                "  ← indexed; artifact not copied yet (if it stays so, `hpy registry plugin retry`)"
+            }
             (false, _) => "  (no longer in your repo)",
             _ => "",
         };

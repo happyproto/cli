@@ -1,3 +1,17 @@
+# [1.0.0-alpha.4](https://github.com/happyproto/cli/compare/v1.0.0-alpha.3...v1.0.0-alpha.4) (2026-10-13)
+
+
+### Features
+
+* hpy registry plugin retry ([2714c91](https://github.com/happyproto/cli/commit/2714c918c2974f585386c0db9e6d4f4a1fcb729d))
+
+# [1.0.0-alpha.3](https://github.com/happyproto/cli/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2026-10-13)
+
+
+### Bug Fixes
+
+* resolve --wasm against the plugin's directory ([521f611](https://github.com/happyproto/cli/commit/521f6118b376deb78cf2a716ae9771c0b14d6146))
+
 # [1.0.0-alpha.2](https://github.com/happyproto/cli/compare/v1.0.0-alpha.1...v1.0.0-alpha.2) (2026-10-12)
 
 

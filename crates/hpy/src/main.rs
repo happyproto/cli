@@ -70,6 +70,7 @@ async fn run(cli: Cli) -> Result<(), Failure> {
             PluginCommand::Publish(a) => commands::publish::run(&ctx, a).await,
             PluginCommand::Status(a) => commands::status::run(&ctx, a).await,
             PluginCommand::Withdraw(a) => commands::withdraw::run(&ctx, a).await,
+            PluginCommand::Retry(a) => commands::retry::run(&ctx, a).await,
         },
     }
 }
