@@ -537,6 +537,29 @@ impl Snapshot {
     }
 }
 
+/// Build each module in turn until `stop` is set. Setting it ends the build
+/// under way, cargo's whole process group with it, and starts no further
+/// module, so a caller that handles Ctrl-C itself does not sit through the
+/// rest of the list. A build that `stop` cut short is not reported.
+pub fn build_each(
+    tc: &Toolchain,
+    project: &Path,
+    modules: &[ModuleSpec],
+    stop: &AtomicBool,
+    on_build: &mut dyn FnMut(&ModuleSpec, Result<PathBuf, Failure>),
+) {
+    for module in modules {
+        if stop.load(Ordering::SeqCst) {
+            return;
+        }
+        let result = build_module_unless(tc, project, module, stop, true);
+        if stop.load(Ordering::SeqCst) {
+            return;
+        }
+        on_build(module, result);
+    }
+}
+
 /// Poll each module's crate every `interval` and rebuild the ones that
 /// changed since `from`, until `stop` is set. A build that fails leaves the
 /// previous module installed, so HappyView keeps serving it. Edits made
@@ -1118,6 +1141,59 @@ pub(crate) mod tests {
         assert_eq!(outcomes, vec![("registry".to_string(), false)]);
         assert_eq!(std::fs::read_to_string(&count).unwrap().lines().count(), 1);
         assert_eq!(std::fs::read(&dest).unwrap(), b"\0asm-old");
+    }
+
+    #[test]
+    fn build_each_starts_no_module_once_stopped() {
+        let p = project(&format!(
+            "{REGISTRY}\n[modules.other]\nlanguage = \"rust\"\npath = \"modules/other\"\ncapabilities = [\"library:call\"]\n"
+        ));
+        std::fs::create_dir_all(p.path().join("modules/other/src")).unwrap();
+        std::fs::write(
+            p.path().join("modules/other/Cargo.toml"),
+            format!("[package]\nname = \"other\"\n{ABORT}"),
+        )
+        .unwrap();
+        let wasm = p.path().join("built.wasm");
+        std::fs::write(&wasm, b"\0asm").unwrap();
+        let inner = fake_cargo(p.path(), &wasm, false, &p.path().join("count"));
+        // Counted at the version probe, which finishes before a build starts:
+        // a build that `stop` kills may die before it records itself.
+        let probes = p.path().join("probes");
+        let tc = Toolchain {
+            cargo: script(
+                p.path(),
+                "cargo-probed",
+                &format!(
+                    "[ \"$1\" = --version ] && echo probe >> '{}'\nexec '{}' \"$@\"",
+                    probes.display(),
+                    inner.cargo.display()
+                ),
+            )
+            .into(),
+            rustup: inner.rustup,
+        };
+        let modules = read_modules(p.path()).unwrap();
+        assert_eq!(modules.len(), 2);
+        let started = || {
+            std::fs::read_to_string(&probes)
+                .map(|s| s.lines().count())
+                .unwrap_or(0)
+        };
+
+        let stop = AtomicBool::new(false);
+        let mut built = Vec::new();
+        build_each(&tc, p.path(), &modules, &stop, &mut |m, r| {
+            built.push((m.name.clone(), r.is_ok()));
+            stop.store(true, Ordering::SeqCst);
+        });
+        assert_eq!(built, vec![(modules[0].name.clone(), true)]);
+        assert_eq!(started(), 1);
+
+        build_each(&tc, p.path(), &modules, &stop, &mut |_, _| {
+            panic!("nothing is built once stopped")
+        });
+        assert_eq!(started(), 1);
     }
 
     /// Sets `stop` when dropped, so a test thread that panics still ends the

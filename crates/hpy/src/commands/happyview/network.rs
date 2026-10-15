@@ -2,6 +2,8 @@
 //! network, with its logs in the foreground.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Waker};
 use std::time::Duration;
 
@@ -26,7 +28,7 @@ use crate::project::network::atmosbox::{
 use crate::project::network::runner::{Runner, SystemRunner};
 use crate::project::network::sandbox::Sandbox;
 use crate::project::prepare::{PrepareOptions, prepare};
-use crate::project::run::{ModuleWatcher, finish, first_build};
+use crate::project::run::{ModuleWatcher, finish, first_build_until};
 
 /// Where the sandbox's access relay listens. Only one process on this
 /// computer can hold it.
@@ -496,13 +498,25 @@ async fn start<'r>(
     // Taken before the build, so a save made while it runs is rebuilt.
     let from = Snapshot::take(&prepared.root, modules::read_modules(&prepared.root)?);
     if !from.modules().is_empty() {
-        step(
-            ctx,
-            interrupt,
-            "building the project's modules",
-            first_build(&prepared.root, from.modules()),
-        )
-        .await?;
+        // Not a `step`: a build holds no sandbox lock, so Ctrl-C ends the one
+        // under way at once rather than waiting out every module left.
+        if interrupt.seen() {
+            return Err(Halt::Interrupted);
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut build = std::pin::pin!(first_build_until(
+            &prepared.root,
+            from.modules(),
+            stop.clone()
+        ));
+        tokio::select! {
+            result = &mut build => result?,
+            _ = interrupt.recv() => {
+                stop.store(true, Ordering::SeqCst);
+                build.await?;
+                return Err(Halt::Interrupted);
+            }
+        }
     }
     let backfill = ProjectToml::load(&prepared.root)
         .map_err(Failure::from)?

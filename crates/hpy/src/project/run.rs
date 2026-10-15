@@ -235,6 +235,26 @@ pub async fn first_build(root: &Path, specs: &[ModuleSpec]) -> Result<(), Failur
     .map_err(Failure::runtime)
 }
 
+/// As `first_build`, for a caller that handles Ctrl-C itself: setting `stop`
+/// ends the module being built at once and starts no other.
+pub async fn first_build_until(
+    root: &Path,
+    specs: &[ModuleSpec],
+    stop: Arc<AtomicBool>,
+) -> Result<(), Failure> {
+    let (root, specs) = (PathBuf::from(root), specs.to_vec());
+    tokio::task::spawn_blocking(move || {
+        let toolchain = Toolchain::from_env();
+        modules::build_each(&toolchain, &root, &specs, &stop, &mut |_, result| {
+            if let Err(f) = result {
+                eprintln!("{:?}", f.report);
+            }
+        });
+    })
+    .await
+    .map_err(Failure::runtime)
+}
+
 fn could_not_start(program: &Path, e: std::io::Error) -> Failure {
     Failure::runtime(format!("could not start {}: {e}", program.display()))
 }
