@@ -237,6 +237,7 @@ pub async fn first_build(root: &Path, specs: &[ModuleSpec]) -> Result<(), Failur
 
 /// As `first_build`, for a caller that handles Ctrl-C itself: setting `stop`
 /// ends the module being built at once and starts no other.
+#[cfg(unix)]
 pub async fn first_build_until(
     root: &Path,
     specs: &[ModuleSpec],

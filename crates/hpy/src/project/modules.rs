@@ -541,6 +541,7 @@ impl Snapshot {
 /// under way, cargo's whole process group with it, and starts no further
 /// module, so a caller that handles Ctrl-C itself does not sit through the
 /// rest of the list. A build that `stop` cut short is not reported.
+#[cfg(unix)]
 pub fn build_each(
     tc: &Toolchain,
     project: &Path,
