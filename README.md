@@ -171,6 +171,33 @@ different checksum for a locked version is refused. `dev`, `check` and
 `test` link them into the project's `.happyview/plugins/` (on Windows they
 copy them), which `hpy` owns: anything else placed there is removed.
 
+### A local network
+
+`hpy happyview dev --network local` runs the project against a private
+atproto network on this computer instead of the real one, so test writes
+never reach your real PDS or anyone's Jetstream. It needs Docker (with
+Compose v2) and Deno 2.8 or later, on macOS or Linux.
+
+The network is [Atmosphere in a Box](https://tangled.org/kandake.africa/atmosphereinabox)
+v0.7.1 with its `full-stack` preset: a PLC directory, a PDS, a relay and
+Jetstream, with private DNS and TLS. `hpy` downloads it once per project into
+its data directory (`~/.local/share/hpy/networks/`, or `HPY_DATA_DIR`) and runs
+HappyView inside it at `https://happyview.atmosbox.internal`, with your project
+directory mounted, so saving a file works as it does natively. Sign in as
+`user1.pds1.atmosbox.test`, which is the superadmin; `dev` prints its
+password when it starts in a terminal.
+
+The first run walks you through two things `hpy` never does for you: adding
+the sandbox's hostnames to `/etc/hosts`, and trusting its certificate
+authority in your browser or OS. Later runs check both and reuse the
+network's accounts and records. Ctrl-C stops the network and keeps its data;
+`--reset` discards it (with confirmation, or `--yes`). The local network keeps
+its own database in `.happyview/local-network/`, apart from the one `dev` uses
+against the real network.
+
+Only one local network can run at a time, since its browser relay holds
+`127.0.0.1:443`.
+
 ## `hpy.toml`
 
 This file sits next to `manifest.json`. `manifest.json` stays the file
