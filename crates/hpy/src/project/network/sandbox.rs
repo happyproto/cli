@@ -262,7 +262,43 @@ impl Sandbox<'_> {
         self.task(&["destroy", "--accept-destructive"]).await
     }
 
+    /// `access stop` only stops the relay, and `down` then leaves the stopped
+    /// container behind (its profile is not active) while removing the network
+    /// it was attached to. `access start` would restart that container and fail
+    /// on the missing network, so a stopped relay of this project is removed
+    /// first and Compose creates a fresh one. A running relay is left alone.
     pub async fn access_start(&self) -> Result<(), Failure> {
+        let listed = self
+            .runner
+            .capture(
+                "docker",
+                &[
+                    "ps".into(),
+                    "-a".into(),
+                    "--filter".into(),
+                    format!("label=com.docker.compose.project={}", self.project),
+                    "--filter".into(),
+                    "label=com.docker.compose.service=host-access".into(),
+                    "--format".into(),
+                    "{{.Names}} {{.Label \"com.docker.compose.service\"}} {{.State}}".into(),
+                ],
+                &self.checkout,
+            )
+            .await?;
+        let stopped: Vec<String> = listed
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.split_whitespace();
+                let (name, service, state) = (parts.next()?, parts.next()?, parts.next()?);
+                (service == "host-access" && state != "running").then(|| name.to_string())
+            })
+            .collect();
+        if !stopped.is_empty() {
+            let args: Vec<String> = std::iter::once("rm".to_string())
+                .chain(stopped.iter().cloned())
+                .collect();
+            self.runner.capture("docker", &args, &self.checkout).await?;
+        }
         self.task(&["access", "start"]).await
     }
 
@@ -448,6 +484,41 @@ mod tests {
         assert!(
             !calls.iter().any(|c| c.contains("sandbox create")),
             "{calls:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stopped_relay_is_removed_before_access_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = FakeRunner::answering(&[(
+            "docker ps -a --filter label=com.docker.compose.project=hv-app-1234abcd --filter label=com.docker.compose.service=host-access",
+            Ok("hv-app-1234abcd-host-access-1 host-access exited\nodd-1 dns exited\n"),
+        )]);
+        sandbox(&runner, dir.path()).access_start().await.unwrap();
+        let calls = runner.calls();
+        let rm = calls
+            .iter()
+            .position(|c| c == "docker rm hv-app-1234abcd-host-access-1")
+            .unwrap_or_else(|| panic!("{calls:?}"));
+        let start = calls
+            .iter()
+            .position(|c| c.ends_with("access start"))
+            .unwrap_or_else(|| panic!("{calls:?}"));
+        assert!(rm < start, "{calls:?}");
+    }
+
+    #[tokio::test]
+    async fn a_running_relay_is_not_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = FakeRunner::answering(&[(
+            "docker ps -a",
+            Ok("hv-app-1234abcd-host-access-1 host-access running\n"),
+        )]);
+        sandbox(&runner, dir.path()).access_start().await.unwrap();
+        assert!(
+            !runner.calls().iter().any(|c| c.starts_with("docker rm")),
+            "{:?}",
+            runner.calls()
         );
     }
 
