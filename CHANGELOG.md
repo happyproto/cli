@@ -1,3 +1,10 @@
+# [1.0.0-alpha.6](https://github.com/happyproto/cli/compare/v1.0.0-alpha.5...v1.0.0-alpha.6) (2026-10-15)
+
+
+### Bug Fixes
+
+* remove the stopped access relay before starting it again ([6479bc1](https://github.com/happyproto/cli/commit/6479bc18874f307b8e150b7a4ea7c1d3b0cb3058))
+
 # [1.0.0-alpha.5](https://github.com/happyproto/cli/compare/v1.0.0-alpha.4...v1.0.0-alpha.5) (2026-10-14)
 
 
