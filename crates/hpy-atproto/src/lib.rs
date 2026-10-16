@@ -11,6 +11,7 @@ pub mod pkce;
 pub mod registry;
 pub mod repo;
 pub mod resolve;
+pub mod scope;
 pub mod session;
 pub mod settings;
 

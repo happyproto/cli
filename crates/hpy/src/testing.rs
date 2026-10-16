@@ -15,6 +15,9 @@ pub struct FakeRepo {
     pub blobs: Mutex<Vec<(Vec<u8>, String)>>,
     /// When set, uploads answer this CID instead of the true one.
     pub wrong_cid: Option<String>,
+    /// The grant a publish pre-checks. `None` is a repo that does not know
+    /// its scopes, which is what most tests want.
+    pub scopes: Option<String>,
 }
 
 pub const DID: &str = "did:plc:testuser";
@@ -51,6 +54,10 @@ fn uri(c: &str, k: &str) -> String {
 impl Repo for FakeRepo {
     fn did(&self) -> &str {
         DID
+    }
+
+    fn granted_scopes(&self) -> Option<&str> {
+        self.scopes.as_deref()
     }
 
     async fn get_record(&self, c: &str, k: &str) -> Result<Option<StoredRecord>> {

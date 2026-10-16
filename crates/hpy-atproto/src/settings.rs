@@ -12,7 +12,12 @@ pub const DEFAULT_OAUTH_CLIENT_ID: &str = "https://happyproto.at/oauth/hpy/clien
 /// The hosted page a confidential (web) client is redirected to; it forwards
 /// the browser to `hpy`'s loopback listener, whose port is in `state`.
 pub const DEFAULT_OAUTH_RELAY: &str = "https://happyproto.at/oauth/hpy/callback";
-pub const DEFAULT_SCOPE: &str = "atproto repo:at.happyproto.plugin.profile repo:at.happyproto.plugin.release blob:application/wasm blob:image/*";
+/// What a publish needs: the two plugin record types, and a blob upload for
+/// each artifact kind a release carries — the module, its `manifest.json`,
+/// and the profile's images. A scope missing one of these cannot be widened
+/// later, since a session's scopes are fixed when it is issued, so
+/// `scope::covers_blob` checks a grant against this before uploading.
+pub const DEFAULT_SCOPE: &str = "atproto repo:at.happyproto.plugin.profile repo:at.happyproto.plugin.release blob:application/wasm blob:application/json blob:image/*";
 
 #[derive(Debug, Clone)]
 pub struct Settings {

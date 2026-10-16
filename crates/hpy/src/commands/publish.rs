@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use hpy_atproto::{Registry, Repo};
+use hpy_atproto::{Registry, Repo, scope};
 use hpy_plugin::artifact::{MANIFEST_MIME, WASM_MIME, inspect_image, wasm_problem};
 use hpy_plugin::checksum::same_digest;
 use hpy_plugin::config::{HpyToml, ImageConfig};
@@ -329,6 +329,31 @@ pub async fn execute(
         }
         Ok(None) => {}
         Err(e) => ui.warn(&format!("could not check the registry ({e}); continuing")),
+    }
+    // Every artifact is a separate upload, so a grant that covers the module
+    // and not the manifest fails partway and leaves blobs on the PDS that no
+    // record refers to. The whole set is checked before the first upload.
+    if let Some(granted) = repo.granted_scopes() {
+        let mut mimes = vec![WASM_MIME];
+        if p.release.manifest.is_some() {
+            mimes.push(MANIFEST_MIME);
+        }
+        mimes.extend(p.images.iter().map(|(_, mime)| *mime));
+        let missing = scope::missing_blob_scopes(granted, mimes);
+        if !missing.is_empty() {
+            let needed = missing
+                .iter()
+                .map(|s| format!("`{s}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(Failure::usage(format!(
+                "publishing {} {} needs {needed}, which this sign-in was not granted. \
+                 A session's scopes are fixed when it is created, so publishing again \
+                 cannot add them: run `hpy registry login` to sign in again, then publish. \
+                 Nothing was uploaded.",
+                p.slug, p.version
+            )));
+        }
     }
     let existing_profile = repo.get_record(PROFILE_NSID, &p.slug).await?;
     let new_profile = if existing_profile.is_none() {
@@ -786,6 +811,49 @@ mod tests {
                 ("release", false)
             ]
         );
+    }
+
+    /// The grant that shipped before the manifest was published as a blob:
+    /// it can upload the module, so the refusal arrives between the two
+    /// uploads unless the whole set is checked first.
+    #[tokio::test]
+    async fn a_grant_missing_a_blob_scope_refuses_before_uploading_anything() {
+        let dir = plugin_dir("1.0.0", true);
+        let p = prepare(dir.path(), &opts(), &mut no_build()).unwrap();
+        let repo = FakeRepo {
+            scopes: Some(
+                "atproto repo:at.happyproto.plugin.profile                  repo:at.happyproto.plugin.release blob:application/wasm blob:image/*"
+                    .into(),
+            ),
+            ..FakeRepo::default()
+        };
+        let reg = FakeRegistry::default();
+        let err = run(&p, &repo, &reg, false).await.err().unwrap();
+        let text = format!("{:?}", err.report);
+        assert!(text.contains("blob:application/json"), "{text}");
+        assert!(text.contains("hpy registry login"), "{text}");
+        assert!(
+            repo.blobs.lock().unwrap().is_empty(),
+            "the module was uploaded before the grant was checked"
+        );
+        assert!(reg.published_releases.lock().unwrap().is_empty());
+    }
+
+    /// The scope a login asks for has to get a publish all the way through,
+    /// or the pre-check refuses every publish instead of the broken ones.
+    #[tokio::test]
+    async fn the_default_grant_publishes() {
+        let dir = plugin_dir("1.0.0", true);
+        let p = prepare(dir.path(), &opts(), &mut no_build()).unwrap();
+        let repo = FakeRepo {
+            scopes: Some(hpy_atproto::settings::DEFAULT_SCOPE.into()),
+            ..FakeRepo::default()
+        };
+        let reg = FakeRegistry::default();
+        assert!(matches!(
+            run(&p, &repo, &reg, false).await.unwrap(),
+            Outcome::Published { .. }
+        ));
     }
 
     #[tokio::test]

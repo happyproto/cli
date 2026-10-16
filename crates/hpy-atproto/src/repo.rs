@@ -33,6 +33,11 @@ pub trait Repo: Send + Sync {
     async fn list_records(&self, collection: &str) -> Result<Vec<StoredRecord>>;
     /// Uploads a blob and answers the blob ref JSON (`{$type, ref, mimeType, size}`).
     async fn upload_blob(&self, bytes: Vec<u8>, mime: &str) -> Result<Value>;
+    /// The scopes this session was granted, where they are known. `None`
+    /// means not knowable here rather than none granted, so a caller that
+    /// pre-checks a grant has to let `None` through and leave the refusal to
+    /// the server.
+    fn granted_scopes(&self) -> Option<&str>;
 }
 
 /// The record key: the last path segment of an AT URI.
@@ -96,6 +101,10 @@ fn stored(v: &Value) -> StoredRecord {
 impl Repo for HappyViewRepo {
     fn did(&self) -> &str {
         &self.cred.did
+    }
+
+    fn granted_scopes(&self) -> Option<&str> {
+        Some(&self.cred.scopes)
     }
 
     async fn get_record(&self, collection: &str, rkey: &str) -> Result<Option<StoredRecord>> {
