@@ -1,3 +1,10 @@
+# [1.0.0-alpha.8](https://github.com/happyproto/cli/compare/v1.0.0-alpha.7...v1.0.0-alpha.8) (2026-10-16)
+
+
+### Bug Fixes
+
+* ask for the blob scope a manifest upload needs ([1cbc838](https://github.com/happyproto/cli/commit/1cbc838fa9223df8d314153ff4ad245fbe71eec4))
+
 # [1.0.0-alpha.7](https://github.com/happyproto/cli/compare/v1.0.0-alpha.6...v1.0.0-alpha.7) (2026-10-16)
 
 
