@@ -1,3 +1,10 @@
+# [1.0.0-alpha.9](https://github.com/happyproto/cli/compare/v1.0.0-alpha.8...v1.0.0-alpha.9) (2026-10-16)
+
+
+### Bug Fixes
+
+* update a cargo-installed hpy in place instead of asking for a build ([a5dcb06](https://github.com/happyproto/cli/commit/a5dcb06f2950f7b751aa9216f4dccbdb7a5d0196))
+
 # [1.0.0-alpha.8](https://github.com/happyproto/cli/compare/v1.0.0-alpha.7...v1.0.0-alpha.8) (2026-10-16)
 
 
