@@ -1,3 +1,16 @@
+# [1.0.0-alpha.7](https://github.com/happyproto/cli/compare/v1.0.0-alpha.6...v1.0.0-alpha.7) (2026-10-16)
+
+
+### Bug Fixes
+
+* build the interruptible module loop on unix only ([e3a5558](https://github.com/happyproto/cli/commit/e3a55582af8adea1ee0cd151eeea1bb8354cee4a))
+* stop the first module build at ctrl-c under the local network ([0743a09](https://github.com/happyproto/cli/commit/0743a09da53cd5a6b280f0658458513cc5cecdbb))
+
+
+### Features
+
+* publish a release's manifest.json beside its module ([c46c88e](https://github.com/happyproto/cli/commit/c46c88e13f07ebbff927e427249da793ca4e3323))
+
 # [1.0.0-alpha.6](https://github.com/happyproto/cli/compare/v1.0.0-alpha.5...v1.0.0-alpha.6) (2026-10-15)
 
 
