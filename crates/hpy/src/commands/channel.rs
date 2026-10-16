@@ -93,13 +93,18 @@ pub async fn run(ctx: &Ctx, args: ChannelArgs) -> Result<(), Failure> {
         return Ok(());
     }
     match install(ctx, target, |i| update::switch_hint(i, from, to, target)).await? {
-        Outcome::Installed => ctx.out.done(
-            &format!("Switched to the {to} channel and installed hpy {target}."),
-            json!({ "channel": to, "switched": true, "version": target.to_string(), "installed": true }),
-        ),
+        Outcome::Installed(how) => {
+            if let Some(note) = crate::commands::update::stale_receipt(how) {
+                ctx.out.status(note);
+            }
+            ctx.out.done(
+                &format!("Switched to the {to} channel and installed hpy {target}."),
+                json!({ "channel": to, "switched": true, "version": target.to_string(), "installed": true }),
+            )
+        }
         Outcome::Hint(hint) => ctx.out.done(
             &format!(
-                "Switched to the {to} channel. Your package manager owns this copy of hpy; \
+                "Switched to the {to} channel. Something else owns this copy of hpy; \
                  to install hpy {target} from the {to} channel:\n\n  {hint}"
             ),
             json!({ "channel": to, "switched": true, "version": target.to_string(), "installed": false, "hint": hint }),

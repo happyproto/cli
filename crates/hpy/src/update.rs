@@ -113,8 +113,11 @@ pub fn upgrade_hint(install: Install, channel: Channel, version: &Version) -> St
         Install::Homebrew => format!("brew upgrade {}", formula(channel)),
         Install::Apt => "sudo apt update && sudo apt install --only-upgrade hpy".into(),
         Install::Dnf => "sudo dnf upgrade hpy".into(),
+        // `--locked`: without it cargo re-resolves from scratch and builds
+        // a dependency set nobody tested, which is also how a yanked
+        // transitive dependency makes the build fail outright.
         Install::Cargo => format!(
-            "cargo install --git https://github.com/{REPO} --tag v{version} hpy-cli --force"
+            "cargo install --git https://github.com/{REPO} --tag v{version} --locked hpy-cli --force"
         ),
         Install::Script | Install::Unknown => {
             format!("download it from {}", release_page(version))
@@ -269,6 +272,47 @@ fn script_prefix(exe: &Path) -> Option<PathBuf> {
     installed_by_receipt(exe, &prefix).then_some(prefix)
 }
 
+/// Where a self-update may write, or `None` when something else owns this
+/// copy and has to be the one to replace it.
+///
+/// Homebrew, apt and dnf keep a database of the files they own: a binary
+/// swapped underneath one leaves its records describing a version that is no
+/// longer there, and its next upgrade reverts the swap. Those are told how to
+/// upgrade with the manager instead. Nothing defends the other two —
+/// `cargo install` builds and copies into a directory the user owns, and an
+/// unknown install is a binary sitting somewhere — so for those the prefix is
+/// the directory this executable is in, when it can be written to. Falling
+/// back to the hint on a read-only directory keeps the failure a sentence
+/// rather than a half-finished install.
+pub fn self_update_prefix(install: Install, exe: &Path) -> Option<PathBuf> {
+    match install {
+        Install::Script => script_prefix(exe),
+        Install::Cargo | Install::Unknown => {
+            exe.parent().filter(|dir| writable(dir)).map(PathBuf::from)
+        }
+        Install::Homebrew | Install::Apt | Install::Dnf => None,
+    }
+}
+
+/// Whether a directory can be written to, answered by writing to it: the
+/// permission bits alone do not account for an owner, an ACL or a read-only
+/// mount.
+fn writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".hpy-update-{}", std::process::id()));
+    // `create_new` so a name that somehow exists is never truncated.
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 fn facts(exe: PathBuf) -> Facts {
     let under_usr = exe.starts_with("/usr/");
     let dpkg_owned = under_usr && Path::new("/var/lib/dpkg/info/hpy.list").exists();
@@ -296,9 +340,7 @@ pub struct This {
 pub fn this_install() -> Option<This> {
     let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
     let install = detect(&facts(exe.clone()));
-    let prefix = (install == Install::Script)
-        .then(|| script_prefix(&exe))
-        .flatten();
+    let prefix = self_update_prefix(install, &exe);
     Some(This { install, prefix })
 }
 
@@ -321,7 +363,7 @@ async fn check(config_dir: PathBuf) -> Option<Found> {
     let channel = following(&config_dir);
     let latest = available(&current(), channel, &list_releases(GITHUB_API).await?)?;
     Some(match (this.install, this.prefix) {
-        (Install::Script, Some(prefix)) => Found::SelfUpdate { latest, prefix },
+        (_, Some(prefix)) => Found::SelfUpdate { latest, prefix },
         (install, _) => Found::Notice {
             hint: upgrade_hint(install, channel, &latest),
             latest,
@@ -534,9 +576,11 @@ mod tests {
                 .contains("apt install --only-upgrade hpy")
         );
         assert!(upgrade_hint(Install::Dnf, Channel::Alpha, &alpha).contains("dnf upgrade hpy"));
-        assert!(
-            upgrade_hint(Install::Cargo, Channel::Alpha, &alpha).contains("--tag v1.1.0-alpha.2")
-        );
+        let cargo = upgrade_hint(Install::Cargo, Channel::Alpha, &alpha);
+        assert!(cargo.contains("--tag v1.1.0-alpha.2"), "{cargo}");
+        // A from-source build that re-resolves builds an untested dependency
+        // set, and fails outright when one has been yanked.
+        assert!(cargo.contains("--locked"), "{cargo}");
         assert!(
             upgrade_hint(Install::Unknown, Channel::Alpha, &alpha)
                 .ends_with("/releases/tag/v1.1.0-alpha.2")
@@ -670,5 +714,51 @@ mod tests {
             "https://github.com/happyproto/cli/releases/download/v1.4.0/hpy-cli-installer.sh"
         );
         assert!(installer_url("1.4.0", true).ends_with("/v1.4.0/hpy-cli-installer.ps1"));
+    }
+}
+
+#[cfg(test)]
+mod self_update_policy {
+    use super::*;
+
+    /// `cargo install` copies into a directory the user owns, so hpy can
+    /// replace that copy itself rather than asking for a build from source.
+    #[test]
+    fn a_cargo_install_is_replaced_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("hpy");
+        assert_eq!(
+            self_update_prefix(Install::Cargo, &exe),
+            Some(dir.path().to_path_buf())
+        );
+    }
+
+    #[test]
+    fn an_unknown_install_is_replaced_when_its_directory_is_writable() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("hpy");
+        assert_eq!(
+            self_update_prefix(Install::Unknown, &exe),
+            Some(dir.path().to_path_buf())
+        );
+        // Nowhere to write means the hint, not a half-finished install.
+        assert_eq!(
+            self_update_prefix(Install::Unknown, Path::new("/nonexistent-xyz/hpy")),
+            None
+        );
+    }
+
+    /// These keep a database of the files they own, and their next upgrade
+    /// would revert anything swapped underneath them.
+    #[test]
+    fn a_managed_install_is_left_to_its_manager() {
+        for install in [Install::Homebrew, Install::Apt, Install::Dnf] {
+            let dir = tempfile::tempdir().unwrap();
+            assert_eq!(
+                self_update_prefix(install, &dir.path().join("hpy")),
+                None,
+                "{install:?} must be upgraded by its own manager"
+            );
+        }
     }
 }

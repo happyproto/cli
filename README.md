@@ -58,8 +58,14 @@ powershell -ExecutionPolicy Bypass -c "irm https://github.com/happyproto/cli/rel
 **From source**
 
 ```sh
-cargo install --git https://github.com/happyproto/cli hpy-cli
+cargo install --git https://github.com/happyproto/cli --locked hpy-cli
 ```
+
+`--locked` builds the dependency versions this release was tested with.
+Without it cargo resolves them afresh, which builds something nobody tested
+and fails outright whenever one of them has been yanked. Prefer one of the
+options above: they install a prebuilt binary, and `hpy update` can then
+replace it in place.
 
 **Prereleases**
 
@@ -302,12 +308,16 @@ the first command of each day (UTC), `hpy` checks GitHub for one. The check
 runs alongside the command and never delays it by more than about two
 seconds.
 
-- **Installed with the install script:** `hpy` updates itself in place, and
-  `hpy channel` installs the new channel's release itself.
-- **Installed with Homebrew, apt, dnf or cargo:** that package manager owns
-  the binary, so `hpy` prints the commands to run instead, e.g.
-  `brew upgrade hpy`. Each channel has its own Homebrew formula (`hpy`,
-  `hpy-beta`, `hpy-alpha`) and its own apt suite and yum repository.
+- **Installed with the install script, with cargo, or by hand:** `hpy`
+  downloads the release's own binary and puts it where this one is, and
+  `hpy channel` does the same for the channel you switch to. After replacing a
+  copy `cargo install` built, cargo still records the version it compiled, so
+  installing hpy with cargo again rebuilds from source over it.
+- **Installed with Homebrew, apt or dnf:** those track the files they own, and
+  their next upgrade would revert a binary swapped underneath them, so `hpy`
+  prints the command to run instead, e.g. `brew upgrade hpy`. Each channel has
+  its own Homebrew formula (`hpy`, `hpy-beta`, `hpy-alpha`) and its own apt
+  suite and yum repository.
 
 The daily check is skipped in CI, when there's no terminal, and when
 `HPY_NO_UPDATE_CHECK=1` is set.
