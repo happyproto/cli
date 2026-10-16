@@ -49,6 +49,13 @@ without the repository.
 curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
+This installs the newest release on the **stable** channel. Until `1.0.0` is
+cut there is none, and this fails: GitHub's `releases/latest`, which the script
+forwards to, skips prereleases. Until then, install the `hpy-cli-installer.sh`
+attached to the [release](https://github.com/happyproto/cli/releases) you want,
+as under [Prereleases](#prereleases). `hpy update` then keeps you on that
+release's channel.
+
 **Windows**
 
 ```powershell
