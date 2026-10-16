@@ -85,6 +85,10 @@ pub struct Release {
     pub requires: BTreeMap<String, String>,
     pub extension: ReleaseExtension,
     pub package: Artifact,
+    /// The module's `manifest.json`. A module published as a blob has no
+    /// directory beside it to hold a sibling file, so without this nothing
+    /// says how to load it.
+    pub manifest: Option<Artifact>,
     pub icon: Option<ImageArtifact>,
     pub banner: Option<ImageArtifact>,
     pub screenshots: Vec<ImageArtifact>,
@@ -133,6 +137,9 @@ impl Release {
     pub fn to_record(&self) -> Value {
         let mut artifacts = Map::new();
         artifacts.insert("package".into(), Value::Object(self.package.to_value()));
+        if let Some(m) = &self.manifest {
+            artifacts.insert("manifest".into(), Value::Object(m.to_value()));
+        }
         if let Some(i) = &self.icon {
             artifacts.insert("icon".into(), i.to_value());
         }
@@ -206,6 +213,7 @@ mod tests {
             requires: [("env:happyview".to_string(), ">=3".to_string())].into(),
             extension: ext(),
             package: Artifact::from_bytes(wasm, "application/wasm"),
+            manifest: Some(Artifact::from_bytes(b"{\"id\":\"x\"}", "application/json")),
             icon: None,
             banner: None,
             screenshots: vec![],
@@ -268,6 +276,7 @@ mod tests {
             requires: Default::default(),
             extension: ext(),
             package: Artifact::from_bytes(wasm, "application/wasm"),
+            manifest: None,
             icon: Some(image),
             banner: None,
             screenshots: vec![],
