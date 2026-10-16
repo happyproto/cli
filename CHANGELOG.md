@@ -1,3 +1,10 @@
+# [1.0.0-alpha.10](https://github.com/happyproto/cli/compare/v1.0.0-alpha.9...v1.0.0-alpha.10) (2026-10-16)
+
+
+### Features
+
+* publish a shell installer per release channel ([effcf3d](https://github.com/happyproto/cli/commit/effcf3d11f3e14f3428c64fe4baad875f6072bbe))
+
 # [1.0.0-alpha.9](https://github.com/happyproto/cli/compare/v1.0.0-alpha.8...v1.0.0-alpha.9) (2026-10-16)
 
 
