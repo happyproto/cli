@@ -22,7 +22,10 @@ sudo apt update &amp;&amp; sudo apt install hpy</pre>
 sudo dnf install hpy</pre>
 <h2>Anything else</h2>
 <pre>curl -fsSL https://happyproto.github.io/cli/install.sh | sh</pre>
+<p>For a prerelease channel, the same command with
+<code>install-beta.sh</code> or <code>install-alpha.sh</code>.
+<code>hpy update</code> then keeps you on the channel you installed from.</p>
 <h2>Prereleases</h2>
-<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
+<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>; for the shell installer, <code>install-beta.sh</code> or <code>install-alpha.sh</code> in place of <code>install.sh</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
 </body>
 </html>
