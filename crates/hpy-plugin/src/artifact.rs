@@ -4,6 +4,8 @@
 pub const MAX_WASM_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_IMAGE_BYTES: usize = 1024 * 1024;
 pub const WASM_MIME: &str = "application/wasm";
+/// `manifest.json`, published beside the module it describes.
+pub const MANIFEST_MIME: &str = "application/json";
 
 pub fn wasm_problem(bytes: &[u8]) -> Option<String> {
     if !bytes.starts_with(b"\0asm") {

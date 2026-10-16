@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use hpy_atproto::{Registry, Repo};
-use hpy_plugin::artifact::{WASM_MIME, inspect_image, wasm_problem};
+use hpy_plugin::artifact::{MANIFEST_MIME, WASM_MIME, inspect_image, wasm_problem};
 use hpy_plugin::checksum::same_digest;
 use hpy_plugin::config::{HpyToml, ImageConfig};
 use hpy_plugin::locate::locate_wasm;
@@ -30,6 +30,10 @@ pub struct Prepared {
     pub release: Release,
     pub wasm: Vec<u8>,
     pub wasm_path: PathBuf,
+    /// `manifest.json` exactly as it sits beside the module, so what the
+    /// registry serves is the file the author shipped rather than a
+    /// re-serialisation of it.
+    pub manifest_json: Vec<u8>,
     /// Image bytes in record order: icon, banner, screenshots.
     pub images: Vec<(Vec<u8>, &'static str)>,
     /// The profile `hpy.toml` describes, used only when the PDS has none.
@@ -92,6 +96,9 @@ pub fn prepare(
     build: &mut dyn FnMut(&str) -> Result<(), String>,
 ) -> Result<Prepared, Failure> {
     let manifest = Manifest::load(dir)?;
+    // The bytes, not the parse: a release serves the file the author wrote.
+    let manifest_json = std::fs::read(dir.join("manifest.json"))
+        .map_err(|e| Failure::runtime(format!("could not read manifest.json: {e}")))?;
     let toml = HpyToml::load(dir)?.unwrap_or_default();
     let release_cfg = toml.release.clone().unwrap_or_default();
     let mut problems = manifest.extension_problems();
@@ -196,6 +203,7 @@ pub fn prepare(
         requires: release_cfg.requires.clone(),
         extension: manifest.extension(),
         package: Artifact::from_bytes(&wasm, WASM_MIME),
+        manifest: Some(Artifact::from_bytes(&manifest_json, MANIFEST_MIME)),
         icon,
         banner,
         screenshots,
@@ -209,6 +217,7 @@ pub fn prepare(
         version,
         release,
         wasm,
+        manifest_json,
         wasm_path,
         images,
         profile,
@@ -393,6 +402,11 @@ pub async fn execute(
     let mut release = p.release.clone();
     release.package.blob =
         Some(upload_checked(repo, &p.wasm, WASM_MIME, &p.release.package).await?);
+    if let Some(manifest) = release.manifest.as_mut() {
+        ui.progress("Uploading manifest…");
+        manifest.blob =
+            Some(upload_checked(repo, &p.manifest_json, MANIFEST_MIME, manifest).await?);
+    }
     let mut image_targets: Vec<&mut ImageArtifact> = Vec::new();
     image_targets.extend(release.icon.as_mut());
     image_targets.extend(release.banner.as_mut());
@@ -741,11 +755,22 @@ mod tests {
             uri.ends_with("/at.happyproto.plugin.release/my-plugin:1.0.0"),
             "{uri}"
         );
-        assert_eq!(repo.blobs.lock().unwrap().len(), 1);
+        // The module and its manifest: a module published as a blob has no
+        // directory beside it, so the manifest has to travel with it.
+        assert_eq!(repo.blobs.lock().unwrap().len(), 2);
         let rec = reg.published_releases.lock().unwrap()[0].clone();
         assert_eq!(
             rec["artifacts"]["package"]["checksum"],
             hpy_plugin::checksum::checksum(WASM)
+        );
+        assert_eq!(
+            rec["artifacts"]["manifest"]["checksum"],
+            hpy_plugin::checksum::checksum(&p.manifest_json),
+            "the manifest is published as it sits beside the module"
+        );
+        assert_eq!(
+            rec["artifacts"]["manifest"]["contentType"],
+            "application/json"
         );
         assert_eq!(rec["requires"]["env:happyview"], ">=3.0.0");
         let (slug, profile) = reg.published_profiles.lock().unwrap()[0].clone();
