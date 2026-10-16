@@ -86,6 +86,36 @@ arch_pair() {
 }
 publish 0.0.1 stable
 
+# The shell installers install from GitHub rather than from this repository,
+# so what can be checked here is that each one is written, parses, and
+# resolves its own channel. Running one would install a real release over the
+# machine's hpy.
+step "checking the shell installers"
+for c in "" -beta -alpha; do
+  f="$work/site/install$c.sh"
+  [[ -f "$f" ]] || { echo "test-repo: $f was not written" >&2; exit 1; }
+  sh -n "$f" || { echo "test-repo: $f is not valid sh" >&2; exit 1; }
+done
+if ! grep -q 'releases/latest/download' "$work/site/install.sh"; then
+  echo "test-repo: the stable installer should use releases/latest" >&2
+  exit 1
+fi
+# A copy/paste between the two channels is invisible until someone on one of
+# them installs the other's release. `if !` rather than `&&`, which under
+# `set -e` would end the run on the passing case.
+for c in beta alpha; do
+  f="$work/site/install-$c.sh"
+  if ! grep -q -- "-$c(" "$f"; then
+    echo "test-repo: install-$c.sh does not select the $c channel" >&2
+    exit 1
+  fi
+  if [[ "$c" == beta ]]; then other=alpha; else other=beta; fi
+  if grep -q -- "-$other(" "$f"; then
+    echo "test-repo: install-$c.sh also selects $other" >&2
+    exit 1
+  fi
+done
+
 step "serving the repository"
 docker network create "$net" >/dev/null
 containers+=("hpy-repo-$$")

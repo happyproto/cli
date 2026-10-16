@@ -49,12 +49,8 @@ without the repository.
 curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
-This installs the newest release on the **stable** channel. Until `1.0.0` is
-cut there is none, and this fails: GitHub's `releases/latest`, which the script
-forwards to, skips prereleases. Until then, install the `hpy-cli-installer.sh`
-attached to the [release](https://github.com/happyproto/cli/releases) you want,
-as under [Prereleases](#prereleases). `hpy update` then keeps you on that
-release's channel.
+That installs the newest **stable** release, of which there is none until
+`1.0.0` is cut — for now use the `alpha` channel's installer, below.
 
 **Windows**
 
@@ -82,9 +78,15 @@ These install the stable channel. For the `beta` or `alpha` channel (see
 - Homebrew: `brew install happyproto/tap/hpy-beta` (or `hpy-alpha`).
 - apt: write `beta` (or `alpha`) in place of `stable` in `hpy.list`.
 - dnf: download `hpy-beta.repo` (or `hpy-alpha.repo`) in place of `hpy.repo`.
-- The install script: run the `hpy-cli-installer.sh` attached to the
-  [release](https://github.com/happyproto/cli/releases) you want. After that,
-  `hpy update` keeps you on its channel.
+- The install script: `install-beta.sh` or `install-alpha.sh` in place of
+  `install.sh`, which is the whole difference:
+
+  ```sh
+  curl -fsSL https://happyproto.github.io/cli/install-alpha.sh | sh
+  ```
+
+After installing, `hpy update` keeps you on the channel you installed from, and
+`hpy channel` moves you between them.
 
 The Linux packages contain a static (musl) binary, so they install on any
 glibc or musl distribution, on x86_64 and arm64.

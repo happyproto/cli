@@ -102,17 +102,46 @@ gpgkey=$base_url/gpg.key
 EOF
 done
 
-# `releases/latest` is the newest *stable* release: GitHub excludes
-# prereleases from it, so this installs nothing while every release is one.
-# A prerelease channel's shell install is the installer attached to the
-# release, which is what index.html and the README point at.
+# One installer per channel, so a shell install is the same command
+# everywhere and only the URL differs. Stable rides GitHub's own
+# `releases/latest`; a prerelease channel cannot, because GitHub excludes
+# prereleases from it, so those read the releases list instead. Resolving at
+# install time rather than baking in the tag being published keeps a
+# re-publish of an older release (this script run by hand) from moving a
+# channel backwards.
 cat > "$site/install.sh" <<'EOF'
 #!/bin/sh
-# Installs the latest stable hpy release for this machine.
+# Installs the newest stable hpy release for this machine.
 set -eu
-curl --proto '=https' --tlsv1.2 -LsSf \
+curl --proto '=https' --tlsv1.2 -fsSL \
   https://github.com/happyproto/cli/releases/latest/download/hpy-cli-installer.sh | sh
 EOF
+
+for c in beta alpha; do
+  # A quoted heredoc through sed: the script is written exactly as it runs,
+  # with no shell of this script's expanding anything inside it.
+  sed "s/@CHANNEL@/$c/g" > "$site/install-$c.sh" <<'EOF'
+#!/bin/sh
+# Installs the newest hpy @CHANNEL@ release for this machine.
+#
+# GitHub's `releases/latest` is the newest stable release and never a
+# prerelease, so this reads the releases list, which the API answers newest
+# first, and takes the first tag on this channel.
+set -eu
+repo=happyproto/cli
+tag=$(curl --proto '=https' --tlsv1.2 -fsSL \
+  "https://api.github.com/repos/$repo/releases?per_page=100" \
+  | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  | grep -E -- '-@CHANNEL@(\.|$)' \
+  | head -n 1)
+if [ -z "$tag" ]; then
+  echo "no hpy release on the @CHANNEL@ channel" >&2
+  exit 1
+fi
+curl --proto '=https' --tlsv1.2 -fsSL \
+  "https://github.com/$repo/releases/download/$tag/hpy-cli-installer.sh" | sh
+EOF
+done
 
 cat > "$site/index.html" <<EOF
 <!doctype html>
@@ -139,12 +168,11 @@ sudo apt update &amp;&amp; sudo apt install hpy</pre>
 sudo dnf install hpy</pre>
 <h2>Anything else</h2>
 <pre>curl -fsSL $base_url/install.sh | sh</pre>
-<p>That installs the newest <code>stable</code> release. For a prerelease
-channel, run the <code>hpy-cli-installer.sh</code> attached to the
-<a href="https://github.com/happyproto/cli/releases">release</a> you want;
-<code>hpy update</code> then keeps you on its channel.</p>
+<p>For a prerelease channel, the same command with
+<code>install-beta.sh</code> or <code>install-alpha.sh</code>.
+<code>hpy update</code> then keeps you on the channel you installed from.</p>
 <h2>Prereleases</h2>
-<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
+<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>; for the shell installer, <code>install-beta.sh</code> or <code>install-alpha.sh</code> in place of <code>install.sh</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
 </body>
 </html>
 EOF
