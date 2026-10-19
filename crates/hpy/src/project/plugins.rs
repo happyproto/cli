@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use hpy_atproto::Registry;
 use hpy_plugin::checksum::{checksum, same_digest};
 use hpy_project::lock::LockedPlugin;
-use hpy_project::manifest::{parse_package_uri, release_checksum, synthesize, wasm_file};
+use hpy_project::manifest::{
+    manifest_checksum, parse_package_uri, release_checksum, synthesize, wasm_file,
+};
 use serde_json::Value;
 
 use crate::failure::Failure;
@@ -91,7 +93,8 @@ pub async fn ensure_plugin(
         .await?
         .map(|v| v.record)
         .unwrap_or(Value::Null);
-    let manifest = synthesize(&did, &slug, &release.record, &profile)?;
+    let mut manifest = synthesize(&did, &slug, &release.record, &profile)?;
+    let published_sum = manifest_checksum(&release.record)?;
     let bytes = match reg.get_artifact(&did, &slug, &p.version).await {
         Ok(bytes) => bytes,
         Err(hpy_atproto::Error::Xrpc { name, .. }) if name == "ReleaseNotFound" => {
@@ -105,6 +108,34 @@ pub async fn ensure_plugin(
             "{}@{} downloaded with checksum {got}, but happyview.lock records {}",
             p.id, p.version, p.checksum
         )));
+    }
+    // The release record carries everything HappyView reads except an
+    // interpreter's `supports_libraries`, which only the manifest its
+    // publisher attached does. Left out, HappyView reads `["*"]`.
+    if let Some(stated) = published_sum {
+        let published = match reg.get_manifest_artifact(&did, &slug, &p.version).await {
+            Ok(bytes) => bytes,
+            Err(hpy_atproto::Error::Xrpc { name, .. }) if name == "ReleaseNotFound" => {
+                return Err(withdrawn());
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let got = checksum(&published);
+        if !same_digest(&got, &stated) {
+            return Err(Failure::runtime(format!(
+                "the manifest.json of {}@{} downloaded with checksum {got}, but its release states {stated}",
+                p.id, p.version
+            )));
+        }
+        let published: Value = serde_json::from_slice(&published).map_err(|e| {
+            Failure::runtime(format!(
+                "the manifest.json of {}@{} is not JSON: {e}",
+                p.id, p.version
+            ))
+        })?;
+        if let Some(libraries) = published.get("supports_libraries") {
+            manifest["supports_libraries"] = libraries.clone();
+        }
     }
     let manifest = serde_json::to_vec_pretty(&manifest).expect("a manifest serializes");
     let manifest_sum = checksum(&manifest);
@@ -221,6 +252,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_published_manifest_supplies_the_library_list() {
+        let mut reg = registry();
+        reg.attach_manifest(
+            "did:plc:hv",
+            "happyview-lua",
+            "1.0.0",
+            br#"{"id":"happyview-lua","supports_libraries":["happyview.http"]}"#,
+        );
+        let cache = crate::testing::private_tempdir();
+        let p = locked(&reg).await;
+        let dir = ensure_plugin(&reg, cache.path(), &p).await.unwrap();
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+        assert_eq!(manifest["supports_libraries"], json!(["happyview.http"]));
+        assert_eq!(manifest["language_id"], "lua");
+    }
+
+    #[tokio::test]
+    async fn a_published_manifest_that_does_not_match_its_release_installs_nothing() {
+        let mut reg = registry();
+        reg.attach_manifest("did:plc:hv", "happyview-lua", "1.0.0", b"{}");
+        reg.manifests.insert(
+            ("did:plc:hv".into(), "happyview-lua".into(), "1.0.0".into()),
+            br#"{"supports_libraries":["*"]}"#.to_vec(),
+        );
+        let cache = crate::testing::private_tempdir();
+        let p = locked(&reg).await;
+        let err = ensure_plugin(&reg, cache.path(), &p).await.unwrap_err();
+        assert!(format!("{:?}", err.report).contains("manifest.json of happyview-lua@1.0.0"));
+        assert!(!cache.path().join("plugins/happyview-lua/1.0.0").exists());
+    }
+
+    #[tokio::test]
     async fn bytes_that_do_not_match_the_lock_install_nothing() {
         let mut reg = registry();
         let cache = crate::testing::private_tempdir();
@@ -320,6 +384,14 @@ mod tests {
             } else {
                 Err(not_found())
             }
+        }
+        async fn get_manifest_artifact(
+            &self,
+            d: &str,
+            s: &str,
+            v: &str,
+        ) -> hpy_atproto::Result<Vec<u8>> {
+            self.inner.get_manifest_artifact(d, s, v).await
         }
         async fn publish_profile(
             &self,

@@ -50,6 +50,26 @@ pub fn release_checksum(record: &Value) -> Result<String, Problem> {
     Ok(sum.to_string())
 }
 
+/// The checksum of the `manifest.json` a release publishes beside its
+/// module, when it publishes one.
+pub fn manifest_checksum(record: &Value) -> Result<Option<String>, Problem> {
+    const PATH: &str = "release.artifacts.manifest.checksum";
+    let manifest = &record["artifacts"]["manifest"];
+    if manifest.is_null() {
+        return Ok(None);
+    }
+    let sum = manifest["checksum"]
+        .as_str()
+        .ok_or_else(|| Problem::new(PATH, "is missing"))?;
+    if hpy_plugin::checksum::sha256_digest(sum).is_none() {
+        return Err(Problem::new(
+            PATH,
+            format!("`{sum}` is not a sha2-256 multihash, the only hash hpy can verify"),
+        ));
+    }
+    Ok(Some(sum.to_string()))
+}
+
 /// `requires` entries that name other packages, as `(profile URI, range)`.
 pub fn package_requirements(record: &Value) -> Vec<(String, String)> {
     let Some(map) = record["requires"].as_object() else {

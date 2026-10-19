@@ -50,6 +50,9 @@ pub trait Registry: Send + Sync {
     async fn search_packages(&self, plugin_type: &str) -> Result<Vec<PackageView>>;
     /// The `package` artifact of one release: the module's bytes.
     async fn get_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>>;
+    /// The `manifest` artifact of one release: the `manifest.json` its
+    /// publisher attached.
+    async fn get_manifest_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>>;
     /// Checks a profile against the indexer's rules and, unless
     /// `validate_only`, writes it to the signed-in user's repo.
     async fn publish_profile(
@@ -220,6 +223,53 @@ fn written(nsid: &str, out: &Value) -> Result<WriteResult> {
     }
 }
 
+impl HttpRegistry {
+    /// One artifact of a release by its `type`, from the registry's copy.
+    async fn artifact(&self, did: &str, slug: &str, version: &str, kind: &str) -> Result<Vec<u8>> {
+        const METHOD: &str = "at.happyproto.registry.getArtifact";
+        let url = format!("{}/xrpc/{METHOD}", self.base);
+        let mut request = self.http.get(&url).query(&[
+            ("did", did),
+            ("slug", slug),
+            ("version", version),
+            ("type", kind),
+        ]);
+        if let Some(key) = &self.client_key {
+            request = request.header("x-client-key", key);
+        }
+        let resp = request.send().await.map_err(|e| {
+            Error::Other(format!(
+                "could not reach the registry at {}: {e}",
+                self.base
+            ))
+        })?;
+        let status = resp.status();
+        // A JSON body under 200 is an error envelope when it names an error,
+        // as a Lua query's errors arrive; a manifest is JSON that names none.
+        let json = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("application/json"));
+        let body = resp.bytes().await.map_err(Error::other)?;
+        let err: XrpcErrorBody = json
+            .then(|| serde_json::from_slice(&body).ok())
+            .flatten()
+            .unwrap_or(XrpcErrorBody {
+                error: None,
+                message: None,
+            });
+        if status.is_success() && err.error.is_none() {
+            return Ok(body.to_vec());
+        }
+        Err(Error::Xrpc {
+            method: METHOD.into(),
+            name: err.error.unwrap_or_else(|| format!("HTTP {status}")),
+            message: err.message,
+        })
+    }
+}
+
 #[async_trait]
 impl Registry for HttpRegistry {
     async fn get_package(&self, did: &str, slug: &str) -> Result<Option<PackageView>> {
@@ -286,42 +336,11 @@ impl Registry for HttpRegistry {
     }
 
     async fn get_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
-        const METHOD: &str = "at.happyproto.registry.getArtifact";
-        let url = format!("{}/xrpc/{METHOD}", self.base);
-        let mut request =
-            self.http
-                .get(&url)
-                .query(&[("did", did), ("slug", slug), ("version", version)]);
-        if let Some(key) = &self.client_key {
-            request = request.header("x-client-key", key);
-        }
-        let resp = request.send().await.map_err(|e| {
-            Error::Other(format!(
-                "could not reach the registry at {}: {e}",
-                self.base
-            ))
-        })?;
-        let status = resp.status();
-        // A module is never JSON, so a JSON body is an error envelope even
-        // under 200, as a Lua query's errors arrive.
-        let json = resp
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .is_some_and(|v| v.starts_with("application/json"));
-        let body = resp.bytes().await.map_err(Error::other)?;
-        if status.is_success() && !json {
-            return Ok(body.to_vec());
-        }
-        let err: XrpcErrorBody = serde_json::from_slice(&body).unwrap_or(XrpcErrorBody {
-            error: None,
-            message: None,
-        });
-        Err(Error::Xrpc {
-            method: METHOD.into(),
-            name: err.error.unwrap_or_else(|| format!("HTTP {status}")),
-            message: err.message,
-        })
+        self.artifact(did, slug, version, "package").await
+    }
+
+    async fn get_manifest_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
+        self.artifact(did, slug, version, "manifest").await
     }
 
     async fn publish_profile(
@@ -535,6 +554,23 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("NotConfigured"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_manifest_artifact_is_json_and_still_answers() {
+        let server = MockServer::start().await;
+        let manifest = serde_json::json!({ "id": "x", "supports_libraries": ["*"] });
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.getArtifact"))
+            .and(query_param("type", "manifest"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&manifest))
+            .mount(&server)
+            .await;
+        let bytes = HttpRegistry::new(&server.uri())
+            .get_manifest_artifact("did:plc:a", "x", "1.0.0")
+            .await
+            .unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), manifest);
     }
 
     #[tokio::test]
