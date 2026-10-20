@@ -1,3 +1,10 @@
+# [1.0.0-alpha.11](https://github.com/happyproto/cli/compare/v1.0.0-alpha.10...v1.0.0-alpha.11) (2026-10-20)
+
+
+### Bug Fixes
+
+* keep an interpreter's library list from its published manifest ([c458e53](https://github.com/happyproto/cli/commit/c458e53b1b560cb4ab12de5db94a7224db51887d))
+
 # [1.0.0-alpha.10](https://github.com/happyproto/cli/compare/v1.0.0-alpha.9...v1.0.0-alpha.10) (2026-10-16)
 
 
