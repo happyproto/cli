@@ -173,6 +173,11 @@ impl Registry for FakeRegistry {
         Err(Error::Other("FakeRegistry holds no artifacts".into()))
     }
 
+    async fn get_manifest_artifact(&self, _: &str, _: &str, _: &str) -> Result<Vec<u8>> {
+        self.check()?;
+        Err(Error::Other("FakeRegistry holds no artifacts".into()))
+    }
+
     async fn publish_profile(
         &self,
         slug: &str,
@@ -296,11 +301,27 @@ pub struct RegistryFixture {
     pub packages: Vec<PackageView>,
     pub releases: BTreeMap<(String, String), Vec<ReleaseView>>,
     pub artifacts: BTreeMap<(String, String, String), Vec<u8>>,
+    /// Each release's published `manifest.json`, keyed as `artifacts` is.
+    pub manifests: BTreeMap<(String, String, String), Vec<u8>>,
     /// Every query answered, as `method slug[@version]`.
     pub calls: Mutex<Vec<String>>,
 }
 
 impl RegistryFixture {
+    /// Attaches `manifest` to a release already published, stating its
+    /// checksum in the record as a publisher's release does.
+    pub fn attach_manifest(&mut self, did: &str, slug: &str, version: &str, manifest: &[u8]) {
+        let release = self
+            .releases
+            .get_mut(&(did.to_string(), slug.to_string()))
+            .and_then(|rs| rs.iter_mut().find(|r| r.record["version"] == version))
+            .expect("attach_manifest needs the release published first");
+        release.record["artifacts"]["manifest"] =
+            json!({ "checksum": hpy_plugin::checksum::checksum(manifest) });
+        self.manifests
+            .insert((did.into(), slug.into(), version.into()), manifest.to_vec());
+    }
+
     pub fn publish(
         &mut self,
         did: &str,
@@ -435,6 +456,14 @@ impl Registry for RegistryFixture {
             .get(&(did.into(), slug.into(), version.into()))
             .cloned()
             .ok_or_else(|| Error::Other(format!("no artifact for {slug}@{version}")))
+    }
+
+    async fn get_manifest_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
+        self.log(format!("getArtifact manifest {slug}@{version}"));
+        self.manifests
+            .get(&(did.into(), slug.into(), version.into()))
+            .cloned()
+            .ok_or_else(|| Error::Other(format!("no manifest for {slug}@{version}")))
     }
 
     async fn publish_profile(&self, _: &str, _: Value, _: bool) -> Result<Option<WriteResult>> {
