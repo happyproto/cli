@@ -12,15 +12,22 @@ jobs:
       matrix:
         os: [depot-ubuntu-24.04, depot-macos-15, depot-windows-2022]
     runs-on: ${{ matrix.os }}
+    env:
+      # The pty test skips where it cannot open a terminal; here it must run.
+      HPY_REQUIRE_PTY_TEST: ${{ !startsWith(matrix.os, 'depot-windows') && '1' || '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-wasip1
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Build a real script module
+        if: ${{ !startsWith(matrix.os, 'depot-windows') }}
+        run: cargo test -p hpy-cli --bin hpy -- --ignored a_real_cargo_build_produces_a_wasm_module
 
   packaging:
     runs-on: depot-ubuntu-24.04
