@@ -50,7 +50,7 @@ curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
 That installs the newest **stable** release, of which there is none until
-`1.0.0` is cut — for now use the `alpha` channel's installer, below.
+`1.0.0` is cut — for now use the `beta` channel's installer, below.
 
 **Windows**
 
@@ -82,7 +82,7 @@ These install the stable channel. For the `beta` or `alpha` channel (see
   `install.sh`, which is the whole difference:
 
   ```sh
-  curl -fsSL https://happyproto.github.io/cli/install-alpha.sh | sh
+  curl -fsSL https://happyproto.github.io/cli/install-beta.sh | sh
   ```
 
 After installing, `hpy update` keeps you on the channel you installed from, and
@@ -290,7 +290,7 @@ installs `hpy` and does the above in one step:
   with:
     version: 1.2.0
     credential: ${{ secrets.HPY_CREDENTIAL }}
-    hpy-channel: alpha   # until hpy 1.0.0 is out
+    hpy-channel: beta    # until hpy 1.0.0 is out
 ```
 
 ## Updates
