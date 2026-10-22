@@ -1,0 +1,47 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: amd64 arm64
+Codename: beta
+Components: main
+Date: Thu, 22 Oct 2026 13:08:42 +0000
+Description: hpy, the HappyProto command line
+Label: hpy
+Origin: HappyProto
+Suite: beta
+MD5Sum:
+ 794405d224a35cd0963f5147bbde5f6b              668 main/binary-amd64/Packages
+ 0e69cc5882a476ba20e51b8c560c4563              462 main/binary-amd64/Packages.gz
+ 8fb0df137f70a571956218265bc3f80f              668 main/binary-arm64/Packages
+ 4ff003a30097760628eac1b556c9c448              463 main/binary-arm64/Packages.gz
+SHA1:
+ 8f2015fbb239f901d54779a839002375f10c3824              668 main/binary-amd64/Packages
+ 511385beccb1fed1baf483771de393b030d20721              462 main/binary-amd64/Packages.gz
+ 37d40772bad36814f11a2b295ccf57970450e3f2              668 main/binary-arm64/Packages
+ c0ac0e53ddd0f5f3812f165ad40b8c802fab9984              463 main/binary-arm64/Packages.gz
+SHA256:
+ b75b8f8ab616557b0064ea5afe00f0c2d7808f08c7cace6a21d0643217652c86              668 main/binary-amd64/Packages
+ 15d738b6beff64ced1af55a521efec7126ef81ca6988dd0370bd0da03c4b135e              462 main/binary-amd64/Packages.gz
+ 60c49402d8f37d84f085baef9b14dc242c2c8ff834b94c69d3a43441016fa12a              668 main/binary-arm64/Packages
+ cb3005fce233a924533360873e96e77f1ac0333a5a89b998f1ecb1b372eda4df              463 main/binary-arm64/Packages.gz
+SHA512:
+ 8c68663f8401671d13dc9e8d1e2be04170d2fcb65d612eb22d22f567ca730c2a045ddce3781231a59157e37648e40dfc32c64ce1226c2304e012f4a299e5e474              668 main/binary-amd64/Packages
+ 95af09c749c58a361e13bfcd7dc72ee7d55cbbdcfe43c9ae6fec31451335180ea9a0db1dbb2fe779e2195ef427ae3d484b3fd5dfe70f5cb566e6e60279396af7              462 main/binary-amd64/Packages.gz
+ 44df8b432af3e2c5a14c0eaf16508536425403fa7dd0f6d39d4a2636f5fb89b6e89234bbe69f0c059cb34d13624cb32e0e31f6ef12ba34ad25eaa504817f582f              668 main/binary-arm64/Packages
+ 932bade4dd53b9fe7a4330eeeb254ecebd6c0793eaa7bf28be7fdfcbb7953a402e8c8804f029bc76e733b5cb2ddafafa4c0642f6a15680c1fca8b5969f06c029              463 main/binary-arm64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEY7k87aI+Cc/EKuihi4PDs4rKt0wFAmraCtoACgkQi4PDs4rK
+t0x7rA//Spzu+j4ZzzrxfArG8qLHNWy3nK0lqWGTcIfcPXTGnA+GisKi5OANN0ia
+zW3ukV++kJ9Vp9qVImRKw4ts8uvKYKFitWFEdxwjCdhS7Pj49zThHXomdIphx7VL
+yJNFtwDA/O43L4IfIukklxBDeiZHW/ozcORxx8evfvgSuCUE/qusbowBeT6k6d9S
+5lNMUqeejam/ZdTgqiPEEjmUWk7N4zYHN/GO9y4p9UzBjnrXaDC/PJdqVMQ5zWA5
+taEeWA9uQ+Yl154rd5lBGCjtPjBz1QL7S1NWglssmS4UDu+Ix+pj3MXq0gk4gmsS
+5o8L4GoNsdwmD30ZdlktigzGoLb5OI8ptmV3CJnRaKy2PhSveFF3CMNYiizGbopq
+M0kaSubXww79rR1g9T7zZmGSx+0DMOZgXFWazDly4sC5zOZznJVC8TIvs+/Y1CvX
+HBhiq0QY7gA+oKTii8knXjpNeC5f2Zx0yg0GVQGCK3Ur8wEBdPS69iaWO5TiU/Ky
+Fc5tePL23Of0ZFoPABS6qUFTACUHqgARR72ZcVm1nnuYdYKYRffIDPe+w8nY2nAG
+RwTlUOHYXn5t04LQdrpqbE0702n0qDY60tVYycReftPMNSAzz3XC1EtKL+5MvRjY
+TXIhJDCDfcfsF0dTc2F11aioN8X0BCV3s3Y7SFgMKjT2xMyhsTc=
+=SVZn
+-----END PGP SIGNATURE-----
