@@ -10,7 +10,7 @@ use crate::happyview::HappyView;
 use crate::{Error, Result};
 
 /// A record the gateway wrote or the registry indexed.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Ref {
     pub uri: String,
     pub cid: String,
@@ -271,7 +271,12 @@ struct Projects {
     cursor: Option<String>,
 }
 
-const NOT_FOUND: [&str; 3] = ["ProjectNotFound", "VersionNotFound", "ChannelNotFound"];
+const NOT_FOUND: [&str; 4] = [
+    "ProjectNotFound",
+    "ActorNotFound",
+    "VersionNotFound",
+    "ChannelNotFound",
+];
 
 /// The most a page can hold; fewer round trips for a long listing.
 const PAGE: &str = "100";
@@ -633,6 +638,8 @@ mod tests {
     async fn not_found_names_answer_none_whatever_the_status() {
         for (nsid, name) in [
             ("getProject", "ProjectNotFound"),
+            // A handle that resolves to no account has no projects either.
+            ("getProject", "ActorNotFound"),
             ("getVersion", "VersionNotFound"),
             ("resolveChannel", "ChannelNotFound"),
         ] {

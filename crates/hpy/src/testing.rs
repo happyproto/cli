@@ -4,9 +4,16 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use hpy_atproto::{
-    Error, PackageView, Registry, ReleaseView, Repo, Result, StoredRecord, WriteResult,
+use hpy_atproto::registry::{
+    Availability, ChannelView, ProjectLifecycle, PublicationView, RecordRef, State,
+    VersionLifecycle,
 };
+use hpy_atproto::{
+    Error, ProjectView, PublishOut, PutProjectOut, Ref, Registry, Repo, Result, StoredRecord,
+    VersionView,
+};
+use hpy_plugin::artifact::{MANIFEST_MIME, WASM_MIME, predicted_blob};
+use hpy_plugin::checksum::raw_cid;
 use serde_json::{Value, json};
 
 #[derive(Default)]
@@ -21,17 +28,6 @@ pub struct FakeRepo {
 }
 
 pub const DID: &str = "did:plc:testuser";
-
-/// A CID `FakeRegistry::update_profile` treats as out of date.
-pub const STALE_CID: &str = "bafystale";
-
-#[allow(non_snake_case)]
-fn ProfileMissing() -> Error {
-    Error::Registry {
-        name: "ProfileMissing".into(),
-        message: "no profile is indexed at that slug".into(),
-    }
-}
 
 impl FakeRepo {
     pub fn with(records: &[(&str, &str, Value)]) -> FakeRepo {
@@ -99,41 +95,119 @@ impl Repo for FakeRepo {
     }
 }
 
+/// A view of `version` of `did`'s `name`, available and installable, with
+/// `artifact` as published.
+pub fn version_view(did: &str, name: &str, version: &str, artifact: Value) -> VersionView {
+    VersionView {
+        uri: hpy_plugin::validate::version_uri(did, name, version),
+        cid: hpy_plugin::checksum::raw_cid(format!("version {did} {name} {version}").as_bytes()),
+        did: did.into(),
+        name: name.into(),
+        version: version.into(),
+        manifest: Ref {
+            uri: format!("at://{did}/{}/3l{version}", hpy_plugin::MANIFEST_NSID),
+            cid: manifest_cid(&artifact),
+        },
+        artifact,
+        changelog: None,
+        availability: Availability::Available,
+        suspect: false,
+        lifecycle: VersionLifecycle {
+            state: State::Active,
+            installable: true,
+            superseded_by: None,
+            reason: None,
+            kind: None,
+            events: vec![],
+        },
+        indexed_at: "2026-10-23T00:00:00Z".into(),
+    }
+}
+
+/// A stand-in for the manifest record's CID: the same artifact always gets
+/// the same one, and a different artifact a different one.
+pub fn manifest_cid(artifact: &Value) -> String {
+    hpy_plugin::checksum::raw_cid(artifact.to_string().as_bytes())
+}
+
+/// A project as the registry indexes it.
+pub fn project_view(did: &str, name: &str, plugin_type: &str) -> ProjectView {
+    ProjectView {
+        uri: hpy_plugin::validate::project_uri(did, name),
+        cid: Some("bafyproject".into()),
+        did: did.into(),
+        handle: None,
+        name: name.into(),
+        sidecar: RecordRef {
+            uri: format!("at://{did}/{}/{name}", hpy_plugin::SIDECAR_NSID),
+            cid: None,
+        },
+        publication: PublicationView {
+            uri: format!("at://{did}/{}/{name}", hpy_plugin::PUBLICATION_NSID),
+            cid: "bafypublication".into(),
+            name: name.into(),
+            description: None,
+            url: format!("https://happyproto.at/plugins/{did}/{name}"),
+            icon: None,
+        },
+        plugin_type: plugin_type.into(),
+        keywords: vec![],
+        authors: vec![],
+        security: vec![],
+        channels: BTreeMap::new(),
+        banner: None,
+        lifecycle: ProjectLifecycle {
+            state: State::Active,
+        },
+        indexed_at: "2026-10-23T00:00:00Z".into(),
+    }
+}
+
+fn refusal(r: &Option<(String, String)>) -> Result<()> {
+    match r {
+        Some((name, message)) => Err(Error::Registry {
+            name: name.clone(),
+            message: message.clone(),
+        }),
+        None => Ok(()),
+    }
+}
+
+/// The gateway and read API for one signed-in publisher's project.
 #[derive(Default)]
 pub struct FakeRegistry {
-    pub releases: Mutex<BTreeMap<String, ReleaseView>>,
-    pub package: Option<PackageView>,
+    /// What `getProject` answers; `put_project` fills it in.
+    pub project: Mutex<Option<ProjectView>>,
+    /// What `getVersion` answers, by version; `publish_release` adds to it.
+    pub versions: Mutex<BTreeMap<String, VersionView>>,
     pub unreachable: bool,
-    /// What the publish procedures were asked: ("profile"|"release", validate_only).
+    /// What the gateway was asked: ("project"|"release", validate_only).
     pub calls: Mutex<Vec<(&'static str, bool)>>,
-    pub published_profiles: Mutex<Vec<(String, Value)>>,
-    pub published_releases: Mutex<Vec<Value>>,
-    /// Refuses profiles with this registry error (name, message).
-    pub reject_profile: Option<(String, String)>,
-    /// Refuses releases with this registry error (name, message).
+    /// `putProject` inputs that wrote.
+    pub put_projects: Mutex<Vec<Value>>,
+    /// `publishRelease` inputs that wrote.
+    pub published: Mutex<Vec<Value>>,
+    pub promoted: Mutex<Vec<Value>>,
+    pub statuses: Mutex<Vec<Value>>,
+    pub reject_project: Option<(String, String)>,
     pub reject_release: Option<(String, String)>,
-    /// `ProfileMissing` answers left before a release publishes.
-    pub profile_missing: Mutex<usize>,
-    /// The next real publish fails as if the network dropped.
+    /// The next `publishRelease` that writes fails as if the network dropped
+    /// after the gateway wrote the manifest.
     pub fail_next_publish: Mutex<bool>,
-    /// Versions whose copy `retry_release` enqueued again.
-    pub retried: Mutex<Vec<String>>,
-    /// What `update_profile` was asked: (slug, record, swap_cid).
-    pub updated_profiles: Mutex<Vec<(String, Value, Option<String>)>>,
+    /// Versions a failed publish left half-written, which the next publish
+    /// of the same version resumes.
+    pub half_written: Mutex<Vec<String>>,
 }
 
 impl FakeRegistry {
-    pub fn with_release(version: &str, status: &str) -> FakeRegistry {
+    /// A registry that already indexes `version` of the project, published
+    /// with `artifact`.
+    pub fn with_version(name: &str, version: &str, artifact: Value) -> FakeRegistry {
         let reg = FakeRegistry::default();
-        reg.releases.lock().unwrap().insert(
-            version.into(),
-            ReleaseView {
-                uri: format!("at://{DID}/at.happyproto.plugin.release/x:{version}"),
-                status: status.into(),
-                record: json!({}),
-                indexed_at: None,
-            },
-        );
+        reg.versions
+            .lock()
+            .unwrap()
+            .insert(version.into(), version_view(DID, name, version, artifact));
         reg
     }
 
@@ -146,352 +220,398 @@ impl FakeRegistry {
     }
 }
 
+fn refs(collection: &str, rkey: &str, cid: &str) -> Ref {
+    Ref {
+        uri: uri(collection, rkey),
+        cid: cid.into(),
+    }
+}
+
 #[async_trait]
 impl Registry for FakeRegistry {
-    async fn get_package(&self, _: &str, _: &str) -> Result<Option<PackageView>> {
+    async fn get_project(&self, _: &str, _: &str) -> Result<Option<ProjectView>> {
         self.check()?;
-        Ok(self.package.clone())
+        Ok(self.project.lock().unwrap().clone())
     }
 
-    async fn get_release(&self, _: &str, _: &str, version: &str) -> Result<Option<ReleaseView>> {
+    async fn search_projects(&self, _: Option<&str>, _: Option<&str>) -> Result<Vec<ProjectView>> {
         self.check()?;
-        Ok(self.releases.lock().unwrap().get(version).cloned())
+        Ok(self.project.lock().unwrap().clone().into_iter().collect())
     }
 
-    async fn list_releases(&self, _: &str, _: &str) -> Result<Vec<ReleaseView>> {
+    /// Newest first, as the registry answers.
+    async fn list_versions(&self, _: &str, _: &str) -> Result<Vec<VersionView>> {
         self.check()?;
-        Ok(self.releases.lock().unwrap().values().cloned().collect())
+        Ok(self
+            .versions
+            .lock()
+            .unwrap()
+            .values()
+            .rev()
+            .cloned()
+            .collect())
     }
 
-    async fn search_packages(&self, _: &str) -> Result<Vec<PackageView>> {
+    async fn get_version(&self, _: &str, _: &str, version: &str) -> Result<Option<VersionView>> {
         self.check()?;
-        Ok(self.package.clone().into_iter().collect())
+        Ok(self.versions.lock().unwrap().get(version).cloned())
     }
 
-    async fn get_artifact(&self, _: &str, _: &str, _: &str) -> Result<Vec<u8>> {
+    async fn resolve_channel(&self, _: &str, _: &str, _: &str) -> Result<Option<VersionView>> {
+        self.check()?;
+        Ok(None)
+    }
+
+    async fn get_artifact(&self, _: &str) -> Result<Vec<u8>> {
         self.check()?;
         Err(Error::Other("FakeRegistry holds no artifacts".into()))
     }
 
-    async fn get_manifest_artifact(&self, _: &str, _: &str, _: &str) -> Result<Vec<u8>> {
-        self.check()?;
-        Err(Error::Other("FakeRegistry holds no artifacts".into()))
-    }
-
-    async fn publish_profile(
+    async fn put_project(
         &self,
-        slug: &str,
-        record: Value,
+        input: Value,
         validate_only: bool,
-    ) -> Result<Option<WriteResult>> {
-        self.calls.lock().unwrap().push(("profile", validate_only));
-        if let Some((name, message)) = &self.reject_profile {
-            return Err(Error::Registry {
-                name: name.clone(),
-                message: message.clone(),
-            });
-        }
+    ) -> Result<Option<PutProjectOut>> {
+        self.calls.lock().unwrap().push(("project", validate_only));
+        refusal(&self.reject_project)?;
         if validate_only {
             return Ok(None);
         }
-        if std::mem::take(&mut *self.fail_next_publish.lock().unwrap()) {
-            return Err(Error::Other("network went away".into()));
-        }
-        self.published_profiles
-            .lock()
-            .unwrap()
-            .push((slug.into(), record));
-        Ok(Some(WriteResult {
-            uri: uri("at.happyproto.plugin.profile", slug),
-            cid: "bafyprofile".into(),
+        let name = input["name"].as_str().unwrap_or_default().to_string();
+        let created = self.project.lock().unwrap().is_none();
+        let mut view = project_view(
+            DID,
+            &name,
+            input["project"]["pluginType"].as_str().unwrap_or(""),
+        );
+        view.publication.name = input["publication"]["name"].as_str().unwrap_or("").into();
+        view.publication.description = input["publication"]["description"]
+            .as_str()
+            .map(str::to_string);
+        view.publication.icon = input["publication"]["icon"]["ref"]["$link"]
+            .as_str()
+            .map(str::to_string);
+        view.keywords =
+            serde_json::from_value(input["project"]["keywords"].clone()).unwrap_or_default();
+        view.authors =
+            serde_json::from_value(input["project"]["authors"].clone()).unwrap_or_default();
+        view.security =
+            serde_json::from_value(input["project"]["security"].clone()).unwrap_or_default();
+        *self.project.lock().unwrap() = Some(view);
+        self.put_projects.lock().unwrap().push(input);
+        Ok(Some(PutProjectOut {
+            created,
+            project: refs(hpy_plugin::PROJECT_NSID, &name, "bafyproject"),
+            publication: refs(hpy_plugin::PUBLICATION_NSID, &name, "bafypublication"),
+            sidecar: refs(hpy_plugin::SIDECAR_NSID, &name, "bafysidecar"),
         }))
     }
 
     async fn publish_release(
         &self,
-        record: Value,
+        input: Value,
         validate_only: bool,
-    ) -> Result<Option<WriteResult>> {
+    ) -> Result<Option<PublishOut>> {
         self.calls.lock().unwrap().push(("release", validate_only));
-        if let Some((name, message)) = &self.reject_release {
-            return Err(Error::Registry {
-                name: name.clone(),
-                message: message.clone(),
-            });
-        }
-        let missing = ProfileMissing();
+        refusal(&self.reject_release)?;
         if validate_only {
-            return if *self.profile_missing.lock().unwrap() > 0 {
-                Err(missing)
-            } else {
-                Ok(None)
-            };
+            return Ok(None);
         }
+        let name = input["name"].as_str().unwrap_or_default().to_string();
+        let version = input["version"].as_str().unwrap_or_default().to_string();
         if std::mem::take(&mut *self.fail_next_publish.lock().unwrap()) {
+            self.half_written.lock().unwrap().push(version);
             return Err(Error::Other("network went away".into()));
         }
-        {
-            let mut left = self.profile_missing.lock().unwrap();
-            if *left > 0 {
-                *left -= 1;
-                return Err(missing);
-            }
-        }
-        let rkey = format!(
-            "{}:{}",
-            record["package"].as_str().unwrap_or(""),
-            record["version"].as_str().unwrap_or("")
-        );
-        self.published_releases.lock().unwrap().push(record);
-        Ok(Some(WriteResult {
-            uri: uri("at.happyproto.plugin.release", &rkey),
-            cid: "bafyrelease".into(),
-        }))
-    }
-
-    async fn update_profile(
-        &self,
-        slug: &str,
-        record: Value,
-        swap_cid: Option<&str>,
-    ) -> Result<WriteResult> {
-        if swap_cid == Some(STALE_CID) {
-            return Err(Error::Xrpc {
-                method: "at.happyproto.registry.updateProfile".into(),
-                name: "InvalidSwap".into(),
-                message: None,
-            });
-        }
-        self.updated_profiles.lock().unwrap().push((
-            slug.into(),
-            record,
-            swap_cid.map(str::to_string),
-        ));
-        Ok(WriteResult {
-            uri: uri("at.happyproto.plugin.profile", slug),
-            cid: "bafyupdated".into(),
-        })
-    }
-
-    async fn withdraw_release(&self, _: &str, version: &str) -> Result<bool> {
-        self.check()?;
-        Ok(self.releases.lock().unwrap().remove(version).is_some())
-    }
-
-    /// Records the retry in `retried`; a pending release then reads active,
-    /// as if the copy succeeded.
-    async fn retry_release(&self, _: &str, version: &str) -> Result<Option<String>> {
-        self.check()?;
-        let mut releases = self.releases.lock().unwrap();
-        let Some(view) = releases.get_mut(version) else {
-            return Ok(None);
+        let resumed = self.half_written.lock().unwrap().contains(&version);
+        let mut view = version_view(DID, &name, &version, input["artifact"].clone());
+        view.availability = Availability::Pending;
+        let out = PublishOut {
+            resumed,
+            manifest: Some(view.manifest.clone()),
+            version: Ref {
+                uri: view.uri.clone(),
+                cid: view.cid.clone(),
+            },
+            channel: Some(refs(
+                hpy_plugin::CHANNEL_NSID,
+                &format!("{name}:{}", input["track"].as_str().unwrap_or("")),
+                "bafychannel",
+            )),
+            changelog: None,
         };
-        let before = view.status.clone();
-        if before == "pending" {
-            self.retried.lock().unwrap().push(version.into());
-            view.status = "active".into();
-        }
-        Ok(Some(before))
+        self.versions.lock().unwrap().insert(version, view);
+        self.published.lock().unwrap().push(input);
+        Ok(Some(out))
+    }
+
+    async fn promote_release(&self, input: Value) -> Result<PublishOut> {
+        self.check()?;
+        let name = input["name"].as_str().unwrap_or_default();
+        let version = input["version"].as_str().unwrap_or_default();
+        let out = PublishOut {
+            resumed: false,
+            manifest: None,
+            version: Ref {
+                uri: hpy_plugin::validate::version_uri(DID, name, version),
+                cid: "bafypromoted".into(),
+            },
+            channel: None,
+            changelog: None,
+        };
+        self.promoted.lock().unwrap().push(input);
+        Ok(out)
+    }
+
+    async fn put_status(&self, input: Value) -> Result<Ref> {
+        self.check()?;
+        self.statuses.lock().unwrap().push(input);
+        Ok(refs(hpy_plugin::STATUS_NSID, "3lstatus", "bafystatus"))
     }
 }
 
-/// A registry holding many packages, for resolution and download tests.
+/// A registry holding many projects, for resolution and download tests.
 #[derive(Default)]
 pub struct RegistryFixture {
-    pub packages: Vec<PackageView>,
-    pub releases: BTreeMap<(String, String), Vec<ReleaseView>>,
-    pub artifacts: BTreeMap<(String, String, String), Vec<u8>>,
-    /// Each release's published `manifest.json`, keyed as `artifacts` is.
-    pub manifests: BTreeMap<(String, String, String), Vec<u8>>,
-    /// Every query answered, as `method slug[@version]`.
+    pub projects: Vec<ProjectView>,
+    /// Every version of each `(did, name)`, in publication order.
+    pub versions: BTreeMap<(String, String), Vec<VersionView>>,
+    /// Channel heads, `(did, name, channel)` → version. Kept up to date by
+    /// `publish` unless set by hand.
+    pub channels: BTreeMap<(String, String, String), String>,
+    /// Blob bytes by CID.
+    pub blobs: BTreeMap<String, Vec<u8>>,
+    /// Every query answered, as `method name[@version]`.
     pub calls: Mutex<Vec<String>>,
 }
 
 impl RegistryFixture {
-    /// Attaches `manifest` to a release already published, stating its
-    /// checksum in the record as a publisher's release does.
-    pub fn attach_manifest(&mut self, did: &str, slug: &str, version: &str, manifest: &[u8]) {
-        let release = self
-            .releases
-            .get_mut(&(did.to_string(), slug.to_string()))
-            .and_then(|rs| rs.iter_mut().find(|r| r.record["version"] == version))
-            .expect("attach_manifest needs the release published first");
-        release.record["artifacts"]["manifest"] =
-            json!({ "checksum": hpy_plugin::checksum::checksum(manifest) });
-        self.manifests
-            .insert((did.into(), slug.into(), version.into()), manifest.to_vec());
-    }
-
+    /// Publishes `version` of `did`'s `name` with the plugin fields `fields`
+    /// (pluginType, apiVersion, …), `requires`, and `wasm` as its module.
+    /// Its shipped manifest is `{"id": name}`.
     pub fn publish(
         &mut self,
         did: &str,
-        slug: &str,
+        name: &str,
         version: &str,
-        ext: Value,
+        fields: Value,
         requires: Value,
         wasm: &[u8],
     ) {
-        let record = json!({
-            "$type": hpy_plugin::RELEASE_NSID,
-            "package": slug,
-            "version": version,
-            "artifacts": { "package": { "checksum": hpy_plugin::checksum::checksum(wasm) } },
-            "extensions": { (hpy_plugin::EXTENSION_NSID): ext },
+        let manifest = serde_json::to_vec(&json!({ "id": name })).unwrap();
+        self.publish_with_manifest(did, name, version, fields, requires, wasm, &manifest);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn publish_with_manifest(
+        &mut self,
+        did: &str,
+        name: &str,
+        version: &str,
+        fields: Value,
+        requires: Value,
+        wasm: &[u8],
+        manifest: &[u8],
+    ) {
+        let package = predicted_blob(wasm, WASM_MIME);
+        let manifest_blob = predicted_blob(manifest, MANIFEST_MIME);
+        let mut artifact = json!({
+            "$type": hpy_plugin::ARTIFACT_TYPE,
+            "package": package,
+            "manifest": manifest_blob,
+            "capabilities": [],
+            "license": "MIT",
+            "sections": { "description": "A plugin." },
             "requires": requires,
         });
-        let key = (did.to_string(), slug.to_string());
-        self.releases
+        for (k, v) in fields.as_object().expect("fields are an object") {
+            artifact[k] = v.clone();
+        }
+        let plugin_type = artifact["pluginType"].as_str().unwrap_or("").to_string();
+        self.blobs.insert(raw_cid(wasm), wasm.to_vec());
+        self.blobs.insert(raw_cid(manifest), manifest.to_vec());
+        let key = (did.to_string(), name.to_string());
+        self.versions
             .entry(key.clone())
             .or_default()
-            .push(ReleaseView {
-                uri: format!("at://{did}/{}/{slug}:{version}", hpy_plugin::RELEASE_NSID),
-                status: "active".into(),
-                record,
-                indexed_at: None,
-            });
-        self.artifacts
-            .insert((did.into(), slug.into(), version.into()), wasm.to_vec());
-        self.refresh_package(&key);
+            .push(version_view(did, name, version, artifact));
+        if !self.projects.iter().any(|p| p.did == did && p.name == name) {
+            self.projects.push(project_view(did, name, &plugin_type));
+        }
+        self.refresh_channels(&key);
     }
 
-    pub fn withdraw(&mut self, did: &str, slug: &str, version: &str) {
-        let key = (did.to_string(), slug.to_string());
-        for r in self.releases.get_mut(&key).into_iter().flatten() {
-            if r.record["version"] == version {
-                r.status = "deleted".into();
+    /// Marks a version no longer installable, as an `endOfDistribution`
+    /// status does.
+    pub fn retire(&mut self, did: &str, name: &str, version: &str) {
+        let key = (did.to_string(), name.to_string());
+        for v in self.versions.get_mut(&key).into_iter().flatten() {
+            if v.version == version {
+                v.lifecycle.state = State::Unavailable;
+                v.lifecycle.installable = false;
+                v.lifecycle.reason = Some("withdrawn by its publisher".into());
             }
         }
-        self.refresh_package(&key);
+        self.refresh_channels(&key);
     }
 
-    fn refresh_package(&mut self, key: &(String, String)) {
-        let latest = self.releases[key]
+    pub fn set_channel(&mut self, did: &str, name: &str, channel: &str, version: &str) {
+        self.channels
+            .insert((did.into(), name.into(), channel.into()), version.into());
+    }
+
+    /// `latest` follows the highest installable stable version, `beta` and
+    /// `alpha` the highest prerelease named so.
+    fn refresh_channels(&mut self, key: &(String, String)) {
+        for channel in hpy_plugin::TRACKS {
+            let head = self.versions[key]
+                .iter()
+                .filter(|v| v.lifecycle.installable)
+                .filter_map(|v| semver::Version::parse(&v.version).ok())
+                .filter(|v| match channel {
+                    "latest" => v.pre.is_empty(),
+                    track => v.pre.as_str().split('.').next() == Some(track),
+                })
+                .max();
+            let at = (key.0.clone(), key.1.clone(), channel.to_string());
+            match head {
+                Some(v) => self.channels.insert(at, v.to_string()),
+                None => self.channels.remove(&at),
+            };
+        }
+        let heads: BTreeMap<String, ChannelView> = hpy_plugin::TRACKS
             .iter()
-            .filter(|r| r.status == "active")
-            .filter_map(|r| semver::Version::parse(r.record["version"].as_str()?).ok())
-            .max()
-            .map(|v| v.to_string());
-        let uri = hpy_project::manifest::package_uri(&key.0, &key.1);
-        let handle = self
-            .packages
-            .iter()
-            .find(|p| p.uri == uri)
-            .and_then(|p| p.handle.clone());
-        self.packages.retain(|p| p.uri != uri);
-        self.packages.push(PackageView {
-            uri,
-            did: key.0.clone(),
-            handle,
-            status: "active".into(),
-            latest_version: latest,
-            record: json!({ "name": key.1 }),
-        });
+            .filter_map(|c| {
+                let version = self
+                    .channels
+                    .get(&(key.0.clone(), key.1.clone(), c.to_string()))?;
+                let v = self.versions[key].iter().find(|v| &v.version == version)?;
+                Some((
+                    c.to_string(),
+                    ChannelView {
+                        version: version.clone(),
+                        uri: v.uri.clone(),
+                        cid: v.cid.clone(),
+                        state: v.lifecycle.state,
+                        availability: v.availability,
+                    },
+                ))
+            })
+            .collect();
+        if let Some(p) = self
+            .projects
+            .iter_mut()
+            .find(|p| p.did == key.0 && p.name == key.1)
+        {
+            p.channels = heads;
+        }
     }
 
     fn log(&self, entry: String) {
         self.calls.lock().unwrap().push(entry);
     }
+
+    pub fn find(&self, did: &str, name: &str, version: &str) -> Option<VersionView> {
+        self.versions
+            .get(&(did.into(), name.into()))?
+            .iter()
+            .find(|v| v.version == version)
+            .cloned()
+    }
 }
 
 #[async_trait]
 impl Registry for RegistryFixture {
-    async fn get_package(&self, did: &str, slug: &str) -> Result<Option<PackageView>> {
-        self.log(format!("getPackage {slug}"));
-        let uri = hpy_project::manifest::package_uri(did, slug);
-        Ok(self.packages.iter().find(|p| p.uri == uri).cloned())
-    }
-
-    async fn get_release(
-        &self,
-        did: &str,
-        slug: &str,
-        version: &str,
-    ) -> Result<Option<ReleaseView>> {
-        self.log(format!("getRelease {slug}@{version}"));
+    async fn get_project(&self, actor: &str, name: &str) -> Result<Option<ProjectView>> {
+        self.log(format!("getProject {name}"));
         Ok(self
-            .releases
-            .get(&(did.into(), slug.into()))
-            .and_then(|rs| rs.iter().find(|r| r.record["version"] == version))
+            .projects
+            .iter()
+            .find(|p| (p.did == actor || p.handle.as_deref() == Some(actor)) && p.name == name)
             .cloned())
     }
 
-    async fn list_releases(&self, did: &str, slug: &str) -> Result<Vec<ReleaseView>> {
-        self.log(format!("listReleases {slug}"));
+    async fn search_projects(
+        &self,
+        plugin_type: Option<&str>,
+        _: Option<&str>,
+    ) -> Result<Vec<ProjectView>> {
+        self.log(format!("searchProjects {}", plugin_type.unwrap_or("*")));
         Ok(self
-            .releases
-            .get(&(did.into(), slug.into()))
-            .cloned()
-            .unwrap_or_default())
-    }
-
-    /// Answers as the deployed registry does: no `latestVersion` and no
-    /// `handle`, which only `getPackage` fills in.
-    async fn search_packages(&self, plugin_type: &str) -> Result<Vec<PackageView>> {
-        self.log(format!("searchPackages {plugin_type}"));
-        let of_type = |p: &PackageView| {
-            let slug = hpy_atproto::rkey_of(&p.uri);
-            self.releases[&(p.did.clone(), slug.to_string())]
-                .iter()
-                .any(|r| {
-                    r.record["version"].as_str() == p.latest_version.as_deref()
-                        && r.record["extensions"][hpy_plugin::EXTENSION_NSID]["pluginType"]
-                            == plugin_type
-                })
-        };
-        Ok(self
-            .packages
+            .projects
             .iter()
-            .filter(|p| of_type(p))
-            .map(|p| PackageView {
-                latest_version: None,
-                handle: None,
-                ..p.clone()
-            })
+            .filter(|p| plugin_type.is_none_or(|t| p.plugin_type == t))
+            .cloned()
             .collect())
     }
 
-    async fn get_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
-        self.log(format!("getArtifact {slug}@{version}"));
-        self.artifacts
-            .get(&(did.into(), slug.into(), version.into()))
+    async fn list_versions(&self, did: &str, name: &str) -> Result<Vec<VersionView>> {
+        self.log(format!("listVersions {name}"));
+        let mut all = self
+            .versions
+            .get(&(did.into(), name.into()))
             .cloned()
-            .ok_or_else(|| Error::Other(format!("no artifact for {slug}@{version}")))
+            .unwrap_or_default();
+        all.reverse();
+        Ok(all)
     }
 
-    async fn get_manifest_artifact(&self, did: &str, slug: &str, version: &str) -> Result<Vec<u8>> {
-        self.log(format!("getArtifact manifest {slug}@{version}"));
-        self.manifests
-            .get(&(did.into(), slug.into(), version.into()))
-            .cloned()
-            .ok_or_else(|| Error::Other(format!("no manifest for {slug}@{version}")))
+    async fn get_version(
+        &self,
+        did: &str,
+        name: &str,
+        version: &str,
+    ) -> Result<Option<VersionView>> {
+        self.log(format!("getVersion {name}@{version}"));
+        Ok(self.find(did, name, version))
     }
 
-    async fn publish_profile(&self, _: &str, _: Value, _: bool) -> Result<Option<WriteResult>> {
+    async fn resolve_channel(
+        &self,
+        did: &str,
+        name: &str,
+        channel: &str,
+    ) -> Result<Option<VersionView>> {
+        self.log(format!("resolveChannel {name}@{channel}"));
+        Ok(self
+            .channels
+            .get(&(did.into(), name.into(), channel.into()))
+            .and_then(|v| self.find(did, name, v)))
+    }
+
+    async fn get_artifact(&self, cid: &str) -> Result<Vec<u8>> {
+        self.log(format!("getArtifact {cid}"));
+        self.blobs.get(cid).cloned().ok_or_else(|| Error::Xrpc {
+            method: "at.happyproto.registry.getArtifact".into(),
+            name: "ArtifactNotHeld".into(),
+            message: None,
+        })
+    }
+
+    async fn put_project(&self, _: Value, _: bool) -> Result<Option<PutProjectOut>> {
         Err(Error::Other("RegistryFixture does not publish".into()))
     }
 
-    async fn publish_release(&self, _: Value, _: bool) -> Result<Option<WriteResult>> {
+    async fn publish_release(&self, _: Value, _: bool) -> Result<Option<PublishOut>> {
         Err(Error::Other("RegistryFixture does not publish".into()))
     }
 
-    async fn update_profile(&self, _: &str, _: Value, _: Option<&str>) -> Result<WriteResult> {
+    async fn promote_release(&self, _: Value) -> Result<PublishOut> {
         Err(Error::Other("RegistryFixture does not publish".into()))
     }
 
-    async fn withdraw_release(&self, _: &str, _: &str) -> Result<bool> {
-        Err(Error::Other("RegistryFixture does not publish".into()))
-    }
-
-    async fn retry_release(&self, _: &str, _: &str) -> Result<Option<String>> {
+    async fn put_status(&self, _: Value) -> Result<Ref> {
         Err(Error::Other("RegistryFixture does not publish".into()))
     }
 }
 
+/// An interpreter's plugin fields.
 pub fn interpreter_ext(language: &str, extension: &str) -> Value {
     json!({ "pluginType": "interpreter", "apiVersion": "2", "languageId": language,
             "fileExtensions": [extension], "capabilities": ["script:host"] })
 }
 
+/// A library's plugin fields.
 pub fn library_ext(namespace: &str) -> Value {
     json!({ "pluginType": "library", "apiVersion": "2", "namespace": namespace,
             "capabilities": [] })
