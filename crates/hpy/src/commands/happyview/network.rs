@@ -26,7 +26,7 @@ use crate::project::network::atmosbox::{
     NetworkDir, PINNED, check_tools, data_root, fetch_checkout, install_checkout, network_dir,
 };
 use crate::project::network::runner::{Runner, SystemRunner};
-use crate::project::network::sandbox::Sandbox;
+use crate::project::network::sandbox::{Sandbox, choose_subnet};
 use crate::project::prepare::{PrepareOptions, prepare};
 use crate::project::run::{ModuleWatcher, finish, first_build_until};
 
@@ -545,6 +545,14 @@ async fn start<'r>(
     });
     // Before the first sandbox command, which would only fail on it.
     sandbox.refuse_a_held_lock()?;
+    // Read before `--reset` destroys the manifest that records it.
+    sandbox.subnet = choose_subnet(
+        args.subnet.as_deref(),
+        sandbox.recorded_subnet().as_deref(),
+        &net.subnet,
+        sandbox.created(),
+        args.reset,
+    )?;
 
     if args.reset {
         if !ctx.prompter.confirm(
@@ -597,8 +605,10 @@ async fn start<'r>(
         .await?;
     }
     if !sandbox.created() {
-        ctx.out
-            .status(&format!("creating the local network ({})", net.project));
+        ctx.out.status(&format!(
+            "creating the local network ({} on {})",
+            net.project, sandbox.subnet
+        ));
         step(
             ctx,
             interrupt,

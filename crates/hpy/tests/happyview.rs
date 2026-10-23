@@ -1504,10 +1504,13 @@ case "$*" in
   --version) echo "deno 2.8.3 (stable, release)" ;;
   "task sandbox create"*)
     mkdir -p state/ca
-    echo '{"applications":[]}' > state/manifest.json
+    # The real one records the network it was created on.
+    subnet=$(echo "$*" | sed -n 's/.*--subnet \([^ ]*\).*/\1/p')
+    echo "{\"applications\":[],\"subnet\":\"$subnet\"}" > state/manifest.json
     echo fake-ca > state/ca/root.crt ;;
   "task sandbox apply --app happyview")
-    echo '{"applications":["happyview"]}' > state/manifest.json ;;
+    applied=$(sed 's/"applications":\[\]/"applications":["happyview"]/' state/manifest.json)
+    echo "$applied" > state/manifest.json ;;
   "task sandbox seed")
     # Fails part way, leaving a step pending.
     if [ -n "$NET_SEED_FAILS" ]; then echo '{}' > state/pending-apply.json; exit 1; fi
@@ -2420,4 +2423,69 @@ fn a_terminal_shows_the_password_but_never_under_json() {
     };
     assert!(json.contains("\"url\""), "{json}");
     assert!(!json.contains("seeded-secret-pw"), "{json}");
+}
+
+#[test]
+fn a_subnet_is_refused_off_the_local_network_and_when_it_is_not_one() {
+    let stack = Stack::new();
+    let dir = tempfile::tempdir().unwrap();
+    let dev = |args: &[&str]| {
+        stack
+            .hpy()
+            .current_dir(dir.path())
+            .args(["hv", "dev"])
+            .args(args)
+            .assert()
+    };
+    dev(&["--subnet", "10.40.0.0/24"])
+        .code(2)
+        .stderr(says("--subnet applies only to --network local"));
+    dev(&["--network", "local", "--subnet", "10.40.0.1/24"])
+        .code(2)
+        .stderr(says("did you mean 10.40.0.0/24?"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_chosen_subnet_is_kept_until_reset_moves_it() {
+    let net = LocalNet::new();
+    let created_on = |subnet: &str| {
+        format!(
+            "create --pds 1 --users-per-pds 1 --project {} --preset full-stack --subnet {subnet}",
+            net.project
+        )
+    };
+    net.hpy()
+        .args(["--subnet", "10.40.0.0/24"])
+        .assert()
+        .code(0)
+        .stderr(says("on 10.40.0.0/24"));
+    assert_eq!(net.sandbox_calls()[0], created_on("10.40.0.0/24"));
+
+    // A created network cannot move, so asking it to is refused before any
+    // sandbox command runs.
+    std::fs::write(&net.log, "").unwrap();
+    net.hpy()
+        .args(["--subnet", "10.41.0.0/24"])
+        .assert()
+        .code(2)
+        .stderr(says("created on 10.40.0.0/24"))
+        .stderr(says("--reset"));
+    assert!(net.sandbox_calls().is_empty(), "{:?}", net.sandbox_calls());
+
+    // `--reset` alone recreates it where it was, not on the derived one.
+    std::fs::write(&net.log, "").unwrap();
+    net.hpy().args(["--reset", "--yes"]).assert().code(0);
+    let calls = net.sandbox_calls();
+    assert!(calls.contains(&created_on("10.40.0.0/24")), "{calls:?}");
+    assert_ne!(net.subnet, "10.40.0.0/24");
+
+    // `--reset` with `--subnet` moves it.
+    std::fs::write(&net.log, "").unwrap();
+    net.hpy()
+        .args(["--reset", "--yes", "--subnet", "10.41.0.0/24"])
+        .assert()
+        .code(0);
+    let calls = net.sandbox_calls();
+    assert!(calls.contains(&created_on("10.41.0.0/24")), "{calls:?}");
 }

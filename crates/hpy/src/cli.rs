@@ -267,6 +267,10 @@ pub struct DevArgs {
     /// Discard the local network's accounts, records and database, then start fresh.
     #[arg(long)]
     pub reset: bool,
+    /// The private IPv4 network the local network is created on, when the one
+    /// derived from the project's path is taken. Kept until another is given.
+    #[arg(long, value_name = "CIDR", value_parser = crate::project::network::sandbox::parse_subnet)]
+    pub subnet: Option<String>,
     /// Do not ask for confirmation.
     #[arg(long, short)]
     // Only `--network local` asks, and it is unix-only.
