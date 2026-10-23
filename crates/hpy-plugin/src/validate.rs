@@ -1,22 +1,31 @@
-//! The registry's input rules, ported from the lexicons repo's Lua prelude
-//! (`src/shared/prelude.lua`, blocks `validate` and `plugin`). The registry
-//! enforces these by silently refusing to index, so the CLI enforces them
-//! loudly first. Where a Rust crate is the real authority (`semver` is what
+//! The registry's grammar for names, versions, ranges and `requires` keys.
+//! The registry refuses what breaks these, so the CLI refuses it first and
+//! says why. Where a Rust crate is the real authority (`semver` is what
 //! HappyView parses ranges with), it is used instead of a shape check.
 
 use unicode_segmentation::UnicodeSegmentation;
 
-/// A package slug: the profile's record key and the first half of a
-/// release's, so it must survive a record key, a URL segment and a split on
-/// `:`.
-pub fn is_slug(s: &str) -> bool {
-    (1..=128).contains(&s.len())
-        && s.starts_with(|c: char| c.is_ascii_alphabetic())
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+use crate::{PROJECT_NSID, VERSION_NSID};
+
+const MAX_NAME: usize = 64;
+const MAX_VERSION: usize = 64;
+
+/// A project name: the record key of the project, its publication and its
+/// sidecar, and the first half of a version's and a channel's, so it must
+/// survive a record key, a URL segment and a split on `:`.
+pub fn is_project_name(s: &str) -> bool {
+    let edge = |b: &u8| b.is_ascii_lowercase() || b.is_ascii_digit();
+    let bytes = s.as_bytes();
+    (1..=MAX_NAME).contains(&bytes.len())
+        && bytes.first().is_some_and(edge)
+        && bytes.last().is_some_and(edge)
+        && bytes.iter().all(|b| edge(b) || *b == b'-')
 }
 
-/// Why `s` is not a publishable version, or `None` when it is.
+/// Why `s` is not a publishable version, or `None` when it is: a semver core
+/// and an optional lowercase prerelease. The version is half of a record
+/// key, which cannot hold `+`, and keys compare byte for byte, so case would
+/// make two keys for one version.
 pub fn version_problem(s: &str) -> Option<String> {
     if s.starts_with(['v', 'V']) {
         return Some(format!("`{s}` must not start with `v`; use `{}`", &s[1..]));
@@ -26,13 +35,35 @@ pub fn version_problem(s: &str) -> Option<String> {
             "`{s}` carries build metadata (`+…`), which cannot appear in a record key; drop it"
         ));
     }
-    if s.len() > 256 {
-        return Some("is longer than 256 characters".into());
+    if s.len() > MAX_VERSION {
+        return Some(format!("is longer than {MAX_VERSION} characters"));
     }
-    match semver::Version::parse(s) {
-        Ok(_) => None,
-        Err(e) => Some(format!("`{s}` is not a semver 2.0 version: {e}")),
+    let (core, pre) = match s.split_once('-') {
+        Some((core, pre)) => (core, Some(pre)),
+        None => (s, None),
+    };
+    let number = |n: &&str| {
+        !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && (*n == "0" || !n.starts_with('0'))
+    };
+    let parts: Vec<&str> = core.split('.').collect();
+    if parts.len() != 3 || !parts.iter().all(number) {
+        return Some(format!(
+            "`{s}` must be MAJOR.MINOR.PATCH, numbers without leading zeros (e.g. `1.2.0`)"
+        ));
     }
+    let identifier = |i: &str| {
+        !i.is_empty()
+            && i.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    };
+    if let Some(pre) = pre
+        && !pre.split('.').all(identifier)
+    {
+        return Some(format!(
+            "`{s}` has a prerelease that is not dot-separated lowercase letters, digits and `-` (e.g. `1.2.0-alpha.3`)"
+        ));
+    }
+    None
 }
 
 /// Why `s` is not a version requirement HappyView can resolve, or `None`.
@@ -63,16 +94,28 @@ pub fn requires_key_problem(key: &str) -> Option<String> {
     {
         return None;
     }
-    if let Some(rest) = key.strip_prefix("at://")
-        && let Some((did, slug)) = rest.split_once("/at.happyproto.plugin.profile/")
-        && is_did(did)
-        && is_slug(slug)
-    {
+    if parse_project_uri(key).is_some() {
         return None;
     }
     Some(format!(
-        "`{key}` must be `env:<name>` or `at://<did>/at.happyproto.plugin.profile/<slug>`"
+        "`{key}` must be `env:<name>` or `at://<did>/{PROJECT_NSID}/<name>`"
     ))
+}
+
+pub fn project_uri(did: &str, name: &str) -> String {
+    format!("at://{did}/{PROJECT_NSID}/{name}")
+}
+
+pub fn version_uri(did: &str, name: &str, version: &str) -> String {
+    format!("at://{did}/{VERSION_NSID}/{name}:{version}")
+}
+
+/// The DID and name in a `software.release.project` URI, or `None` for any
+/// other URI.
+pub fn parse_project_uri(uri: &str) -> Option<(String, String)> {
+    let rest = uri.strip_prefix("at://")?;
+    let (did, name) = rest.split_once(&format!("/{PROJECT_NSID}/"))?;
+    (is_did(did) && is_project_name(name)).then(|| (did.to_string(), name.to_string()))
 }
 
 /// atproto DID syntax: `did:<lowercase method>:<identifier>`, at most 2048
@@ -99,34 +142,65 @@ pub fn graphemes(s: &str) -> usize {
     s.graphemes(true).count()
 }
 
+/// Records a problem when `s` exceeds a lexicon's `maxGraphemes` or
+/// `maxLength` (bytes), naming whichever it broke.
+pub(crate) fn too_long(
+    out: &mut Vec<crate::Problem>,
+    path: &str,
+    s: &str,
+    max_graphemes: usize,
+    max_bytes: usize,
+) {
+    if graphemes(s) > max_graphemes {
+        out.push(crate::Problem::new(
+            path,
+            format!("is longer than {max_graphemes} characters"),
+        ));
+    } else if s.len() > max_bytes {
+        out.push(crate::Problem::new(
+            path,
+            format!("is longer than {max_bytes} bytes"),
+        ));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn slugs() {
-        assert!(is_slug("happyview-atproto"));
-        assert!(is_slug("a"));
-        assert!(is_slug("My.Plugin-2"));
-        assert!(!is_slug(""));
-        assert!(!is_slug("2fast"));
-        assert!(!is_slug("has:colon"));
-        assert!(!is_slug("under_score"));
-        assert!(!is_slug(&"a".repeat(129)));
+    fn project_names() {
+        for ok in ["a", "happyview-lua", "0", "a-b-c", &"a".repeat(64)] {
+            assert!(is_project_name(ok), "{ok} should be a name");
+        }
+        for bad in ["", "-a", "a-", "A", "a.b", "a:b", "a_b", &"a".repeat(65)] {
+            assert!(!is_project_name(bad), "{bad} should not be a name");
+        }
     }
 
     #[test]
     fn versions() {
-        assert_eq!(version_problem("1.2.3"), None);
-        assert_eq!(version_problem("1.2.3-rc.1"), None);
+        for ok in ["1.2.0", "1.2.0-alpha.3", "0.0.0", "10.20.30-rc-1.x"] {
+            assert_eq!(version_problem(ok), None, "{ok}");
+        }
+        assert!(version_problem("v1.2.0").unwrap().contains("`v`"));
         assert!(
-            version_problem("1.2.3+build")
+            version_problem("1.2.0+b")
                 .unwrap()
                 .contains("build metadata")
         );
-        assert!(version_problem("v1.2.3").unwrap().contains("`v`"));
-        assert!(version_problem("1.2").is_some());
-        assert!(version_problem("01.2.3").is_some());
+        for bad in [
+            "1.2",
+            "1.2.0-Alpha",
+            "01.2.3",
+            "1.2.0-",
+            "1.2.0-a..b",
+            "1.2.x",
+        ] {
+            assert!(version_problem(bad).is_some(), "{bad} should be refused");
+        }
+        let long = format!("1.0.0-{}", "a".repeat(59));
+        assert!(version_problem(&long).unwrap().contains("64"));
     }
 
     #[test]
@@ -144,13 +218,41 @@ mod tests {
     fn requires_keys() {
         assert_eq!(requires_key_problem("env:happyview"), None);
         assert_eq!(
-            requires_key_problem("at://did:plc:abc123/at.happyproto.plugin.profile/happyview-http"),
+            requires_key_problem("at://did:plc:abc123/software.release.project/happyview-http"),
             None
+        );
+        assert!(
+            requires_key_problem("at://did:plc:abc123/at.happyproto.plugin.profile/happyview-http")
+                .is_some()
         );
         assert!(requires_key_problem("env:").is_some());
         assert!(requires_key_problem("happyview-http").is_some());
-        assert!(requires_key_problem("at://did:plc:abc/app.bsky.feed.post/x").is_some());
-        assert!(requires_key_problem("at://notadid/at.happyproto.plugin.profile/x").is_some());
+        assert!(requires_key_problem("at://notadid/software.release.project/x").is_some());
+        assert!(requires_key_problem("at://did:plc:abc/software.release.project/Bad").is_some());
+    }
+
+    #[test]
+    fn uris() {
+        assert_eq!(
+            project_uri("did:plc:abc", "happyview-lua"),
+            "at://did:plc:abc/software.release.project/happyview-lua"
+        );
+        assert_eq!(
+            version_uri("did:plc:abc", "happyview-lua", "1.2.0"),
+            "at://did:plc:abc/software.release.version/happyview-lua:1.2.0"
+        );
+        assert_eq!(
+            parse_project_uri("at://did:plc:abc/software.release.project/happyview-lua"),
+            Some(("did:plc:abc".into(), "happyview-lua".into()))
+        );
+        assert_eq!(
+            parse_project_uri("at://did:plc:abc/software.release.version/x:1.0.0"),
+            None
+        );
+        assert_eq!(
+            parse_project_uri("did:plc:abc/software.release.project/x"),
+            None
+        );
     }
 
     #[test]
