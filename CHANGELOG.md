@@ -1,3 +1,10 @@
+# [1.0.0-alpha.13](https://github.com/happyproto/cli/compare/v1.0.0-alpha.12...v1.0.0-alpha.13) (2026-10-23)
+
+
+### Bug Fixes
+
+* update ctutils past RUSTSEC-2026-0385 ([8d8d683](https://github.com/happyproto/cli/commit/8d8d6831a08d836eeebe7a7b3d780af2ebedac3c))
+
 # [1.0.0-alpha.12](https://github.com/happyproto/cli/compare/v1.0.0-alpha.11...v1.0.0-alpha.12) (2026-10-23)
 
 
