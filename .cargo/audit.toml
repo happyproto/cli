@@ -1,0 +1,14 @@
+# cargo-audit configuration.
+#
+# The ignored advisories below have been triaged and have no upstream fix.
+# Every other advisory must fail CI (see .github/workflows/ci.yml `audit` job) so
+# new ones are caught. Re-review this list when dependencies are updated.
+[advisories]
+ignore = [
+    # rsa: Marvin timing attack on RSA private-key operations, with no fixed
+    # release. Compiled in only by jose-jwk's default `crypto` feature (via
+    # jacquard's OAuth); neither hpy nor jacquard holds or uses an RSA key, so
+    # the vulnerable code never runs. Remove once jacquard drops it or rsa
+    # ships a constant-time release.
+    "RUSTSEC-2023-0071",
+]
