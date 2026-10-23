@@ -108,10 +108,17 @@ records that the registry indexes:
 | `site.standard.document` | TID | A version's changelog. |
 
 `hpy` signs you in through the registry's HappyView
-(`https://api.happyproto.at`). It publishes with the registry's
-`putProject` and `publishRelease` procedures, which check what you send
-against the indexer's rules, explain any refusal, and then write the records
-to your repo for you. `hpy` checks the same rules locally first, so most
+(`https://api.happyproto.at`). It writes through the registry's gateway
+procedures, which check what you send against the indexer's rules, explain
+any refusal, and then write the records to your repo for you:
+
+| Procedure | Used by |
+| --- | --- |
+| `putProject` | `init`, `edit` and `publish`: the project, its publication and the registry's sidecar. |
+| `publishRelease` | `publish`: the manifest, the version, the channel it moves and the changelog. |
+| `promoteRelease` | `publish --promote`: a new version of an existing version's build. |
+| `putStatus` | `lifecycle`: a lifecycle event, or the withdrawal of one. |
+ `hpy` checks the same rules locally first, so most
 mistakes show up before anything leaves your machine. It then asks the
 registry for its verdict before uploading a single byte. Every upload is
 checked against the CID the record names it by, and an image a previous
@@ -121,6 +128,16 @@ written, the registry copies its blobs and marks it `available`.
 **Versions are immutable.** A published version can never be changed. If a
 publish is cut off partway, run it again: the registry finishes the version
 it started rather than refusing it.
+
+**Channels** (`latest`, `beta`, `alpha`) say which version to install by
+default. A publish moves one channel to the new version (`--track` picks it).
+Installing from a channel, or `hpy happyview add`, resolves it to an exact
+version.
+
+**Signing in again.** The default `oauth.scope` covers the `software.release`
+collections, which an older `hpy` login does not. After updating `hpy`, run
+`hpy registry login` again, and export a new `HPY_CREDENTIAL` for CI with
+`hpy registry login --export`.
 
 ## Quick start
 
@@ -148,9 +165,9 @@ hpy registry plugin init --no-input \
 | `hpy registry login [handle]` | Signs in through your browser. `--no-browser` prints the URL instead of opening it. `--export` signs in for CI and prints a credential instead of saving it (see below). |
 | `hpy registry logout` | Revokes the session and deletes stored credentials. |
 | `hpy registry whoami` | Shows the account you're signed in as. |
-| `hpy registry plugin init` | Writes `[project]` in `hpy.toml` and creates the project, but only if the registry doesn't have it yet (`--local-only` skips that). |
+| `hpy registry plugin init` | Writes `[project]` in `hpy.toml` and creates the project, but only if the registry doesn't have it yet (`--local-only` skips that). `--name` sets the project name; `--display-name`, `--description`, `--author`, `--security` and `--keyword` fill in the rest. |
 | `hpy registry plugin show` | Shows the project as the registry has it. |
-| `hpy registry plugin edit` | Edits the project: with flags (`--display-name`, `--description`, `--author`, `--keyword`, `--remove-keyword` …) or in `$EDITOR`. |
+| `hpy registry plugin edit` | Edits the project: with flags (`--display-name`, `--description`, `--author`, `--security`, `--keyword`, `--remove-keyword`; `--name` picks the project) or in `$EDITOR`. `hpy.toml` follows only when its `[project]` is this project. |
 | `hpy registry plugin pull` | Copies the registry's project into `[project]` in `hpy.toml`. |
 | `hpy registry plugin publish` | Publishes a new version. `--track latest\|beta\|alpha` picks the channel it moves (default: `latest` for a stable version, else the prerelease's name, `beta` or `alpha`); `--promote <from>` republishes an existing version's build as `--version` instead of building; `--dry-run` prints what would be published; `--wait` polls until the version is available; `--version` overrides the version; `--wasm` points at the module. |
 | `hpy registry plugin status [version]` | Lists versions from your repo and from the registry, with each one's availability and lifecycle state. |
@@ -197,8 +214,8 @@ it followed (`channel = "latest"`, left out for a pinned version) and keeps
 that version until you `add` the plugin again, so `check` and `dev` stay
 reproducible as the channel moves on; changing an entry's channel or version
 in `happyview.toml` makes the lock out of date. A channel pointing at a
-version its publisher has ended distribution of is refused. A pinned version is used even
-then, with a warning, since pinning it was your call. A plain version string
+version its publisher has ended distribution of is refused. A pinned version
+is used even then, with a warning, since pinning it was your call. A plain version string
 (`lua = "^1"`), from before the `software.release` registry, is refused with
 the table form to use instead, and so is a `happyview.lock` from then: delete
 it and run `hpy happyview check`.
