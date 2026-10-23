@@ -171,9 +171,9 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 
 | Command | Does |
 | --- | --- |
-| `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--package <at-uri>` picks between packages with one name. Each plugin is pinned to its newest stable release, or its newest prerelease when it has nothing else. Writes the lock but downloads nothing. |
+| `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--project <at-uri>` picks between projects that answer to one name. Each plugin follows its project's `latest` channel, or the only channel it has. Writes the lock but downloads nothing. |
 | `hpy happyview dev` | Runs the project with its pinned HappyView, in the foreground. |
-| `hpy happyview add <plugin>[@version]` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. `--package <at-uri>` picks between packages with one name. With no plugin (or as `install`), brings the lock up to date and downloads it. |
+| `hpy happyview add <plugin>` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. Each follows a channel (`--channel`, default `latest`) or is pinned to `--version`; `--project <at-uri>` picks between projects that answer to one name. Adding a plugin again moves it to its channel's current version. With no plugin (or as `install`), brings the lock up to date and downloads it. |
 | `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
 | `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
 
@@ -181,18 +181,38 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 which fails instead of updating a lock that no longer matches
 `happyview.toml`; use it in CI. They exit with HappyView's own exit code.
 
-A range in `happyview.toml` such as `"1.4"` or `"*"` never matches a
-prerelease. A plugin that has published only prereleases needs a range that
-names one, such as `"^0.1.0-alpha.3"`.
+Each plugin in `happyview.toml` names its project by its publisher's DID and
+its name, and follows a channel or is pinned to one version:
+
+```toml
+[interpreters]
+lua = { did = "did:plc:mo7vq4jbioxwafy5zkcc3eux", name = "happyview-lua", channel = "latest" }
+
+[libraries]
+"happyview.db" = { did = "did:plc:mo7vq4jbioxwafy5zkcc3eux", name = "happyview-db", version = "1.2.0" }
+```
+
+A channel is resolved when the lock is written, and the lock keeps that
+version until you `add` the plugin again; a channel pointing at a version its
+publisher has ended distribution of is refused. A pinned version is used even
+then, with a warning, since pinning it was your call. A plain version string
+(`lua = "^1"`), from before the `software.release` registry, is refused with
+the table form to use instead, and so is a `happyview.lock` from then: delete
+it and run `hpy happyview check`.
+
+A library a plugin requires is resolved to the highest installable version in
+the range it asks for. Such a range never matches a prerelease unless it names
+one, such as `"^0.1.0-alpha.3"`.
 
 HappyView binaries are cached at `~/.cache/hpy/happyview/<version>/`
 (`HPY_CACHE_DIR` moves the cache) and checked against the `.sha256`
 published with each release. Plugins come from the registry into
-`~/.cache/hpy/plugins/<id>/<version>/`, checked against the checksum in
-their release record and in `happyview.lock`; a registry that ever states a
-different checksum for a locked version is refused. `dev`, `check` and
-`test` link them into the project's `.happyview/plugins/` (on Windows they
-copy them), which `hpy` owns: anything else placed there is removed.
+`~/.cache/hpy/plugins/<id>/<version>/`. Their module and `manifest.json` are
+checked against the blob CIDs in `happyview.lock`, and a registry whose
+version no longer matches the manifest record the lock names is refused.
+`dev`, `check` and `test` link them into the project's `.happyview/plugins/`
+(on Windows they copy them), which `hpy` owns: anything else placed there is
+removed.
 
 ### A local network
 
