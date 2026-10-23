@@ -12,12 +12,12 @@ pub const DEFAULT_OAUTH_CLIENT_ID: &str = "https://happyproto.at/oauth/hpy/clien
 /// The hosted page a confidential (web) client is redirected to; it forwards
 /// the browser to `hpy`'s loopback listener, whose port is in `state`.
 pub const DEFAULT_OAUTH_RELAY: &str = "https://happyproto.at/oauth/hpy/callback";
-/// What a publish needs: the two plugin record types, and a blob upload for
-/// each artifact kind a release carries — the module, its `manifest.json`,
-/// and the profile's images. A scope missing one of these cannot be widened
-/// later, since a session's scopes are fixed when it is issued, so
-/// `scope::covers_blob` checks a grant against this before uploading.
-pub const DEFAULT_SCOPE: &str = "atproto repo:at.happyproto.plugin.profile repo:at.happyproto.plugin.release blob:application/wasm blob:application/json blob:image/*";
+/// What a publish needs: a write to each collection the gateway fills in the
+/// user's repo, and a blob upload for each artifact kind a release carries —
+/// the module, its `manifest.json`, and the project's images. A scope missing
+/// one of these cannot be widened later, since a session's scopes are fixed
+/// when it is issued, so `scope` checks a grant against this before uploading.
+pub const DEFAULT_SCOPE: &str = "atproto repo:software.release.project repo:software.release.manifest repo:software.release.version repo:software.release.channel repo:software.release.status repo:at.happyproto.registry.project repo:site.standard.publication repo:site.standard.document blob:application/wasm blob:application/json blob:image/*";
 
 #[derive(Debug, Clone)]
 pub struct Settings {
@@ -219,6 +219,10 @@ mod tests {
         assert_eq!(s.client_key, DEFAULT_CLIENT_KEY);
         assert_eq!(s.credential_store, StoreChoice::Auto);
         assert_eq!(s.oauth_scope, DEFAULT_SCOPE);
+        assert_eq!(
+            DEFAULT_SCOPE,
+            "atproto repo:software.release.project repo:software.release.manifest repo:software.release.version repo:software.release.channel repo:software.release.status repo:at.happyproto.registry.project repo:site.standard.publication repo:site.standard.document blob:application/wasm blob:application/json blob:image/*"
+        );
         assert_eq!(s.credentials_file(), PathBuf::from("/c/credentials.json"));
     }
 
