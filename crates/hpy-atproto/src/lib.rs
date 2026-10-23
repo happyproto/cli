@@ -16,6 +16,8 @@ pub mod session;
 pub mod settings;
 
 pub use error::{Error, Result};
-pub use registry::{HttpRegistry, PackageView, Registry, ReleaseView};
+pub use registry::{
+    HttpRegistry, ProjectView, PublishOut, PutProjectOut, Ref, Registry, VersionView,
+};
 pub use repo::{HappyViewRepo, Repo, StoredRecord, WriteResult, rkey_of};
 pub use settings::Settings;

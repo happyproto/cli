@@ -35,15 +35,43 @@ impl PluginKind {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+/// How an entry chooses its version: a channel the publisher moves, or one
+/// exact version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pin {
+    Channel(String),
+    Version(String),
+}
+
+/// One `[interpreters]` or `[libraries]` entry: the project that provides
+/// it, by its publisher's DID so that no handle change can swap it, and
+/// which of its versions to run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginEntry {
+    pub did: String,
+    pub name: String,
+    pub pin: Pin,
+}
+
+impl PluginEntry {
+    pub fn project_uri(&self) -> String {
+        hpy_plugin::validate::project_uri(&self.did, &self.name)
+    }
+
+    /// `channel latest` or `version 1.2.0`, for messages.
+    pub fn pin_label(&self) -> String {
+        match &self.pin {
+            Pin::Channel(c) => format!("channel {c}"),
+            Pin::Version(v) => format!("version {v}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProjectToml {
-    #[serde(default)]
     pub happyview: HappyviewTable,
-    #[serde(default)]
-    pub interpreters: BTreeMap<String, String>,
-    #[serde(default)]
-    pub libraries: BTreeMap<String, String>,
-    #[serde(default)]
+    pub interpreters: BTreeMap<String, PluginEntry>,
+    pub libraries: BTreeMap<String, PluginEntry>,
     pub dev: DevTable,
 }
 
@@ -64,12 +92,112 @@ pub struct DevTable {
 pub struct Requirement {
     pub kind: PluginKind,
     pub key: String,
-    pub req: String,
+    pub entry: PluginEntry,
+}
+
+/// The file as written, before its plugin entries are checked one by one.
+#[derive(Deserialize)]
+struct RawToml {
+    #[serde(default)]
+    happyview: HappyviewTable,
+    #[serde(default)]
+    interpreters: BTreeMap<String, toml::Value>,
+    #[serde(default)]
+    libraries: BTreeMap<String, toml::Value>,
+    #[serde(default)]
+    dev: DevTable,
+}
+
+/// The table form, as `hpy happyview add` writes it.
+const ENTRY_FORM: &str = "{ did = \"did:plc:…\", name = \"<project>\", channel = \"latest\" } (or version = \"1.2.0\" in place of channel)";
+
+/// Reads one entry, naming it in every refusal so the author can find it.
+fn parse_entry(kind: PluginKind, key: &str, value: &toml::Value) -> Result<PluginEntry, Problem> {
+    let path = format!("{}.{key}", kind.table());
+    let problem = |m: String| Problem::new(&path, m);
+    let table = match value {
+        toml::Value::Table(t) => t,
+        // The version strings an older hpy wrote resolved by name through a
+        // registry that no longer exists, so they cannot be read as before.
+        toml::Value::String(_) => {
+            return Err(problem(format!(
+                "is a version string, which the software.release registry replaced; write it as {key} = {ENTRY_FORM}"
+            )));
+        }
+        _ => return Err(problem(format!("must be a table: {key} = {ENTRY_FORM}"))),
+    };
+    let text = |field: &str| -> Result<Option<String>, Problem> {
+        match table.get(field) {
+            None => Ok(None),
+            Some(toml::Value::String(s)) => Ok(Some(s.clone())),
+            Some(_) => Err(problem(format!("`{field}` must be a string"))),
+        }
+    };
+    if let Some(unknown) = table
+        .keys()
+        .find(|k| !["did", "name", "channel", "version"].contains(&k.as_str()))
+    {
+        return Err(problem(format!(
+            "has `{unknown}`, which is not one of did, name, channel or version"
+        )));
+    }
+    let did = text("did")?.ok_or_else(|| problem("needs `did`, the publisher's DID".into()))?;
+    if !hpy_plugin::validate::is_did(&did) {
+        return Err(problem(format!("`did`: `{did}` is not a DID")));
+    }
+    let name = text("name")?.ok_or_else(|| problem("needs `name`, the project's name".into()))?;
+    if !hpy_plugin::validate::is_project_name(&name) {
+        return Err(problem(format!(
+            "`name`: `{name}` is not a project name (lowercase letters, digits and interior `-`)"
+        )));
+    }
+    let pin = match (text("channel")?, text("version")?) {
+        (Some(_), Some(_)) => {
+            return Err(problem(
+                "sets both `channel` and `version`; keep the one that should choose the version"
+                    .into(),
+            ));
+        }
+        (None, None) => {
+            return Err(problem(
+                "needs `channel` (latest, beta or alpha) or an exact `version`".into(),
+            ));
+        }
+        (Some(channel), None) => {
+            if !hpy_plugin::TRACKS.contains(&channel.as_str()) {
+                return Err(problem(format!(
+                    "`channel`: `{channel}` is not one of {}",
+                    hpy_plugin::TRACKS.join(", ")
+                )));
+            }
+            Pin::Channel(channel)
+        }
+        (None, Some(version)) => {
+            if let Some(p) = hpy_plugin::validate::version_problem(&version) {
+                return Err(problem(format!("`version`: {p}")));
+            }
+            Pin::Version(version)
+        }
+    };
+    Ok(PluginEntry { did, name, pin })
 }
 
 impl ProjectToml {
     pub fn parse(text: &str) -> Result<ProjectToml, Problem> {
-        toml::from_str(text).map_err(|e| Problem::new(CONFIG_FILE, e.to_string()))
+        let raw: RawToml =
+            toml::from_str(text).map_err(|e| Problem::new(CONFIG_FILE, e.to_string()))?;
+        let entries = |kind: PluginKind, table: &BTreeMap<String, toml::Value>| {
+            table
+                .iter()
+                .map(|(key, value)| Ok((key.clone(), parse_entry(kind, key, value)?)))
+                .collect::<Result<BTreeMap<_, _>, Problem>>()
+        };
+        Ok(ProjectToml {
+            interpreters: entries(PluginKind::Interpreter, &raw.interpreters)?,
+            libraries: entries(PluginKind::Library, &raw.libraries)?,
+            happyview: raw.happyview,
+            dev: raw.dev,
+        })
     }
 
     pub fn load(root: &Path) -> Result<ProjectToml, Problem> {
@@ -96,10 +224,10 @@ impl ProjectToml {
         tables
             .into_iter()
             .flat_map(|(kind, table)| {
-                table.iter().map(move |(key, req)| Requirement {
+                table.iter().map(move |(key, entry)| Requirement {
                     kind,
                     key: key.clone(),
-                    req: req.clone(),
+                    entry: entry.clone(),
                 })
             })
             .collect()
@@ -198,15 +326,28 @@ fn create_temp_beside(
     Err(last.unwrap_or_else(|| std::io::Error::other("no free temporary name")))
 }
 
-/// `text` with `key = "version"` in the kind's table and nothing else changed:
-/// comments, ordering and a replaced value's trailing comment all survive.
+/// The inline table `happyview.toml` holds for `entry`.
+pub fn entry_value(entry: &PluginEntry) -> toml_edit::Value {
+    let mut table = toml_edit::InlineTable::new();
+    table.insert("did", entry.did.as_str().into());
+    table.insert("name", entry.name.as_str().into());
+    match &entry.pin {
+        Pin::Channel(c) => table.insert("channel", c.as_str().into()),
+        Pin::Version(v) => table.insert("version", v.as_str().into()),
+    };
+    toml_edit::Value::InlineTable(table)
+}
+
+/// `text` with `key = { did, name, channel|version }` in the kind's table and
+/// nothing else changed: comments, ordering and a replaced value's trailing
+/// comment all survive.
 pub fn set_plugin(
     text: &str,
     kind: PluginKind,
     key: &str,
-    version: &str,
+    entry: &PluginEntry,
 ) -> Result<String, Problem> {
-    check_entry(kind, key, version)?;
+    check_entry(kind, key)?;
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e: toml_edit::TomlError| Problem::new(CONFIG_FILE, e.to_string()))?;
@@ -216,14 +357,14 @@ pub fn set_plugin(
     let Some(table) = item.as_table_like_mut() else {
         return Err(Problem::new(kind.table(), "must be a table"));
     };
+    let mut value = entry_value(entry);
     match table.get_mut(key).and_then(toml_edit::Item::as_value_mut) {
-        Some(value) => {
-            let decor = value.decor().clone();
-            *value = version.into();
-            *value.decor_mut() = decor;
+        Some(old) => {
+            *value.decor_mut() = old.decor().clone();
+            *old = value;
         }
         None => {
-            table.insert(key, toml_edit::value(version));
+            table.insert(key, toml_edit::Item::Value(value));
         }
     }
     Ok(doc.to_string())
@@ -234,9 +375,9 @@ pub fn set_plugin(
 /// no writer can produce a file HappyView rejects. Its source
 /// (`config/project.rs`, `IdentifierRule` and `NonEmptyRule`, over
 /// `plugin::loader::is_valid_language_id`): an interpreter key is lowercase
-/// ASCII letters, digits, `-` or `_` starting with a letter; a library key and
-/// every version must be non-empty after trimming.
-fn check_entry(kind: PluginKind, key: &str, version: &str) -> Result<(), Problem> {
+/// ASCII letters, digits, `-` or `_` starting with a letter; a library key
+/// must be non-empty after trimming.
+fn check_entry(kind: PluginKind, key: &str) -> Result<(), Problem> {
     let path = format!("{}.{key}", kind.table());
     if kind == PluginKind::Interpreter {
         let mut chars = key.chars();
@@ -252,9 +393,6 @@ fn check_entry(kind: PluginKind, key: &str, version: &str) -> Result<(), Problem
         }
     } else if key.trim().is_empty() {
         return Err(Problem::new(path, "key must not be empty"));
-    }
-    if version.trim().is_empty() {
-        return Err(Problem::new(path, "version must not be empty"));
     }
     Ok(())
 }
@@ -285,6 +423,8 @@ mod tests {
         );
     }
 
+    const HV: &str = "did:plc:happyview";
+
     const PROJECT: &str = r#"# The registry's own instance.
 [happyview]
 version = "3.0.0" # pinned for the workshop
@@ -293,12 +433,20 @@ version = "3.0.0" # pinned for the workshop
 app_name = "HappyProto Registry"
 
 [interpreters]
-lua = "1.4.0" # the language most handlers use
-typescript = "0.2.0"
+lua = { did = "did:plc:happyview", name = "happyview-lua", channel = "latest" } # the language most handlers use
+typescript = { did = "did:plc:happyview", name = "happyview-ts", version = "0.2.0" }
 
 [libraries]
-"happyview.record" = "2.1.0"
+"happyview.record" = { did = "did:plc:happyview", name = "happyview-record", channel = "beta" }
 "#;
+
+    fn entry(name: &str, pin: Pin) -> PluginEntry {
+        PluginEntry {
+            did: HV.into(),
+            name: name.into(),
+            pin,
+        }
+    }
 
     #[test]
     fn reads_the_slice_hpy_owns_and_ignores_the_rest() {
@@ -307,20 +455,94 @@ typescript = "0.2.0"
         let reqs: Vec<_> = cfg
             .requirements()
             .into_iter()
-            .map(|r| (r.kind, r.key, r.req))
+            .map(|r| (r.kind, r.key, r.entry))
             .collect();
         assert_eq!(
             reqs,
             [
-                (PluginKind::Interpreter, "lua".into(), "1.4.0".into()),
-                (PluginKind::Interpreter, "typescript".into(), "0.2.0".into()),
+                (
+                    PluginKind::Interpreter,
+                    "lua".into(),
+                    entry("happyview-lua", Pin::Channel("latest".into()))
+                ),
+                (
+                    PluginKind::Interpreter,
+                    "typescript".into(),
+                    entry("happyview-ts", Pin::Version("0.2.0".into()))
+                ),
                 (
                     PluginKind::Library,
                     "happyview.record".into(),
-                    "2.1.0".into()
+                    entry("happyview-record", Pin::Channel("beta".into()))
                 ),
             ]
         );
+        assert_eq!(
+            cfg.interpreters["lua"].project_uri(),
+            "at://did:plc:happyview/software.release.project/happyview-lua"
+        );
+    }
+
+    fn refusal(entry: &str) -> Problem {
+        ProjectToml::parse(&format!("[interpreters]\nlua = {entry}\n")).unwrap_err()
+    }
+
+    #[test]
+    fn a_bare_version_string_is_refused_naming_the_table_form() {
+        let err = refusal("\"^1\"");
+        assert_eq!(err.path, "interpreters.lua");
+        assert!(err.message.contains("software.release"), "{err}");
+        assert!(err.message.contains("did = "), "{err}");
+        assert!(err.message.contains("channel = \"latest\""), "{err}");
+    }
+
+    #[test]
+    fn an_entry_needs_exactly_one_of_channel_and_version() {
+        let both = refusal(
+            "{ did = \"did:plc:happyview\", name = \"happyview-lua\", channel = \"latest\", version = \"1.0.0\" }",
+        );
+        assert_eq!(both.path, "interpreters.lua");
+        assert!(both.message.contains("both"), "{both}");
+        let neither = refusal("{ did = \"did:plc:happyview\", name = \"happyview-lua\" }");
+        assert_eq!(neither.path, "interpreters.lua");
+        assert!(neither.message.contains("channel"), "{neither}");
+        assert!(neither.message.contains("version"), "{neither}");
+    }
+
+    #[test]
+    fn an_entry_is_checked_field_by_field() {
+        for (entry, needle) in [
+            ("{ name = \"x\", channel = \"latest\" }", "needs `did`"),
+            (
+                "{ did = \"alice.test\", name = \"x\", channel = \"latest\" }",
+                "not a DID",
+            ),
+            (
+                "{ did = \"did:plc:a\", channel = \"latest\" }",
+                "needs `name`",
+            ),
+            (
+                "{ did = \"did:plc:a\", name = \"X\", channel = \"latest\" }",
+                "not a project name",
+            ),
+            (
+                "{ did = \"did:plc:a\", name = \"x\", channel = \"stable\" }",
+                "not one of",
+            ),
+            (
+                "{ did = \"did:plc:a\", name = \"x\", version = \"^1\" }",
+                "`version`",
+            ),
+            (
+                "{ did = \"did:plc:a\", name = \"x\", channel = \"latest\", chanel = \"beta\" }",
+                "chanel",
+            ),
+            ("3", "must be a table"),
+        ] {
+            let err = refusal(entry);
+            assert_eq!(err.path, "interpreters.lua", "{entry}");
+            assert!(err.message.contains(needle), "{entry}: {err}");
+        }
     }
 
     /// A file using every table HappyView accepts, including ones `hpy` has no
@@ -340,10 +562,10 @@ port = 3000
 backfill = true
 
 [interpreters]
-lua = "1.4.0"
+lua = { did = "did:plc:happyview", name = "happyview-lua", channel = "latest" }
 
 [libraries]
-"happyview.record" = "2.1.0"
+"happyview.record" = { did = "did:plc:happyview", name = "happyview-record", version = "2.1.0" }
 
 [network_lexicons]
 include = ["app.bsky.feed.post"]
@@ -371,16 +593,20 @@ path = "modules/shared"
         assert_eq!(cfg.requirements().len(), 2);
 
         // The edit must leave every table it did not touch intact.
-        let edited = set_plugin(FULL, PluginKind::Library, "happyview.http", "1.0.3").unwrap();
+        let http = entry("happyview-http", Pin::Version("1.0.3".into()));
+        let edited = set_plugin(FULL, PluginKind::Library, "happyview.http", &http).unwrap();
         assert!(edited.contains("[modules.shared]"), "{edited}");
         let again = ProjectToml::parse(&edited).unwrap();
-        assert_eq!(again.libraries["happyview.http"], "1.0.3");
-        assert_eq!(again.interpreters["lua"], "1.4.0");
+        assert_eq!(again.libraries["happyview.http"], http);
+        assert_eq!(
+            again.interpreters["lua"],
+            entry("happyview-lua", Pin::Channel("latest".into()))
+        );
     }
 
     #[test]
     fn a_missing_version_says_how_to_pin_one() {
-        let err = ProjectToml::parse("[interpreters]\nlua = \"1\"\n")
+        let err = ProjectToml::parse("[dev]\nbackfill = true\n")
             .unwrap()
             .happyview_version()
             .unwrap_err();
@@ -390,9 +616,12 @@ path = "modules/shared"
 
     #[test]
     fn set_plugin_keeps_comments_order_and_trailing_comments() {
-        let out = set_plugin(PROJECT, PluginKind::Interpreter, "lua", "1.5.0").unwrap();
+        let pinned = entry("happyview-lua", Pin::Version("1.5.0".into()));
+        let out = set_plugin(PROJECT, PluginKind::Interpreter, "lua", &pinned).unwrap();
         assert!(
-            out.contains("lua = \"1.5.0\" # the language most handlers use"),
+            out.contains(
+                "lua = { did = \"did:plc:happyview\", name = \"happyview-lua\", version = \"1.5.0\" } # the language most handlers use"
+            ),
             "{out}"
         );
         assert!(out.starts_with("# The registry's own instance."), "{out}");
@@ -403,43 +632,51 @@ path = "modules/shared"
         let lua = out.find("lua =").unwrap();
         let ts = out.find("typescript =").unwrap();
         assert!(lua < ts, "{out}");
+        assert_eq!(
+            ProjectToml::parse(&out).unwrap().interpreters["lua"],
+            pinned
+        );
     }
 
     #[test]
     fn set_plugin_quotes_dotted_keys_and_creates_the_table() {
+        let http = entry("happyview-http", Pin::Channel("latest".into()));
         let out = set_plugin(
             "[happyview]\nversion = \"3.0.0\"\n",
             PluginKind::Library,
             "happyview.http",
-            "1.0.3",
+            &http,
         )
         .unwrap();
         assert!(
-            out.contains("[libraries]\n\"happyview.http\" = \"1.0.3\""),
+            out.contains(
+                "[libraries]\n\"happyview.http\" = { did = \"did:plc:happyview\", name = \"happyview-http\", channel = \"latest\" }"
+            ),
             "{out}"
         );
         let cfg = ProjectToml::parse(&out).unwrap();
-        assert_eq!(cfg.libraries["happyview.http"], "1.0.3");
+        assert_eq!(cfg.libraries["happyview.http"], http);
     }
 
     #[test]
     fn set_plugin_refuses_a_table_that_is_not_one() {
+        let lua = entry("happyview-lua", Pin::Channel("latest".into()));
         let err =
-            set_plugin("interpreters = 3\n", PluginKind::Interpreter, "lua", "1").unwrap_err();
+            set_plugin("interpreters = 3\n", PluginKind::Interpreter, "lua", &lua).unwrap_err();
         assert_eq!(err.path, "interpreters");
     }
 
     #[test]
     fn set_plugin_refuses_what_happyview_would_refuse() {
+        let e = entry("x", Pin::Channel("latest".into()));
         for key in ["Lua", "1lua", "", "lua.x", "lu a"] {
-            let err = set_plugin("", PluginKind::Interpreter, key, "1.0.0").unwrap_err();
+            let err = set_plugin("", PluginKind::Interpreter, key, &e).unwrap_err();
             assert_eq!(err.path, format!("interpreters.{key}"));
             assert!(err.message.contains("lowercase"), "{err}");
         }
-        assert!(set_plugin("", PluginKind::Interpreter, "type-script_2", "1").is_ok());
-        assert!(set_plugin("", PluginKind::Library, " ", "1").is_err());
-        assert!(set_plugin("", PluginKind::Library, "Happyview.Http", "1").is_ok());
-        assert!(set_plugin("", PluginKind::Library, "happyview.http", " ").is_err());
+        assert!(set_plugin("", PluginKind::Interpreter, "type-script_2", &e).is_ok());
+        assert!(set_plugin("", PluginKind::Library, " ", &e).is_err());
+        assert!(set_plugin("", PluginKind::Library, "Happyview.Http", &e).is_ok());
     }
 
     #[test]
