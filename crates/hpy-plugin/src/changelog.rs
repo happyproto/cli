@@ -20,9 +20,10 @@ pub fn changelog_entry(changelog_md: &str, version: &str) -> Option<String> {
 fn names_version(heading: &str, version: &str) -> bool {
     let heading = heading.trim_start();
     match heading.strip_prefix('[') {
+        // `[1.1.0](…) (date)` and `[1.1.0 (date)](…)` both occur.
         Some(linked) => linked
             .strip_prefix(version)
-            .is_some_and(|rest| rest.starts_with(']')),
+            .is_some_and(|rest| rest.starts_with(']') || rest.starts_with(char::is_whitespace)),
         None => heading
             .strip_prefix(version)
             .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace)),
@@ -58,6 +59,28 @@ mod tests {
             changelog_entry(PLUGINS, "1.0.0").as_deref(),
             Some("- **First release on HappyView v3's plugin API.**")
         );
+    }
+
+    #[test]
+    fn reads_a_heading_with_the_date_inside_the_link() {
+        let jobs = "\
+## [1.1.0 (2026-10-08)](https://github.com/happyproto/plugins/releases/tag/happyview-jobs-v1.1.0)
+
+- **Scripts can read jobs.**
+
+## [1.0.0 (2026-10-07)](https://github.com/happyproto/plugins/releases/tag/happyview-jobs-v1.0.0)
+
+- **First release.**
+";
+        assert_eq!(
+            changelog_entry(jobs, "1.1.0").as_deref(),
+            Some("- **Scripts can read jobs.**")
+        );
+        assert_eq!(
+            changelog_entry(jobs, "1.0.0").as_deref(),
+            Some("- **First release.**")
+        );
+        assert_eq!(changelog_entry(jobs, "1.1"), None);
     }
 
     #[test]

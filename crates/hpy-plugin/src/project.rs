@@ -13,6 +13,8 @@ use crate::{PLUGIN_TYPES, Problem};
 /// a decimal megabyte, unlike the artifact's images.
 pub const MAX_ICON_BYTES: usize = 1_000_000;
 pub const MAX_KEYWORDS: usize = 20;
+pub const MAX_PUBLICATION_NAME: usize = 64;
+pub const MAX_PUBLICATION_DESCRIPTION: usize = 300;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Author {
@@ -78,6 +80,19 @@ impl ProjectDetails {
         }
         if self.publication.name.trim().is_empty() {
             out.push(Problem::new("publication.name", "is required"));
+        } else if graphemes(&self.publication.name) > MAX_PUBLICATION_NAME {
+            out.push(Problem::new(
+                "publication.name",
+                format!("is longer than {MAX_PUBLICATION_NAME} characters"),
+            ));
+        }
+        if let Some(d) = &self.publication.description
+            && graphemes(d) > MAX_PUBLICATION_DESCRIPTION
+        {
+            out.push(Problem::new(
+                "publication.description",
+                format!("is longer than {MAX_PUBLICATION_DESCRIPTION} characters"),
+            ));
         }
         if let Some(icon) = &self.publication.icon {
             let mime = icon["mimeType"].as_str().unwrap_or_default();
@@ -133,10 +148,11 @@ impl ProjectDetails {
         }
         for (i, c) in self.security.iter().enumerate() {
             let path = format!("project.security[{i}]");
-            if c.url.is_none() && c.email.is_none() {
+            let given = |f: &Option<String>| f.as_deref().is_some_and(|s| !s.trim().is_empty());
+            if !given(&c.url) && !given(&c.email) {
                 out.push(Problem::new(&path, "needs a url or an email"));
             }
-            if c.url.as_ref().is_some_and(|u| !looks_like_uri(u)) {
+            if given(&c.url) && c.url.as_ref().is_some_and(|u| !looks_like_uri(u)) {
                 out.push(Problem::new(format!("{path}.url"), "is not a URI"));
             }
         }
@@ -314,6 +330,34 @@ mod tests {
         let mut d = valid();
         d.publication.name = "  ".into();
         assert_eq!(paths(&d), ["publication.name"]);
+    }
+
+    #[test]
+    fn publication_name_is_at_most_64() {
+        let mut d = valid();
+        d.publication.name = "n".repeat(64);
+        assert_eq!(d.problems(), vec![]);
+        d.publication.name = "n".repeat(65);
+        assert_eq!(paths(&d), ["publication.name"]);
+    }
+
+    #[test]
+    fn publication_description_is_at_most_300() {
+        let mut d = valid();
+        d.publication.description = Some("d".repeat(300));
+        assert_eq!(d.problems(), vec![]);
+        d.publication.description = Some("d".repeat(301));
+        assert_eq!(paths(&d), ["publication.description"]);
+    }
+
+    #[test]
+    fn an_empty_security_url_or_email_counts_as_absent() {
+        let mut d = valid();
+        d.security = vec![Contact {
+            url: Some(String::new()),
+            email: Some(" ".into()),
+        }];
+        assert_eq!(paths(&d), ["project.security[0]"]);
     }
 
     #[test]

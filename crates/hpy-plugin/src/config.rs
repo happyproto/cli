@@ -18,7 +18,7 @@ pub const FILE_NAME: &str = "hpy.toml";
 
 /// A table that an older `hpy` wrote and this one cannot map field for field,
 /// since its fields now split between `[project]` and `[release]`.
-const RETIRED_PROFILE: &str = "hpy.toml uses [profile], which the software.release registry replaced; move its fields to [project] and [release] (see hpy's README)";
+const RETIRED_PROFILE: &str = "uses [profile], which the software.release registry replaced; move its fields to [project] and [release] (see hpy's README)";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HpyToml {
@@ -128,6 +128,19 @@ impl HpyToml {
         // sections it holds, so it is refused until moved.
         if table.contains_key("profile") {
             return Err(Problem::new(FILE_NAME, RETIRED_PROFILE));
+        }
+        // The icon now belongs to the project, not each release; ignoring
+        // it here would publish a plugin without one.
+        if table
+            .get("release")
+            .and_then(|r| r.get("artifacts"))
+            .and_then(|a| a.get("icon"))
+            .is_some()
+        {
+            return Err(Problem::new(
+                "release.artifacts.icon",
+                "moved to [project] icon, since the icon belongs to the plugin rather than a release",
+            ));
         }
         table.try_into().map(Some).map_err(invalid)
     }
@@ -409,11 +422,23 @@ wasm = "plugin.wasm"
         )
         .unwrap();
         let err = HpyToml::load(dir.path()).unwrap_err();
-        assert_eq!(err.path, "hpy.toml");
         assert_eq!(
-            err.message,
-            "hpy.toml uses [profile], which the software.release registry replaced; move its fields to [project] and [release] (see hpy's README)"
+            err.to_string(),
+            "hpy.toml: uses [profile], which the software.release registry replaced; move its fields to [project] and [release] (see hpy's README)"
         );
+    }
+
+    #[test]
+    fn a_release_icon_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("hpy.toml"),
+            "[release.artifacts]\nicon = { path = \"icon.png\" }\n",
+        )
+        .unwrap();
+        let err = HpyToml::load(dir.path()).unwrap_err();
+        assert_eq!(err.path, "release.artifacts.icon");
+        assert!(err.message.contains("[project] icon"), "{err}");
     }
 
     #[test]

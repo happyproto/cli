@@ -300,7 +300,7 @@ impl PluginArtifact {
         for (i, c) in self.capabilities.iter().enumerate() {
             max(&mut out, format!("artifact.capabilities[{i}]"), c, 128);
         }
-        match &self.namespace {
+        match self.namespace.as_deref().filter(|ns| !ns.trim().is_empty()) {
             Some(ns) => max(&mut out, "artifact.namespace".into(), ns, 256),
             None if self.plugin_type == "library" => out.push(Problem::new(
                 "artifact.namespace",
@@ -354,7 +354,11 @@ impl PluginArtifact {
     }
 
     fn interpreter_problems(&self, out: &mut Vec<Problem>) {
-        if self.language_id.is_none() {
+        if self
+            .language_id
+            .as_deref()
+            .is_none_or(|id| id.trim().is_empty())
+        {
             out.push(Problem::new(
                 "artifact.languageId",
                 "an interpreter must declare its language_id",
@@ -638,6 +642,19 @@ mod tests {
         let mut a = valid();
         a.language_id = None;
         has(&a, "artifact.languageId");
+    }
+
+    #[test]
+    fn an_empty_language_id_or_namespace_counts_as_absent() {
+        let mut a = valid();
+        a.language_id = Some(String::new());
+        assert_eq!(paths(&a), ["artifact.languageId"]);
+        let mut a = valid();
+        a.plugin_type = "library".into();
+        a.language_id = None;
+        a.file_extensions.clear();
+        a.namespace = Some(" ".into());
+        assert_eq!(paths(&a), ["artifact.namespace"]);
     }
 
     #[test]
