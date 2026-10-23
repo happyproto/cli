@@ -14,37 +14,6 @@ pub struct Sandbox<'a> {
     pub subnet: String,
 }
 
-/// `--subnet`'s value, held to what Atmosphere in a Box accepts (a private
-/// IPv4 network from /16 to /28, aligned to its prefix) so a mistake is
-/// refused before anything downloads rather than by the sandbox's `create`.
-pub fn parse_subnet(value: &str) -> Result<String, String> {
-    const EXAMPLE: &str = "an IPv4 network such as 10.40.0.0/24";
-    let (addr, prefix) = value
-        .split_once('/')
-        .ok_or_else(|| format!("expected {EXAMPLE}"))?;
-    let addr: std::net::Ipv4Addr = addr.parse().map_err(|_| format!("expected {EXAMPLE}"))?;
-    let prefix: u32 = prefix
-        .parse()
-        .ok()
-        .filter(|p| (16..=28).contains(p))
-        .ok_or("the prefix must be from /16 to /28")?;
-    let [a, b, _, _] = addr.octets();
-    if !(a == 10 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168)) {
-        return Err(
-            "it must be a private network, inside 10.0.0.0/8, 172.16.0.0/12 or 192.168.0.0/16"
-                .into(),
-        );
-    }
-    let mask = !((1u32 << (32 - prefix)) - 1);
-    let start = std::net::Ipv4Addr::from(u32::from(addr) & mask);
-    if start != addr {
-        return Err(format!(
-            "{addr} is not where a /{prefix} starts; did you mean {start}/{prefix}?"
-        ));
-    }
-    Ok(format!("{addr}/{prefix}"))
-}
-
 /// The network a sandbox is created on. The one it was last created on is
 /// kept, through `--reset` too, until `--subnet` names another; a project
 /// with neither gets the one derived from its path. A created sandbox cannot
@@ -522,25 +491,6 @@ mod tests {
             overlapping_network("bridge 172.17.0.0/16\nv6 fd00::/64\n", "172.30.18.0/24"),
             None
         );
-    }
-
-    #[test]
-    fn a_subnet_is_what_atmosphere_in_a_box_accepts() {
-        for ok in ["10.40.0.0/24", "172.31.0.0/16", "192.168.7.16/28"] {
-            assert_eq!(parse_subnet(ok).as_deref(), Ok(ok));
-        }
-        for (bad, says) in [
-            ("10.40.0.0", "such as 10.40.0.0/24"),
-            ("10.40.0/24", "such as 10.40.0.0/24"),
-            ("10.40.0.0/15", "/16 to /28"),
-            ("10.40.0.0/29", "/16 to /28"),
-            ("172.32.0.0/24", "private"),
-            ("8.8.8.0/24", "private"),
-            ("10.40.0.1/24", "did you mean 10.40.0.0/24?"),
-        ] {
-            let err = parse_subnet(bad).unwrap_err();
-            assert!(err.contains(says), "{bad}: {err}");
-        }
     }
 
     #[test]
