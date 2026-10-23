@@ -79,6 +79,8 @@ pub struct Published {
     pub created_project: bool,
     /// The gateway finished a version an earlier attempt left half-written.
     pub resumed: bool,
+    /// This run sent a blob to the PDS, so it did some of the work itself.
+    pub uploaded: bool,
 }
 
 impl Published {
@@ -583,12 +585,14 @@ pub async fn execute(
     if let Some(icon) = project.as_ref().and_then(|v| v.publication.icon.clone()) {
         held.insert(icon);
     }
+    let mut uploaded = false;
     let mut skipped = Vec::new();
     for blob in &p.blobs {
         if held.contains(&blob.cid) {
             skipped.push(blob);
             continue;
         }
+        uploaded = true;
         ui.progress(&format!("Uploading {}…", blob.what));
         upload_checked(repo, blob).await?;
     }
@@ -596,6 +600,7 @@ pub async fn execute(
     let out = match registry.publish_release(release.clone(), false).await {
         // A skipped blob the PDS has lost: send them all, and try once more.
         Err(e) if is_missing_blob(&e) && !skipped.is_empty() => {
+            uploaded = true;
             for blob in skipped {
                 ui.progress(&format!("Uploading {}…", blob.what));
                 upload_checked(repo, blob).await?;
@@ -611,6 +616,7 @@ pub async fn execute(
         cid: out.version.cid,
         created_project,
         resumed: out.resumed,
+        uploaded,
     }))
 }
 
@@ -638,6 +644,7 @@ pub async fn promote(
         cid: out.version.cid,
         created_project: false,
         resumed: out.resumed,
+        uploaded: false,
     })
 }
 
@@ -833,7 +840,7 @@ pub async fn run(ctx: &Ctx, args: PublishArgs) -> Result<(), Failure> {
                 }
                 if out.resumed {
                     ctx.out
-                        .status("Finished a publish an earlier attempt left incomplete");
+                        .status(&resumed_status(&out, &prepared.name, &prepared.version));
                 }
                 (prepared.name, prepared.version, (session, out))
             }
@@ -860,6 +867,16 @@ pub async fn run(ctx: &Ctx, args: PublishArgs) -> Result<(), Failure> {
         out.to_json(availability),
     );
     Ok(())
+}
+
+/// What to say of a publish the gateway answered as resumed: it finished
+/// an earlier attempt only if this run wrote something toward it.
+fn resumed_status(out: &Published, name: &str, version: &str) -> String {
+    if out.uploaded || out.created_project {
+        "Finished a publish an earlier attempt left incomplete".into()
+    } else {
+        format!("{name} {version} was already published")
+    }
 }
 
 #[cfg(test)]
@@ -1428,6 +1445,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publishing_a_finished_version_again_says_it_was_already_published() {
+        let (_dir, p) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        let first = published(run(&p, &repo, &reg, false).await.unwrap());
+        assert!(first.uploaded);
+        let again = published(run(&p, &repo, &reg, false).await.unwrap());
+        assert!(again.resumed);
+        assert!(!again.uploaded);
+        assert_eq!(
+            resumed_status(&again, "my-plugin", "1.0.0"),
+            "my-plugin 1.0.0 was already published"
+        );
+    }
+
+    #[tokio::test]
+    async fn finishing_a_cut_off_publish_says_so() {
+        let (_dir, p) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        *reg.fail_next_publish.lock().unwrap() = true;
+        assert!(run(&p, &repo, &reg, false).await.is_err());
+        let out = published(run(&p, &repo, &reg, false).await.unwrap());
+        assert!(out.resumed && out.uploaded);
+        assert_eq!(
+            resumed_status(&out, "my-plugin", "1.0.0"),
+            "Finished a publish an earlier attempt left incomplete"
+        );
+    }
+
+    #[tokio::test]
     async fn an_upload_the_pds_stores_under_another_cid_fails_naming_both() {
         let (_dir, p) = prepared("1.0.0");
         let wrong = raw_cid(b"other");
@@ -1721,6 +1767,7 @@ mod tests {
             cid: "bafyv".into(),
             created_project: true,
             resumed: false,
+            uploaded: false,
         };
         assert_eq!(
             out.to_json(Some("available".into())),

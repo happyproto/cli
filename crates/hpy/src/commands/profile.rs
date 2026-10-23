@@ -555,7 +555,14 @@ pub(crate) async fn apply_edit(
     // The gateway swaps on the sidecar, which holds the fields an edit
     // changes besides the publication's.
     let (uri, _) = put_project(registry, repo, &details, None, view.sidecar.cid.as_deref()).await?;
-    if let Some(existing) = HpyToml::load(dir)?.and_then(|t| t.project) {
+    // Only the hpy.toml this project is described by takes the edit; a
+    // `--name` for another project must leave this directory's file alone.
+    let toml = HpyToml::load(dir)?;
+    let manifest = Manifest::load(dir).ok();
+    let belongs = toml
+        .as_ref()
+        .is_some_and(|t| t.name(manifest.as_ref()).as_deref() == Some(view.name.as_str()));
+    if belongs && let Some(existing) = toml.and_then(|t| t.project) {
         let cfg = ProjectConfig {
             display_name: Some(editable.display_name.clone()),
             description: editable.description.clone(),
@@ -689,6 +696,49 @@ mod tests {
         assert_eq!(p.display_name, "New");
         assert_eq!(p.authors.len(), 2);
         assert_eq!(p.keywords, vec!["keep".to_string(), "new".to_string()]);
+    }
+
+    async fn edit_in(dir: &Path, name: &str) {
+        let (repo, reg) = (
+            crate::testing::FakeRepo::default(),
+            crate::testing::FakeRegistry::default(),
+        );
+        let view = project_view(DID, name, "library");
+        let mut e = Editable::from_view(&view).unwrap();
+        e.display_name = "Edited".into();
+        e.authors = vec![parse_author("Ada <a@x.io>").unwrap()];
+        e.security = vec![parse_contact("security@x.io").unwrap()];
+        apply_edit(dir, &reg, &repo, &view, &e).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_edit_is_written_back_only_to_its_own_hpy_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("hpy.toml");
+        let other = "[project]\nname = \"other\"\ndisplay_name = \"Other\"\n";
+        std::fs::write(&file, other).unwrap();
+        edit_in(dir.path(), "my-plugin").await;
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), other);
+        edit_in(dir.path(), "other").await;
+        assert!(
+            std::fs::read_to_string(&file)
+                .unwrap()
+                .contains("display_name = \"Edited\"")
+        );
+    }
+
+    #[tokio::test]
+    async fn an_edit_matches_a_project_named_by_the_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("manifest.json"), r#"{"id":"my-plugin"}"#).unwrap();
+        std::fs::write(
+            dir.path().join("hpy.toml"),
+            "[project]\ndisplay_name = \"Old\"\n",
+        )
+        .unwrap();
+        edit_in(dir.path(), "my-plugin").await;
+        let text = std::fs::read_to_string(dir.path().join("hpy.toml")).unwrap();
+        assert!(text.contains("display_name = \"Edited\""), "{text}");
     }
 
     #[test]
