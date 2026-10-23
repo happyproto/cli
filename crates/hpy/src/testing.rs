@@ -200,6 +200,9 @@ pub struct FakeRegistry {
     /// The next `publishRelease` that writes fails as the gateway does when
     /// the PDS has lost a blob the release names.
     pub missing_blob_once: Mutex<bool>,
+    /// Answer `publishRelease` without a `manifest`, as the gateway may on
+    /// a resumed publish.
+    pub omit_manifest: Mutex<bool>,
 }
 
 impl FakeRegistry {
@@ -345,7 +348,7 @@ impl Registry for FakeRegistry {
         view.availability = Availability::Pending;
         let out = PublishOut {
             resumed,
-            manifest: Some(view.manifest.clone()),
+            manifest: (!*self.omit_manifest.lock().unwrap()).then(|| view.manifest.clone()),
             version: Ref {
                 uri: view.uri.clone(),
                 cid: view.cid.clone(),

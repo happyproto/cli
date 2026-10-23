@@ -169,10 +169,29 @@ impl ProjectDetails {
         if let Some(icon) = &self.publication.icon {
             publication["icon"] = icon.clone();
         }
+        // Validation counts a blank url or email as absent, so none is sent.
+        let given = |f: &Option<String>| f.clone().filter(|s| !s.trim().is_empty());
+        let authors: Vec<Author> = self
+            .authors
+            .iter()
+            .map(|a| Author {
+                name: a.name.clone(),
+                url: given(&a.url),
+                email: given(&a.email),
+            })
+            .collect();
+        let security: Vec<Contact> = self
+            .security
+            .iter()
+            .map(|c| Contact {
+                url: given(&c.url),
+                email: given(&c.email),
+            })
+            .collect();
         let mut project = json!({
             "pluginType": self.plugin_type,
-            "authors": self.authors,
-            "security": self.security,
+            "authors": authors,
+            "security": security,
         });
         if !self.keywords.is_empty() {
             project["keywords"] = json!(self.keywords);
@@ -303,6 +322,25 @@ mod tests {
                     "security": [{ "url": "https://github.com/happyproto/plugins/security" }],
                 },
             })
+        );
+    }
+
+    #[test]
+    fn blank_contact_fields_are_left_out_of_the_input() {
+        let mut d = valid();
+        d.authors[0].url = Some(String::new());
+        d.security = vec![Contact {
+            url: Some("https://example.com/security".into()),
+            email: Some(" ".into()),
+        }];
+        let input = d.to_input();
+        assert_eq!(
+            input["project"]["authors"],
+            serde_json::json!([{ "name": "Trezy", "email": "tre@trezy.com" }])
+        );
+        assert_eq!(
+            input["project"]["security"],
+            serde_json::json!([{ "url": "https://example.com/security" }])
         );
     }
 

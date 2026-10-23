@@ -286,6 +286,23 @@ pub fn report(additions: &[Addition], lock: &Lockfile) -> Value {
     })
 }
 
+/// What `add` says of one plugin it added; `defaulted` is whether hpy chose
+/// the pin rather than the user.
+fn added_line(a: &Addition, defaulted: bool) -> String {
+    let mut line = format!(
+        "added {} `{}`: {} {} ({})",
+        a.kind.plugin_type(),
+        a.key,
+        a.entry.name,
+        a.entry.pin_label(),
+        a.version,
+    );
+    if defaulted && matches!(&a.entry.pin, Pin::Channel(c) if c != "latest") {
+        line.push_str("\n  it has no latest channel, so this follows a prerelease one");
+    }
+    line
+}
+
 pub async fn run(ctx: &Ctx, args: AddArgs) -> Result<(), Failure> {
     let root = find_root(&ctx.dir).ok_or_else(|| {
         Failure::usage(format!(
@@ -297,24 +314,10 @@ pub async fn run(ctx: &Ctx, args: AddArgs) -> Result<(), Failure> {
     let registry = ctx.registry();
     let choose = choose_with_prompter(ctx);
     let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
+    // The note is about a channel hpy chose, not one the user asked for.
+    let defaulted = args.channel.is_none() && args.version.is_none();
     let (additions, lock) = add_in(&root, &registry, &cache_root, &args, &choose, &warn).await?;
-    let lines: Vec<String> = additions
-        .iter()
-        .map(|a| {
-            let mut line = format!(
-                "added {} `{}`: {} {} ({})",
-                a.kind.plugin_type(),
-                a.key,
-                a.entry.name,
-                a.entry.pin_label(),
-                a.version,
-            );
-            if matches!(&a.entry.pin, Pin::Channel(c) if c != "latest") {
-                line.push_str("\n  it has no latest channel, so this follows a prerelease one");
-            }
-            line
-        })
-        .collect();
+    let lines: Vec<String> = additions.iter().map(|a| added_line(a, defaulted)).collect();
     let human = if lines.is_empty() {
         format!("{} plugins locked and downloaded", lock.plugins.len())
     } else {
@@ -498,6 +501,22 @@ mod tests {
         let adds = plan(&reg, &["js"], None, None, None).await.unwrap();
         assert_eq!(adds[0].entry.pin, Pin::Channel("alpha".into()));
         assert_eq!(adds[0].version, "0.1.0-alpha.3");
+    }
+
+    #[test]
+    fn the_prerelease_note_is_only_for_a_defaulted_channel() {
+        let add = Addition {
+            kind: PluginKind::Interpreter,
+            key: "js".into(),
+            entry: PluginEntry {
+                did: HV.into(),
+                name: "happyview-js".into(),
+                pin: Pin::Channel("alpha".into()),
+            },
+            version: "0.1.0-alpha.3".into(),
+        };
+        assert!(added_line(&add, true).contains("no latest channel"));
+        assert!(!added_line(&add, false).contains("no latest channel"));
     }
 
     #[tokio::test]

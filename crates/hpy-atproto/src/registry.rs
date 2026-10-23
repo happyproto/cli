@@ -1057,6 +1057,7 @@ mod tests {
             ("publishRelease", "VersionExists"),
             ("publishRelease", "ProjectMissing"),
             ("promoteRelease", "NotInstallable"),
+            ("promoteRelease", "VersionNotFound"),
             ("putStatus", "SubjectNotFound"),
             ("putStatus", "InvalidStatus"),
             ("putProject", "InvalidRecord"),
@@ -1079,6 +1080,10 @@ mod tests {
                     _ => reg.put_status(json!({})).await.unwrap_err(),
                 };
                 assert_eq!(err.registry_name(), Some(name), "{nsid} {status}: {err:?}");
+                if name == "VersionNotFound" {
+                    assert!(err.is_usage(), "{err:?}");
+                    assert_eq!(err.to_string(), "say it plainly");
+                }
             }
         }
     }

@@ -56,6 +56,17 @@ pub fn version_problem(s: &str) -> Option<String> {
             && i.bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     };
+    // `semver` refuses a numeric identifier with a leading zero, so a version
+    // with one would publish but never install.
+    let leading_zero =
+        |i: &str| i.len() > 1 && i.starts_with('0') && i.bytes().all(|b| b.is_ascii_digit());
+    if let Some(pre) = pre
+        && pre.split('.').any(leading_zero)
+    {
+        return Some(format!(
+            "`{s}` has a numeric prerelease identifier with a leading zero (e.g. `alpha.01`); write `alpha.1`"
+        ));
+    }
     if let Some(pre) = pre
         && !pre.split('.').all(identifier)
     {
@@ -180,7 +191,16 @@ mod tests {
 
     #[test]
     fn versions() {
-        for ok in ["1.2.0", "1.2.0-alpha.3", "0.0.0", "10.20.30-rc-1.x"] {
+        for ok in [
+            "1.2.0",
+            "1.2.0-alpha.3",
+            "0.0.0",
+            "10.20.30-rc-1.x",
+            "1.0.0-0",
+            "1.0.0-alpha.0",
+            "1.0.0-0a",
+            "1.0.0-alpha.10",
+        ] {
             assert_eq!(version_problem(ok), None, "{ok}");
         }
         assert!(version_problem("v1.2.0").unwrap().contains("`v`"));
@@ -196,6 +216,9 @@ mod tests {
             "1.2.0-",
             "1.2.0-a..b",
             "1.2.x",
+            "1.0.0-alpha.01",
+            "1.0.0-01",
+            "1.0.0-00",
         ] {
             assert!(version_problem(bad).is_some(), "{bad} should be refused");
         }

@@ -609,7 +609,6 @@ pub async fn execute(
         }
         out => out?,
     }
-    .filter(|o| o.manifest.is_some())
     .ok_or_else(|| Failure::runtime("publishRelease answered something unreadable"))?;
     Ok(Outcome::Published(Published {
         uri: out.version.uri,
@@ -1456,6 +1455,21 @@ mod tests {
         assert_eq!(
             resumed_status(&again, "my-plugin", "1.0.0"),
             "my-plugin 1.0.0 was already published"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_resumed_publish_answered_without_a_manifest_succeeds() {
+        let (_dir, p) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        *reg.fail_next_publish.lock().unwrap() = true;
+        assert!(run(&p, &repo, &reg, false).await.is_err());
+        *reg.omit_manifest.lock().unwrap() = true;
+        let out = published(run(&p, &repo, &reg, false).await.unwrap());
+        assert!(out.resumed);
+        assert_eq!(
+            out.uri,
+            "at://did:plc:testuser/software.release.version/my-plugin:1.0.0"
         );
     }
 

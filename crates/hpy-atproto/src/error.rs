@@ -23,11 +23,12 @@ pub enum Error {
 }
 
 /// Registry refusals the publisher fixes by changing what they ran or wrote.
-const USAGE_ERRORS: [&str; 4] = [
+const USAGE_ERRORS: [&str; 5] = [
     "InvalidRecord",
     "VersionExists",
     "ProjectMissing",
     "NotInstallable",
+    "VersionNotFound",
 ];
 
 impl Error {

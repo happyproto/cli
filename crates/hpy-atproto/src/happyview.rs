@@ -14,7 +14,7 @@ use crate::{Error, Result};
 /// Refusals the gateway's procedures make on purpose; each message is written
 /// for the publisher, so they keep their name instead of becoming a bare
 /// transport error.
-const NAMED_REGISTRY_ERRORS: [&str; 7] = [
+const NAMED_REGISTRY_ERRORS: [&str; 8] = [
     "InvalidRecord",
     "VersionExists",
     "ProjectMissing",
@@ -22,6 +22,7 @@ const NAMED_REGISTRY_ERRORS: [&str; 7] = [
     "NotInstallable",
     "SubjectNotFound",
     "InvalidStatus",
+    "VersionNotFound",
 ];
 
 pub struct HappyView {
@@ -583,6 +584,7 @@ mod tests {
             "NotInstallable",
             "SubjectNotFound",
             "InvalidStatus",
+            "VersionNotFound",
         ] {
             let server = MockServer::start().await;
             Mock::given(method("POST"))

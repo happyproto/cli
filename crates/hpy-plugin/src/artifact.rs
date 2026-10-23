@@ -197,6 +197,23 @@ impl PluginArtifact {
     pub fn to_value(&self) -> Value {
         let mut value = serde_json::to_value(self).expect("an artifact serializes");
         value["$type"] = ARTIFACT_TYPE.into();
+        // Validation counts a blank value as absent, so none is sent.
+        for key in ["namespace", "languageId"] {
+            if value[key].as_str().is_some_and(|s| s.trim().is_empty()) {
+                value.as_object_mut().expect("an object").remove(key);
+            }
+        }
+        for key in ["installation", "security"] {
+            if value["sections"][key]
+                .as_str()
+                .is_some_and(|s| s.trim().is_empty())
+            {
+                value["sections"]
+                    .as_object_mut()
+                    .expect("an object")
+                    .remove(key);
+            }
+        }
         value
     }
 
@@ -512,6 +529,18 @@ mod tests {
         assert!(!text.contains("checksum"), "{text}");
         assert!(!text.contains("\"url\""), "{text}");
         assert_eq!(PluginArtifact::from_value(&v).unwrap(), valid());
+    }
+
+    #[test]
+    fn blank_optional_fields_are_left_out() {
+        let mut a = valid();
+        a.namespace = Some(String::new());
+        a.language_id = Some(" ".into());
+        a.sections.installation = Some(String::new());
+        let v = a.to_value();
+        assert!(v.get("namespace").is_none(), "{v}");
+        assert!(v.get("languageId").is_none(), "{v}");
+        assert!(v["sections"].get("installation").is_none(), "{v}");
     }
 
     #[test]

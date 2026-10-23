@@ -3,15 +3,16 @@
 
 use std::path::Path;
 
+use hpy_atproto::scope;
 use hpy_atproto::session::Session;
 use hpy_atproto::{ProjectView, Registry, Repo};
-use hpy_plugin::PUBLICATION_NSID;
 use hpy_plugin::config::{self, HpyToml, ProjectConfig};
 use hpy_plugin::manifest::Manifest;
 use hpy_plugin::project::{
     Author, Contact, ProjectDetails, PublicationInput, parse_author, parse_contact,
 };
 use hpy_plugin::validate::is_project_name;
+use hpy_plugin::{PROJECT_NSID, PUBLICATION_NSID, SIDECAR_NSID};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -69,6 +70,32 @@ fn read_icon(dir: &Path, cfg: &ProjectConfig) -> Result<Option<Blob>, Failure> {
     Ok(Some(Blob::new(bytes, info.mime, "icon")))
 }
 
+/// Refuses a session whose grant cannot write the records `putProject`
+/// writes, or upload the icon, before anything is sent.
+fn check_grant(repo: &dyn Repo, icon: Option<&Blob>, name: &str) -> Result<(), Failure> {
+    let Some(granted) = repo.granted_scopes() else {
+        return Ok(());
+    };
+    let mut missing = scope::missing_blob_scopes(granted, icon.map(|i| i.mime));
+    missing.extend(scope::missing_repo_scopes(
+        granted,
+        [PROJECT_NSID, PUBLICATION_NSID, SIDECAR_NSID],
+    ));
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let needed = missing
+        .iter()
+        .map(|s| format!("`{s}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(Failure::usage(format!(
+        "writing the {name} project needs {needed}, which this sign-in was not granted. \
+         A session's scopes are fixed when it is created: run `hpy registry login` \
+         to sign in again, then try again. Nothing was written."
+    )))
+}
+
 /// Asks the gateway to check the project, uploads its icon, then writes it.
 /// Answers the project record's URI and whether it was new.
 pub(crate) async fn put_project(
@@ -78,6 +105,7 @@ pub(crate) async fn put_project(
     icon: Option<&Blob>,
     swap_cid: Option<&str>,
 ) -> Result<(String, bool), Failure> {
+    check_grant(repo, icon, &details.name)?;
     let mut input = details.to_input();
     if let Some(cid) = swap_cid {
         input["swapCid"] = cid.into();
@@ -655,6 +683,42 @@ mod tests {
             reg.put_projects.lock().unwrap()[0]["publication"]["name"],
             "Mine"
         );
+    }
+
+    #[tokio::test]
+    async fn a_grant_missing_a_project_scope_or_the_icon_blob_is_refused_before_any_call() {
+        let details = editable().to_details("my-plugin", "library", None);
+        let icon = Blob::new(b"icon bytes".to_vec(), "image/png", "icon");
+        for (scopes, icon, want) in [
+            ("atproto", None, "repo:software.release.project"),
+            (
+                "repo:software.release.project repo:software.release.publication repo:at.happyproto.registry.project",
+                Some(&icon),
+                "blob:image/png",
+            ),
+        ] {
+            let (reg, repo) = (
+                FakeRegistry::default(),
+                FakeRepo {
+                    scopes: Some(scopes.into()),
+                    ..Default::default()
+                },
+            );
+            let err = put_project(&reg, &repo, &details, icon, None)
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, 2, "{}", err.report);
+            assert!(err.report.to_string().contains(want), "{}", err.report);
+            assert!(reg.calls.lock().unwrap().is_empty());
+            assert!(repo.blobs.lock().unwrap().is_empty());
+        }
+        let ok = FakeRepo {
+            scopes: Some(hpy_atproto::settings::DEFAULT_SCOPE.into()),
+            ..Default::default()
+        };
+        put_project(&FakeRegistry::default(), &ok, &details, None, None)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
