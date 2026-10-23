@@ -192,9 +192,12 @@ lua = { did = "did:plc:mo7vq4jbioxwafy5zkcc3eux", name = "happyview-lua", channe
 "happyview.db" = { did = "did:plc:mo7vq4jbioxwafy5zkcc3eux", name = "happyview-db", version = "1.2.0" }
 ```
 
-A channel is resolved when the lock is written, and the lock keeps that
-version until you `add` the plugin again; a channel pointing at a version its
-publisher has ended distribution of is refused. A pinned version is used even
+A channel is resolved when the lock is written. The lock records the channel
+it followed (`channel = "latest"`, left out for a pinned version) and keeps
+that version until you `add` the plugin again, so `check` and `dev` stay
+reproducible as the channel moves on; changing an entry's channel or version
+in `happyview.toml` makes the lock out of date. A channel pointing at a
+version its publisher has ended distribution of is refused. A pinned version is used even
 then, with a warning, since pinning it was your call. A plain version string
 (`lua = "^1"`), from before the `software.release` registry, is refused with
 the table form to use instead, and so is a `happyview.lock` from then: delete

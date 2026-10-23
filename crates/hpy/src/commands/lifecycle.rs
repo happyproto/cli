@@ -124,6 +124,21 @@ pub async fn withdraw_input(
     Ok(input)
 }
 
+/// Refuses a session that cannot write status records, before asking the
+/// gateway to write one.
+pub fn check_grant(repo: &dyn Repo) -> Result<(), Failure> {
+    let Some(granted) = repo.granted_scopes() else {
+        return Ok(());
+    };
+    if hpy_atproto::scope::missing_repo_scopes(granted, [STATUS_NSID]).is_empty() {
+        return Ok(());
+    }
+    Err(Failure::usage(format!(
+        "recording a lifecycle event needs `repo:{STATUS_NSID}`, which this sign-in was not granted; \
+         run `hpy registry login` to sign in again"
+    )))
+}
+
 pub async fn put(registry: &dyn Registry, input: Value) -> Result<Value, Failure> {
     let written = registry.put_status(input).await?;
     Ok(json!({ "uri": written.uri, "cid": written.cid }))
@@ -131,6 +146,7 @@ pub async fn put(registry: &dyn Registry, input: Value) -> Result<Value, Failure
 
 pub async fn run(ctx: &Ctx, args: LifecycleArgs) -> Result<(), Failure> {
     let session = ctx.session()?;
+    check_grant(session.repo.as_ref())?;
     let details = Details {
         kind: args.kind,
         reason: args.reason,
@@ -307,6 +323,27 @@ mod tests {
                     "cid": "bafystatus" })
         );
         assert_eq!(reg.statuses.lock().unwrap()[0], got);
+    }
+
+    #[test]
+    fn a_grant_without_the_status_collection_is_refused() {
+        let old = FakeRepo {
+            scopes: Some("atproto repo:at.happyproto.plugin.release".into()),
+            ..FakeRepo::default()
+        };
+        let err = check_grant(&old).unwrap_err();
+        assert_eq!(err.code, 2);
+        assert!(
+            err.report
+                .to_string()
+                .contains("repo:software.release.status")
+        );
+        let current = FakeRepo {
+            scopes: Some(hpy_atproto::settings::DEFAULT_SCOPE.into()),
+            ..FakeRepo::default()
+        };
+        check_grant(&current).unwrap();
+        check_grant(&FakeRepo::default()).unwrap();
     }
 
     #[tokio::test]

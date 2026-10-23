@@ -197,6 +197,9 @@ pub struct FakeRegistry {
     /// Versions a failed publish left half-written, which the next publish
     /// of the same version resumes.
     pub half_written: Mutex<Vec<String>>,
+    /// The next `publishRelease` that writes fails as the gateway does when
+    /// the PDS has lost a blob the release names.
+    pub missing_blob_once: Mutex<bool>,
 }
 
 impl FakeRegistry {
@@ -323,7 +326,21 @@ impl Registry for FakeRegistry {
             self.half_written.lock().unwrap().push(version);
             return Err(Error::Other("network went away".into()));
         }
-        let resumed = self.half_written.lock().unwrap().contains(&version);
+        if std::mem::take(&mut *self.missing_blob_once.lock().unwrap()) {
+            return Err(Error::Registry {
+                name: "Upstream".into(),
+                message: "the PDS answered: blob not found".into(),
+            });
+        }
+        // A version already written with this artifact is finished again
+        // rather than refused, as the gateway does.
+        let finished = self
+            .versions
+            .lock()
+            .unwrap()
+            .get(&version)
+            .is_some_and(|v| v.artifact == input["artifact"]);
+        let resumed = finished || self.half_written.lock().unwrap().contains(&version);
         let mut view = version_view(DID, &name, &version, input["artifact"].clone());
         view.availability = Availability::Pending;
         let out = PublishOut {

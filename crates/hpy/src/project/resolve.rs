@@ -438,6 +438,10 @@ pub async fn resolve_lock(
             project: uri.clone(),
             version_uri: version_uri(&n.did, &n.name, &version),
             version,
+            channel: match &n.pin {
+                Some((Pin::Channel(c), _)) => Some(c.clone()),
+                _ => None,
+            },
             manifest_cid: chosen.view.manifest.cid.clone(),
             package_cid: blob_cid(&chosen.artifact.package),
             manifest_blob_cid: blob_cid(&chosen.artifact.manifest),
@@ -555,10 +559,21 @@ async fn choose(
             return Ok(if satisfies(v) { Ok(chosen) } else { Err(None) });
         }
         Some(Pin::Channel(c)) => {
+            // Only a version this channel chose is kept: one locked from
+            // another channel or an exact pin is not what was asked for now.
             if let Some(p) = locked
+                && p.channel.as_deref() == Some(c.as_str())
                 && satisfies(&p.version)
                 && let Some(chosen) = fetch_version(r, locked, node, &p.version).await?
             {
+                if !chosen.view.lifecycle.installable {
+                    (r.warn)(&format!(
+                        "{}@{} in happyview.lock is {}; it stays until `hpy happyview add` moves it",
+                        node.name,
+                        p.version,
+                        standing(&chosen.view)
+                    ));
+                }
                 return Ok(Ok(chosen));
             }
             let view = r
@@ -858,6 +873,97 @@ mod tests {
         assert_eq!(again.plugins[0].version, "1.4.0");
         let fresh = resolve(&reg, &cfg, None).await.unwrap();
         assert_eq!(fresh.plugins[0].version, "1.5.0");
+    }
+
+    #[tokio::test]
+    async fn the_lock_records_the_channel_each_entry_follows() {
+        let reg = registry();
+        let cfg = toml(&format!(
+            "{}{}",
+            entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\""
+            ),
+            entry(
+                "libraries",
+                "\"happyview.record\"",
+                "happyview-record",
+                "version = \"2.1.0\""
+            ),
+        ));
+        let lock = resolve(&reg, &cfg, None).await.unwrap();
+        let channel = |id: &str| {
+            lock.plugins
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .channel
+                .clone()
+        };
+        assert_eq!(channel("happyview-lua").as_deref(), Some("latest"));
+        assert_eq!(channel("happyview-record"), None);
+        assert_eq!(channel("happyview-db"), None);
+        assert!(lock.drift(&cfg).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_locked_version_from_another_channel_is_not_kept() {
+        let mut reg = registry();
+        reg.publish(
+            HV,
+            "happyview-lua",
+            "2.1.0-beta.1",
+            interpreter_ext("lua", "lua"),
+            json!({}),
+            b"beta",
+        );
+        let latest = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
+        let first = resolve(&reg, &latest, None).await.unwrap();
+        let beta = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"beta\"",
+        ));
+        assert!(!first.drift(&beta).is_empty());
+        let moved = resolve(&reg, &beta, Some(&first)).await.unwrap();
+        assert_eq!(moved.plugins[0].version, "2.1.0-beta.1");
+        assert_eq!(moved.plugins[0].channel.as_deref(), Some("beta"));
+    }
+
+    #[tokio::test]
+    async fn a_kept_locked_version_that_is_no_longer_installable_warns() {
+        let mut reg = registry();
+        let cfg = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
+        let first = resolve(&reg, &cfg, None).await.unwrap();
+        reg.retire(HV, "happyview-lua", "2.0.0");
+        let warnings = Mutex::new(Vec::new());
+        let warn = |m: &str| warnings.lock().unwrap().push(m.to_string());
+        let r = Resolver {
+            registry: &reg,
+            warn: &warn,
+        };
+        let lock = resolve_lock(&r, &cfg, Some(&first)).await.unwrap();
+        assert_eq!(lock.plugins[0].version, "2.0.0");
+        let warnings = warnings.into_inner().unwrap();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("2.0.0") && w.contains("unavailable")),
+            "{warnings:?}"
+        );
     }
 
     #[tokio::test]

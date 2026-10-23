@@ -487,7 +487,7 @@ fn edit_in_editor(ctx: &Ctx, view: &ProjectView, editable: &Editable) -> Result<
 
 /// The publication's icon blob as the repo holds it, so an edit that does
 /// not touch the icon keeps it.
-async fn current_icon(repo: &dyn Repo, name: &str) -> Result<Option<Value>, Failure> {
+pub(crate) async fn current_icon(repo: &dyn Repo, name: &str) -> Result<Option<Value>, Failure> {
     Ok(repo
         .get_record(PUBLICATION_NSID, name)
         .await?
@@ -518,21 +518,12 @@ pub async fn edit(ctx: &Ctx, args: ProfileEditArgs) -> Result<(), Failure> {
             "pass field flags (e.g. --display-name, --author) to edit without a terminal",
         ));
     }
-    let icon = current_icon(session.repo.as_ref(), &name).await?;
-    let details = editable.to_details(&name, &view.plugin_type, icon);
-    let problems = details.problems();
-    if !problems.is_empty() {
-        return Err(Failure::problems(
-            "the edited project is not valid:",
-            &problems,
-        ));
-    }
-    let (uri, _) = put_project(
+    let uri = apply_edit(
+        &ctx.dir,
         &session.registry(),
         session.repo.as_ref(),
-        &details,
-        None,
-        view.cid.as_deref(),
+        &view,
+        &editable,
     )
     .await?;
     ctx.out.done(
@@ -540,6 +531,42 @@ pub async fn edit(ctx: &Ctx, args: ProfileEditArgs) -> Result<(), Failure> {
         json!({ "name": name, "uri": uri }),
     );
     Ok(())
+}
+
+/// Writes an edit to the registry, keeping the publication's icon, and to
+/// `[project]` in hpy.toml when there is one, so the next publish does not
+/// put the old values back. Answers the project's URI.
+pub(crate) async fn apply_edit(
+    dir: &Path,
+    registry: &dyn Registry,
+    repo: &dyn Repo,
+    view: &ProjectView,
+    editable: &Editable,
+) -> Result<String, Failure> {
+    let icon = current_icon(repo, &view.name).await?;
+    let details = editable.to_details(&view.name, &view.plugin_type, icon);
+    let problems = details.problems();
+    if !problems.is_empty() {
+        return Err(Failure::problems(
+            "the edited project is not valid:",
+            &problems,
+        ));
+    }
+    // The gateway swaps on the sidecar, which holds the fields an edit
+    // changes besides the publication's.
+    let (uri, _) = put_project(registry, repo, &details, None, view.sidecar.cid.as_deref()).await?;
+    if let Some(existing) = HpyToml::load(dir)?.and_then(|t| t.project) {
+        let cfg = ProjectConfig {
+            display_name: Some(editable.display_name.clone()),
+            description: editable.description.clone(),
+            keywords: editable.keywords.clone(),
+            authors: editable.authors.clone(),
+            security: editable.security.clone(),
+            ..existing
+        };
+        config::write_project(dir, &cfg).map_err(Failure::runtime)?;
+    }
+    Ok(uri)
 }
 
 /// `[project]` as the registry has it, keeping the icon path hpy.toml

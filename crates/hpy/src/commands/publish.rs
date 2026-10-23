@@ -10,12 +10,13 @@ use hpy_plugin::checksum::raw_cid;
 use hpy_plugin::config::{HpyToml, ImageConfig};
 use hpy_plugin::locate::locate_wasm;
 use hpy_plugin::manifest::Manifest;
-use hpy_plugin::project::ProjectDetails;
+use hpy_plugin::project::{Author, Contact, ProjectDetails};
 use hpy_plugin::validate::{is_project_name, range_problem, requires_key_problem, version_problem};
 use hpy_plugin::{Problem, TRACKS};
 use serde_json::{Value, json};
 
 use crate::cli::PublishArgs;
+use crate::commands::profile::current_icon;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 
@@ -370,19 +371,37 @@ fn blob_cids(value: &Value, out: &mut BTreeSet<String>) {
 
 /// Whether `putProject` would change anything the registry shows.
 fn differs(details: &ProjectDetails, view: &ProjectView) -> bool {
-    let icon = details
+    // No icon in `[project]` means the publication keeps the one it has,
+    // not that it should lose it.
+    let icon_differs = details
         .publication
         .icon
         .as_ref()
-        .and_then(|i| i["ref"]["$link"].as_str());
-    let values = |v: &[Value]| Value::Array(v.to_vec());
+        .is_some_and(|i| view.publication.icon.as_deref() != i["ref"]["$link"].as_str());
+    // Read back as the types hpy writes, so `null` and an absent field are
+    // the same author.
+    fn read<T: serde::de::DeserializeOwned>(v: &[Value]) -> Option<Vec<T>> {
+        serde_json::from_value(Value::Array(v.to_vec())).ok()
+    }
     view.publication.name != details.publication.name
         || view.publication.description != details.publication.description
-        || view.publication.icon.as_deref() != icon
+        || icon_differs
         || view.plugin_type != details.plugin_type
         || view.keywords != details.keywords
-        || values(&view.authors) != json!(details.authors)
-        || values(&view.security) != json!(details.security)
+        || read::<Author>(&view.authors).as_ref() != Some(&details.authors)
+        || read::<Contact>(&view.security).as_ref() != Some(&details.security)
+}
+
+/// Whether a publish failed because the PDS no longer has a blob the
+/// release names, which happens when a skipped upload's blob was deleted.
+fn is_missing_blob(e: &hpy_atproto::Error) -> bool {
+    let named = match e {
+        hpy_atproto::Error::Xrpc { name, .. } => name.as_str(),
+        e => e.registry_name().unwrap_or_default(),
+    };
+    named == "Upstream"
+        || named == "BlobNotFound"
+        || e.to_string().to_lowercase().contains("blob not found")
 }
 
 /// Refuses a session whose grant cannot write every record a publish writes
@@ -476,12 +495,30 @@ pub async fn execute(
     if let Some(c) = &p.changelog {
         release["changelog"] = c.clone().into();
     }
+    let project_input = match (put, &project) {
+        (None, _) => None,
+        (Some(details), None) => Some(details.to_input()),
+        (Some(details), Some(view)) => {
+            let mut input = details.to_input();
+            if details.publication.icon.is_none()
+                && let Some(icon) = current_icon(repo, &p.name).await?
+            {
+                input["publication"]["icon"] = icon;
+            }
+            // The gateway swaps on the sidecar, the record hpy's own
+            // fields live in, so a concurrent edit there is not overwritten.
+            if let Some(cid) = &view.sidecar.cid {
+                input["swapCid"] = cid.clone().into();
+            }
+            Some(input)
+        }
+    };
 
     // The gateway's verdict, before anything is written or uploaded. A
     // release for a project not written yet answers ProjectMissing once its
     // own rules pass, so that is no refusal here.
-    if let Some(details) = put {
-        registry.put_project(details.to_input(), true).await?;
+    if let Some(input) = &project_input {
+        registry.put_project(input.clone(), true).await?;
     }
     match registry.publish_release(release.clone(), true).await {
         Ok(_) => {}
@@ -492,7 +529,7 @@ pub async fn execute(
     if dry_run {
         return Ok(Outcome::DryRun(json!({
             "dryRun": true,
-            "project": put.map(ProjectDetails::to_input),
+            "project": project_input,
             "artifact": p.artifact.to_value(),
         })));
     }
@@ -513,7 +550,7 @@ pub async fn execute(
     }
 
     let mut created_project = false;
-    if let Some(details) = put {
+    if let Some(input) = project_input {
         let current = project.as_ref().and_then(|v| v.publication.icon.as_deref());
         if let Some(icon) = &p.icon
             && current != Some(icon.cid.as_str())
@@ -522,7 +559,7 @@ pub async fn execute(
             upload_checked(repo, icon).await?;
         }
         let out = registry
-            .put_project(details.to_input(), false)
+            .put_project(input, false)
             .await?
             .ok_or_else(|| Failure::runtime("putProject answered something unreadable"))?;
         created_project = out.created;
@@ -530,31 +567,45 @@ pub async fn execute(
 
     // A blob the previous version or the publication already names is on
     // the PDS and held by the registry, so sending it again is only traffic.
+    // A version deleted at its source may have taken its blobs with it. The
+    // registry trait answers every page of versions; a project has few, and
+    // asking for one page would widen the trait for this alone.
     let mut held = BTreeSet::new();
     if let Some(newest) = registry
         .list_versions(did, &p.name)
         .await
         .unwrap_or_default()
-        .first()
+        .iter()
+        .find(|v| v.availability != hpy_atproto::registry::Availability::DeletedAtSource)
     {
         blob_cids(&newest.artifact, &mut held);
     }
     if let Some(icon) = project.as_ref().and_then(|v| v.publication.icon.clone()) {
         held.insert(icon);
     }
+    let mut skipped = Vec::new();
     for blob in &p.blobs {
         if held.contains(&blob.cid) {
+            skipped.push(blob);
             continue;
         }
         ui.progress(&format!("Uploading {}…", blob.what));
         upload_checked(repo, blob).await?;
     }
 
-    let out = registry
-        .publish_release(release, false)
-        .await?
-        .filter(|o| o.manifest.is_some())
-        .ok_or_else(|| Failure::runtime("publishRelease answered something unreadable"))?;
+    let out = match registry.publish_release(release.clone(), false).await {
+        // A skipped blob the PDS has lost: send them all, and try once more.
+        Err(e) if is_missing_blob(&e) && !skipped.is_empty() => {
+            for blob in skipped {
+                ui.progress(&format!("Uploading {}…", blob.what));
+                upload_checked(repo, blob).await?;
+            }
+            registry.publish_release(release, false).await?
+        }
+        out => out?,
+    }
+    .filter(|o| o.manifest.is_some())
+    .ok_or_else(|| Failure::runtime("publishRelease answered something unreadable"))?;
     Ok(Outcome::Published(Published {
         uri: out.version.uri,
         cid: out.version.cid,
@@ -1155,6 +1206,224 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|(b, _)| raw_cid(b) == raw_cid(PNG))
+        );
+    }
+
+    /// What the gateway wrote as the publication, in the repo, so `current_icon`
+    /// finds it as it would on a real PDS.
+    fn mirror_publication(repo: &FakeRepo, reg: &FakeRegistry) {
+        let input = reg.put_projects.lock().unwrap().last().unwrap().clone();
+        repo.records.lock().unwrap().insert(
+            (
+                hpy_plugin::PUBLICATION_NSID.into(),
+                input["name"].as_str().unwrap().into(),
+            ),
+            (input["publication"].clone(), "bafypublication".into()),
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_table_without_an_icon_keeps_the_publications_icon() {
+        let (dir, first) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        run(&first, &repo, &reg, false).await.unwrap();
+        mirror_publication(&repo, &reg);
+        reg.calls.lock().unwrap().clear();
+        let toml = std::fs::read_to_string(dir.path().join("hpy.toml"))
+            .unwrap()
+            .replace("icon = { path = \"icon.png\" }\n", "");
+        std::fs::write(dir.path().join("hpy.toml"), &toml).unwrap();
+        // Without the icon line, nothing else differs: no put at all.
+        let same = prepare(
+            dir.path(),
+            &PrepareOptions {
+                version: Some("1.1.0".into()),
+                ..opts()
+            },
+            &mut no_build(),
+        )
+        .unwrap();
+        run(&same, &repo, &reg, false).await.unwrap();
+        assert_eq!(
+            reg.calls.lock().unwrap().clone(),
+            [("release", true), ("release", false)]
+        );
+        // A real change is put with the icon the publication already has.
+        std::fs::write(
+            dir.path().join("hpy.toml"),
+            toml.replace("display_name = \"Mine\"", "display_name = \"Renamed\""),
+        )
+        .unwrap();
+        let renamed = prepare(
+            dir.path(),
+            &PrepareOptions {
+                version: Some("1.2.0".into()),
+                ..opts()
+            },
+            &mut no_build(),
+        )
+        .unwrap();
+        run(&renamed, &repo, &reg, false).await.unwrap();
+        let input = reg.put_projects.lock().unwrap().last().unwrap().clone();
+        assert_eq!(input["publication"]["name"], "Renamed");
+        assert_eq!(input["publication"]["icon"]["ref"]["$link"], raw_cid(PNG));
+    }
+
+    #[tokio::test]
+    async fn an_existing_project_is_put_with_its_sidecars_cid() {
+        let (dir, first) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        run(&first, &repo, &reg, false).await.unwrap();
+        assert!(reg.put_projects.lock().unwrap()[0].get("swapCid").is_none());
+        reg.project.lock().unwrap().as_mut().unwrap().sidecar.cid = Some("bafysidecar".into());
+        let toml = std::fs::read_to_string(dir.path().join("hpy.toml"))
+            .unwrap()
+            .replace("display_name = \"Mine\"", "display_name = \"Renamed\"");
+        std::fs::write(dir.path().join("hpy.toml"), toml).unwrap();
+        let next = prepare(
+            dir.path(),
+            &PrepareOptions {
+                version: Some("1.1.0".into()),
+                ..opts()
+            },
+            &mut no_build(),
+        )
+        .unwrap();
+        run(&next, &repo, &reg, false).await.unwrap();
+        assert_eq!(
+            reg.put_projects.lock().unwrap().last().unwrap()["swapCid"],
+            "bafysidecar"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_edit_survives_the_next_publish() {
+        use crate::commands::profile::{Editable, apply_edit};
+        let (dir, first) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        run(&first, &repo, &reg, false).await.unwrap();
+        mirror_publication(&repo, &reg);
+        reg.project.lock().unwrap().as_mut().unwrap().sidecar.cid = Some("bafysidecar".into());
+        let view = reg.project.lock().unwrap().clone().unwrap();
+        let mut edited = Editable::from_view(&view).unwrap();
+        edited.display_name = "Edited".into();
+        edited.keywords.push("new".into());
+        apply_edit(dir.path(), &reg, &repo, &view, &edited)
+            .await
+            .unwrap();
+        let put = reg.put_projects.lock().unwrap().last().unwrap().clone();
+        assert_eq!(put["swapCid"], "bafysidecar");
+        assert_eq!(put["publication"]["icon"]["ref"]["$link"], raw_cid(PNG));
+        let toml = std::fs::read_to_string(dir.path().join("hpy.toml")).unwrap();
+        assert!(toml.contains("display_name = \"Edited\""), "{toml}");
+        assert!(toml.contains("icon.png"), "{toml}");
+
+        reg.calls.lock().unwrap().clear();
+        let next = prepare(
+            dir.path(),
+            &PrepareOptions {
+                version: Some("1.1.0".into()),
+                ..opts()
+            },
+            &mut no_build(),
+        )
+        .unwrap();
+        run(&next, &repo, &reg, false).await.unwrap();
+        assert_eq!(
+            reg.calls.lock().unwrap().clone(),
+            [("release", true), ("release", false)],
+            "publish would have reverted the edit"
+        );
+        assert_eq!(
+            reg.project
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .publication
+                .name,
+            "Edited"
+        );
+    }
+
+    #[test]
+    fn null_and_absent_author_fields_are_the_same_author() {
+        let (_dir, p) = prepared("1.0.0");
+        let details = p.details.unwrap();
+        let mut view = crate::testing::project_view(DID, "my-plugin", "library");
+        view.publication.name = "Mine".into();
+        view.publication.icon = Some(raw_cid(PNG));
+        view.authors = vec![json!({ "name": "Ada", "email": null, "url": null })];
+        view.security = vec![json!({ "email": "s@x.io", "url": null })];
+        assert!(!differs(&details, &view));
+        view.authors = vec![json!({ "name": "Bea" })];
+        assert!(differs(&details, &view));
+    }
+
+    #[tokio::test]
+    async fn a_deleted_version_holds_no_blobs() {
+        let (_dir, first) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        run(&first, &repo, &reg, false).await.unwrap();
+        reg.versions
+            .lock()
+            .unwrap()
+            .get_mut("1.0.0")
+            .unwrap()
+            .availability = hpy_atproto::registry::Availability::DeletedAtSource;
+        repo.blobs.lock().unwrap().clear();
+        let (_dir, next) = prepared("1.1.0");
+        run(&next, &repo, &reg, false).await.unwrap();
+        let uploaded: Vec<String> = repo
+            .blobs
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(b, _)| raw_cid(b))
+            .collect();
+        assert!(uploaded.contains(&raw_cid(WASM)), "{uploaded:?}");
+    }
+
+    #[tokio::test]
+    async fn a_blob_the_pds_no_longer_has_is_sent_and_the_publish_retried() {
+        let (_dir, first) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        run(&first, &repo, &reg, false).await.unwrap();
+        repo.blobs.lock().unwrap().clear();
+        *reg.missing_blob_once.lock().unwrap() = true;
+        let (_dir, next) = prepared("1.1.0");
+        let out = published(run(&next, &repo, &reg, false).await.unwrap());
+        assert!(out.uri.ends_with("my-plugin:1.1.0"));
+        let uploaded: Vec<String> = repo
+            .blobs
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(b, _)| raw_cid(b))
+            .collect();
+        // The first pass skipped the module; the retry sent it.
+        assert!(uploaded.contains(&raw_cid(WASM)), "{uploaded:?}");
+        assert_eq!(
+            reg.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| **c == ("release", false))
+                .count(),
+            3
+        );
+    }
+
+    #[tokio::test]
+    async fn publishing_a_finished_version_again_reports_it_resumed() {
+        let (_dir, p) = prepared("1.0.0");
+        let (repo, reg) = (FakeRepo::default(), FakeRegistry::default());
+        assert!(!published(run(&p, &repo, &reg, false).await.unwrap()).resumed);
+        let again = published(run(&p, &repo, &reg, false).await.unwrap());
+        assert!(again.resumed);
+        assert_eq!(
+            again.uri,
+            "at://did:plc:testuser/software.release.version/my-plugin:1.0.0"
         );
     }
 

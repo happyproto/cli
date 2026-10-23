@@ -41,6 +41,12 @@ pub struct LockedPlugin {
     /// looks the plugin up by name again.
     pub project: String,
     pub version: String,
+    /// The channel `happyview.toml` followed when this was locked; absent
+    /// for an exact version pin and for a plugin only others require. A
+    /// changed pin is drift, while a channel moving on is not: `check` and
+    /// `dev` stay reproducible until `hpy happyview add` re-resolves it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
     pub version_uri: String,
     /// The `software.release.manifest` record's CID: a published version
     /// whose manifest changes is no longer the one locked.
@@ -120,6 +126,23 @@ impl Lockfile {
                         p.version_uri, p.id, p.version
                     ),
                 ));
+            }
+            if let Some(channel) = &p.channel {
+                if !hpy_plugin::TRACKS.contains(&channel.as_str()) {
+                    return Err(Problem::new(
+                        at("channel"),
+                        format!("`{channel}` is not a channel (plugin `{}`)", p.id),
+                    ));
+                }
+                if p.keys.is_empty() {
+                    return Err(Problem::new(
+                        at("channel"),
+                        format!(
+                            "`{}` is only required by other plugins, so no channel chose it",
+                            p.id
+                        ),
+                    ));
+                }
             }
             for (field, cid) in [
                 ("manifest_cid", &p.manifest_cid),
@@ -209,17 +232,23 @@ impl Lockfile {
                 continue;
             };
             let wanted = r.entry.project_uri();
+            let locked = match &p.channel {
+                Some(c) => format!("channel {c}"),
+                None => format!("version {}", p.version),
+            };
+            let asked = match &r.entry.pin {
+                Pin::Channel(c) => format!("channel {c}"),
+                Pin::Version(v) => format!("version {v}"),
+            };
             if p.project != wanted {
                 out.push(format!(
                     "{what} is locked to {}, but happyview.toml names {wanted}",
                     p.project
                 ));
-            } else if let Pin::Version(v) = &r.entry.pin
-                && v != &p.version
-            {
+            } else if locked != asked {
+                let how = if p.channel.is_some() { "from" } else { "at" };
                 out.push(format!(
-                    "{what} is locked at {}, but happyview.toml pins version {v}",
-                    p.version
+                    "{what} is locked {how} {locked}, but happyview.toml asks for {asked}"
                 ));
             }
         }
@@ -254,6 +283,7 @@ mod tests {
             keys: keys.iter().map(|k| k.to_string()).collect(),
             project: format!("at://{DID}/software.release.project/{id}"),
             version: version.into(),
+            channel: (!keys.is_empty()).then(|| "latest".to_string()),
             version_uri: format!("at://{DID}/software.release.version/{id}:{version}"),
             manifest_cid: "bafyreimanifest".into(),
             package_cid: "bafkreipackage".into(),
@@ -420,6 +450,7 @@ kind = \"interpreter\"
 keys = [\"lua\"]
 project = \"at://did:plc:abc/software.release.project/happyview-lua\"
 version = \"1.4.2\"
+channel = \"latest\"
 version_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.4.2\"
 manifest_cid = \"bafyreimanifest\"
 package_cid = \"bafkreipackage\"
@@ -453,7 +484,50 @@ dependencies = [\"happyview-http\"]
         let version = toml(
             "[interpreters]\nlua = { did = \"did:plc:abc\", name = \"happyview-lua\", version = \"1.4.2\" }\n",
         );
-        assert_eq!(lock().drift(&version), Vec::<String>::new());
+        let mut pinned = lock();
+        pinned.plugins[0].channel = None;
+        assert_eq!(pinned.drift(&version), Vec::<String>::new());
+    }
+
+    /// The lock remembers how each entry chose its version, so changing the
+    /// pin is drift even when the locked version would still do.
+    #[test]
+    fn a_changed_pin_is_drift() {
+        let entry = |pin: &str| {
+            toml(&format!(
+                "[interpreters]\nlua = {{ did = \"did:plc:abc\", name = \"happyview-lua\", {pin} }}\n"
+            ))
+        };
+        assert_eq!(
+            lock().drift(&entry("channel = \"beta\"")),
+            [
+                "interpreter `lua` is locked from channel latest, but happyview.toml asks for channel beta"
+            ]
+        );
+        assert_eq!(
+            lock().drift(&entry("version = \"1.4.2\"")),
+            [
+                "interpreter `lua` is locked from channel latest, but happyview.toml asks for version 1.4.2"
+            ]
+        );
+        let mut pinned = lock();
+        pinned.plugins[0].channel = None;
+        assert_eq!(
+            pinned.drift(&entry("channel = \"latest\"")),
+            [
+                "interpreter `lua` is locked at version 1.4.2, but happyview.toml asks for channel latest"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_locked_channel_must_be_one_and_only_on_a_named_plugin() {
+        // Rendered sorted by id, so happyview-lua is plugin[1].
+        let e = parse_with(|l| l.plugins[0].channel = Some("stable".into()));
+        assert!(e.path.ends_with("plugin[1].channel"), "{e}");
+        let e = parse_with(|l| l.plugins[1].channel = Some("latest".into()));
+        assert!(e.path.ends_with("plugin[0].channel"), "{e}");
+        assert!(e.message.contains("happyview-http"), "{e}");
     }
 
     #[test]
@@ -476,7 +550,7 @@ dependencies = [\"happyview-http\"]
             drift,
             [
                 "HappyView is locked at 3.0.0 but happyview.toml asks for 3.1.0",
-                "interpreter `lua` is locked at 1.4.2, but happyview.toml pins version 2.0.0",
+                "interpreter `lua` is locked from channel latest, but happyview.toml asks for version 2.0.0",
                 "interpreter `typescript` is not in the lock",
                 "library `happyview.http` is locked to at://did:plc:abc/software.release.project/happyview-http, \
                  but happyview.toml names at://did:plc:other/software.release.project/happyview-http",

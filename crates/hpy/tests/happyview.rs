@@ -249,7 +249,7 @@ fn lock_entry(name: &str, key: &str, version: &serde_json::Value) -> String {
     format!(
         "[[plugin]]\nid = \"{name}\"\nkind = \"interpreter\"\nkeys = [\"{key}\"]\n\
          project = \"at://{HV_DID}/software.release.project/{name}\"\nversion = \"{}\"\n\
-         version_uri = \"{}\"\nmanifest_cid = \"{}\"\npackage_cid = \"{}\"\n\
+         channel = \"latest\"\nversion_uri = \"{}\"\nmanifest_cid = \"{}\"\npackage_cid = \"{}\"\n\
          manifest_blob_cid = \"{}\"\ndependencies = []\n",
         version["version"].as_str().unwrap(),
         version["uri"].as_str().unwrap(),
@@ -287,7 +287,13 @@ fn lua_project(stack: &Stack) -> serde_json::Value {
 fn check_places_and_verifies_locked_plugins() {
     let stack = Stack::new();
     lua_project(&stack);
-    stack.hpy().args(["hv", "check"]).assert().success();
+    let lock = read(&stack.project.path().join("happyview.lock"));
+    stack
+        .hpy()
+        .args(["hv", "check", "--locked"])
+        .assert()
+        .success();
+    assert_eq!(read(&stack.project.path().join("happyview.lock")), lock);
     assert_eq!(stack.log().trim(), "check .");
     assert_eq!(
         std::fs::read(
