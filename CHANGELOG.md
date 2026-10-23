@@ -1,3 +1,10 @@
+# [1.0.0-alpha.12](https://github.com/happyproto/cli/compare/v1.0.0-alpha.11...v1.0.0-alpha.12) (2026-10-23)
+
+
+### Bug Fixes
+
+* take the zip and rustls releases that fix their advisories ([9518a57](https://github.com/happyproto/cli/commit/9518a57259803397fa612d37284688372a92e098))
+
 # [1.0.0-alpha.11](https://github.com/happyproto/cli/compare/v1.0.0-alpha.10...v1.0.0-alpha.11) (2026-10-20)
 
 
