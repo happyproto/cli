@@ -118,10 +118,10 @@ any refusal, and then write the records to your repo for you:
 | `publishRelease` | `publish`: the manifest, the version, the channel it moves and the changelog. |
 | `promoteRelease` | `publish --promote`: a new version of an existing version's build. |
 | `putStatus` | `lifecycle`: a lifecycle event, or the withdrawal of one. |
- `hpy` checks the same rules locally first, so most
-mistakes show up before anything leaves your machine. It then asks the
-registry for its verdict before uploading a single byte. Every upload is
-checked against the CID the record names it by, and an image a previous
+
+`hpy` checks the same rules locally first, so most mistakes show up before
+anything leaves your machine. It then asks the registry for its verdict
+before uploading a single byte. Every upload is checked against the CID the record names it by, and an image a previous
 version or the project already holds isn't sent again. Once a version is
 written, the registry copies its blobs and marks it `available`.
 
@@ -215,10 +215,10 @@ that version until you `add` the plugin again, so `check` and `dev` stay
 reproducible as the channel moves on; changing an entry's channel or version
 in `happyview.toml` makes the lock out of date. A channel pointing at a
 version its publisher has ended distribution of is refused. A pinned version
-is used even then, with a warning, since pinning it was your call. A plain version string
-(`lua = "^1"`), from before the `software.release` registry, is refused with
-the table form to use instead, and so is a `happyview.lock` from then: delete
-it and run `hpy happyview check`.
+is used even then, with a warning, since pinning it was your call. A plain
+version string (`lua = "^1"`), from before the `software.release` registry, is
+refused with the table form to use instead, and so is a `happyview.lock` from
+then: delete it and run `hpy happyview check`.
 
 A library a plugin requires is resolved to the highest installable version in
 the range it asks for. Such a range never matches a prerelease unless it names
