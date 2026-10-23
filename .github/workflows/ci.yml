@@ -35,6 +35,17 @@ jobs:
       - uses: actions/checkout@v7
       - run: shellcheck packaging/*.sh scripts/*.sh
 
+  audit:
+    runs-on: depot-ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Fails on any advisory not triaged in .cargo/audit.toml, so newly
+      # disclosed vulnerabilities in our dependencies are caught.
+      - run: cargo audit
+
   # Decides the next version from the conventional commits since the last
   # release, bumps Cargo.toml/Cargo.lock/CHANGELOG.md, tags it, and dispatches
   # release.yml (dist) to build and publish that tag.
