@@ -34,6 +34,23 @@ Description: The HappyProto command line.
 
 Package: hpy
 Architecture: arm64
+Version: 1.0.0~alpha.12
+Priority: optional
+Section: devel
+Maintainer: HappyProto <packages@happyproto.at>
+Installed-Size: 21904
+Filename: pool/alpha/h/hpy/hpy_1.0.0~alpha.12_arm64.deb
+Size: 8709572
+MD5sum: 27c53a3ea45b2cefbab2cebe9bebc7aa
+SHA1: 3c085d9203c8fcd177b572efd76c7888d4c6e204
+SHA256: af0ced0827a9f81863e5210adcebfb09e731ab0ba71d1be8a1675944af5c9ccd
+SHA512: 42db594344f80ec0e6e510f2c01939a46861dea0c5827621ab53b7e3bda68ad60e927d1ba8a1f64f3e53f0ef50913301a573df7ee5e39e31e47d34f6e9b6c1d9
+Homepage: https://happyproto.at
+Description: The HappyProto command line.
+ Publishes and manages HappyView plugins in the HappyProto registry.
+
+Package: hpy
+Architecture: arm64
 Version: 1.0.0~alpha.3
 Priority: optional
 Section: devel
