@@ -302,6 +302,7 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
     };
     let mut files = render(&scaffold);
     files.push((LOCK_FILE.into(), lock.render()));
+    files.extend(crate::project::editor::editor_files(&interpreters));
     // The directory was checked as absent or empty above, so a failure here
     // is the disk's rather than the user's.
     write_new(&dir, &files).map_err(Failure::runtime)?;

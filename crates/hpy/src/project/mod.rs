@@ -3,6 +3,7 @@
 
 pub mod binary;
 pub mod cache;
+pub mod editor;
 pub mod modules;
 // `dev --network local` is refused off unix.
 #[cfg(unix)]
