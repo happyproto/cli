@@ -11,4 +11,11 @@ ignore = [
     # the vulnerable code never runs. Remove once jacquard drops it or rsa
     # ships a constant-time release.
     "RUSTSEC-2023-0071",
+    # crypto-bigint 0.5.5: timing variability in operations meant to be
+    # constant-time, fixed only in 0.7.6. It comes from elliptic-curve 0.13
+    # under k256/p256 0.13, which jacquard 0.12.2 (the latest) requires.
+    # jacquard-oauth signs the DPoP proofs of `hpy registry login` with it; an
+    # attacker would have to time those signatures from the network, one login
+    # at a time. Remove once jacquard moves to the 0.14 curves.
+    "RUSTSEC-2026-0387",
 ]
