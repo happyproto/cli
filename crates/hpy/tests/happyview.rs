@@ -244,6 +244,7 @@ fn check_runs_the_pinned_binary_and_passes_its_exit_code_through() {
 
 /// The lock entry `hpy` writes for `version` of `name` as `version_json`
 /// describes it.
+#[cfg(unix)]
 fn lock_entry(name: &str, key: &str, version: &serde_json::Value) -> String {
     let artifact = &version["artifact"];
     format!(
@@ -259,6 +260,7 @@ fn lock_entry(name: &str, key: &str, version: &serde_json::Value) -> String {
     )
 }
 
+#[cfg(unix)]
 fn lua_project(stack: &Stack) -> serde_json::Value {
     let lua = Plugin::interpreter("happyview-lua", "lua", b"\0asm lua");
     let version = lua.version_json();
