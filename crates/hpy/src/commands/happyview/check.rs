@@ -15,16 +15,12 @@ pub async fn check(ctx: &Ctx, args: RunArgs) -> Result<(), Failure> {
     // first; one that does not compile fails before anything is fetched.
     build_modules(project_root(ctx)?).await?;
     let p = prepare(ctx, &PrepareOptions::native(args.locked)).await?;
-    finish(
-        run_foreground(
-            &p.binary,
-            &["check".into(), ".".into()],
-            &p.root,
-            &[],
-            REMOVED_ENV,
-        )
-        .await?,
-    )
+    // HappyView's report is the result, so under --json it is the JSON.
+    let mut argv: Vec<OsString> = vec!["check".into(), ".".into()];
+    if ctx.out.is_json() {
+        argv.push("--json".into());
+    }
+    finish(run_foreground(&p.binary, &argv, &p.root, &[], REMOVED_ENV).await?)
 }
 
 pub async fn test(ctx: &Ctx, args: TestArgs) -> Result<(), Failure> {

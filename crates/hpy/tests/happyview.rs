@@ -242,6 +242,19 @@ fn check_runs_the_pinned_binary_and_passes_its_exit_code_through() {
     assert!(stack.project.path().join(".happyview/plugins").is_dir());
 }
 
+/// An editor reads HappyView's own report, so `--json` reaches it.
+#[cfg(unix)]
+#[test]
+fn check_passes_json_through() {
+    let stack = Stack::new();
+    stack
+        .hpy()
+        .args(["happyview", "check", "--json"])
+        .assert()
+        .success();
+    assert_eq!(stack.log().trim(), "check . --json");
+}
+
 #[cfg(unix)]
 #[test]
 fn check_places_and_verifies_locked_plugins() {
