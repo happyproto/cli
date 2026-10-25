@@ -594,7 +594,9 @@ fn dev_points_editors_at_the_types() {
         .args(["hv", "dev"])
         .assert()
         .success()
-        .stderr(says("wrote .luarc.json, which points editors at .happyview/types/lua"));
+        .stderr(says(
+            "wrote .luarc.json, which points editors at .happyview/types/lua",
+        ));
     assert_eq!(stack.log().trim(), "dev .");
 }
 
