@@ -261,6 +261,14 @@ against the real network.
 Only one local network can run at a time, since its browser relay holds
 `127.0.0.1:443`.
 
+Each project's network gets a `/24` under `172.30.0.0/16`, chosen from the
+project's path. If that range is already in use on your computer, by a VPN or
+another Docker network, `dev` refuses to start and names what holds it. Pick
+another range with `--subnet`, such as `--subnet 10.40.0.0/24`. It must be a
+private IPv4 network, from `/16` to `/28`. The network keeps that range, even
+through `--reset`, until you give another. A network that already exists can
+move only by being recreated, so use `--reset --subnet <CIDR>` for that.
+
 ## `hpy.toml`
 
 This file sits next to `manifest.json`. `manifest.json` stays the file
