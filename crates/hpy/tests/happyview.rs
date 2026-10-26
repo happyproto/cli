@@ -112,7 +112,7 @@ impl Stack {
         .unwrap();
         std::fs::write(
             project.path().join("happyview.lock"),
-            format!("version = 1\n\n[happyview]\nversion = \"{VERSION}\"\n"),
+            format!("version = 2\n\n[happyview]\nversion = \"{VERSION}\"\n"),
         )
         .unwrap();
         let log = project.path().join("hv.log");
@@ -242,85 +242,147 @@ fn check_runs_the_pinned_binary_and_passes_its_exit_code_through() {
     assert!(stack.project.path().join(".happyview/plugins").is_dir());
 }
 
+/// The lock entry `hpy` writes for `version` of `name` as `version_json`
+/// describes it.
 #[cfg(unix)]
-#[test]
-fn check_places_and_verifies_locked_plugins() {
-    use serde_json::json;
-    use wiremock::matchers::query_param;
+fn lock_entry(name: &str, key: &str, version: &serde_json::Value) -> String {
+    let artifact = &version["artifact"];
+    format!(
+        "[[plugin]]\nid = \"{name}\"\nkind = \"interpreter\"\nkeys = [\"{key}\"]\n\
+         project = \"at://{HV_DID}/software.release.project/{name}\"\nversion = \"{}\"\n\
+         channel = \"latest\"\nversion_uri = \"{}\"\nmanifest_cid = \"{}\"\npackage_cid = \"{}\"\n\
+         manifest_blob_cid = \"{}\"\ndependencies = []\n",
+        version["version"].as_str().unwrap(),
+        version["uri"].as_str().unwrap(),
+        version["manifest"]["cid"].as_str().unwrap(),
+        artifact["package"]["ref"]["$link"].as_str().unwrap(),
+        artifact["manifest"]["ref"]["$link"].as_str().unwrap(),
+    )
+}
 
-    const DID: &str = "did:plc:hv";
-    const SLUG: &str = "happyview-lua";
-    const PLUGIN: &str = "1.0.0";
-    let stack = Stack::new();
-    let wasm = b"\0asm lua";
-    let sum = hpy_plugin::checksum::checksum(wasm);
-    let package = format!("at://{DID}/at.happyproto.plugin.profile/{SLUG}");
-    let release = json!({
-        "uri": format!("at://{DID}/at.happyproto.plugin.release/{SLUG}:{PLUGIN}"),
-        "status": "active",
-        "record": {
-            "version": PLUGIN,
-            "artifacts": { "package": { "checksum": sum } },
-            "extensions": { "at.happyproto.plugin.releaseExtension": {
-                "pluginType": "interpreter", "apiVersion": "2", "languageId": "lua",
-                "fileExtensions": ["lua"], "capabilities": ["script:host"]
-            } }
-        }
-    });
-    let profile = json!({ "uri": package, "status": "active", "record": { "name": "Lua" } });
-    stack.rt.block_on(async {
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.getRelease"))
-            .and(query_param("version", PLUGIN))
-            .respond_with(ResponseTemplate::new(200).set_body_json(release))
-            .mount(&stack.server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.getPackage"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(profile))
-            .mount(&stack.server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.getArtifact"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/wasm")
-                    .set_body_bytes(wasm.to_vec()),
-            )
-            .mount(&stack.server)
-            .await;
-    });
+#[cfg(unix)]
+fn lua_project(stack: &Stack) -> serde_json::Value {
+    let lua = Plugin::interpreter("happyview-lua", "lua", b"\0asm lua");
+    let version = lua.version_json();
+    mount_registry(stack, &[lua]);
     std::fs::write(
         stack.project.path().join("happyview.toml"),
-        format!("[happyview]\nversion = \"{VERSION}\"\n[interpreters]\nlua = \"*\"\n"),
+        format!(
+            "[happyview]\nversion = \"{VERSION}\"\n[interpreters]\n\
+             lua = {{ did = \"{HV_DID}\", name = \"happyview-lua\", channel = \"latest\" }}\n"
+        ),
     )
     .unwrap();
     std::fs::write(
         stack.project.path().join("happyview.lock"),
         format!(
-            "version = 1\n\n[happyview]\nversion = \"{VERSION}\"\n\n[[plugin]]\nid = \"{SLUG}\"\n\
-             kind = \"interpreter\"\nkeys = [\"lua\"]\npackage = \"{package}\"\n\
-             version = \"{PLUGIN}\"\nchecksum = \"{sum}\"\n"
+            "version = 2\n\n[happyview]\nversion = \"{VERSION}\"\n\n{}",
+            lock_entry("happyview-lua", "lua", &version)
         ),
     )
     .unwrap();
-    stack.hpy().args(["hv", "check"]).assert().success();
+    version
+}
+
+#[cfg(unix)]
+#[test]
+fn check_places_and_verifies_locked_plugins() {
+    let stack = Stack::new();
+    lua_project(&stack);
+    let lock = read(&stack.project.path().join("happyview.lock"));
+    stack
+        .hpy()
+        .args(["hv", "check", "--locked"])
+        .assert()
+        .success();
+    assert_eq!(read(&stack.project.path().join("happyview.lock")), lock);
     assert_eq!(stack.log().trim(), "check .");
     assert_eq!(
         std::fs::read(
             stack
                 .cache
                 .path()
-                .join(format!("plugins/{SLUG}/{PLUGIN}/{SLUG}.wasm"))
+                .join("plugins/happyview-lua/1.4.2/happyview-lua.wasm")
         )
         .unwrap(),
-        wasm
+        b"\0asm lua"
     );
     let placed = stack
         .project
         .path()
-        .join(format!(".happyview/plugins/{SLUG}/manifest.json"));
-    assert!(read(&placed).contains("\"language_id\": \"lua\""));
+        .join(".happyview/plugins/happyview-lua/manifest.json");
+    let manifest = read(&placed);
+    assert!(manifest.contains("\"language_id\": \"lua\""), "{manifest}");
+    assert!(manifest.contains("\"name\": \"Lua\""), "{manifest}");
+}
+
+#[cfg(unix)]
+#[test]
+fn check_refuses_bytes_that_do_not_match_their_cid() {
+    let stack = Stack::new();
+    let version = lua_project(&stack);
+    let package = version["artifact"]["package"]["ref"]["$link"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    stack.rt.block_on(async {
+        Mock::given(method("GET"))
+            .and(path("/xrpc/at.happyproto.registry.getArtifact"))
+            .and(wiremock::matchers::query_param("cid", package.as_str()))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/wasm")
+                    .set_body_bytes(b"\0asm evil".to_vec()),
+            )
+            .with_priority(1)
+            .mount(&stack.server)
+            .await;
+    });
+    stack
+        .hpy()
+        .args(["hv", "check"])
+        .assert()
+        .code(1)
+        .stderr(says(package.clone()))
+        .stderr(says(hpy_plugin::checksum::raw_cid(b"\0asm evil")));
+    assert!(stack.log().is_empty(), "the binary ran");
+    assert!(
+        !stack
+            .cache
+            .path()
+            .join("plugins/happyview-lua/1.4.2")
+            .exists()
+    );
+}
+
+#[test]
+fn a_lock_from_before_the_registry_moved_says_to_delete_it() {
+    let stack = Stack::new();
+    std::fs::write(
+        stack.project.path().join("happyview.lock"),
+        format!("version = 1\n\n[happyview]\nversion = \"{VERSION}\"\n"),
+    )
+    .unwrap();
+    stack.hpy().args(["hv", "check"]).assert().code(2).stderr(says(
+        "happyview.lock predates the software.release registry; delete it and run hpy happyview check",
+    ));
+}
+
+#[test]
+fn a_bare_version_in_happyview_toml_names_the_table_form() {
+    let stack = Stack::new();
+    std::fs::write(
+        stack.project.path().join("happyview.toml"),
+        format!("[happyview]\nversion = \"{VERSION}\"\n[interpreters]\nlua = \"*\"\n"),
+    )
+    .unwrap();
+    stack
+        .hpy()
+        .args(["hv", "check"])
+        .assert()
+        .code(2)
+        .stderr(says("interpreters.lua"))
+        .stderr(says("did = "));
 }
 
 #[cfg(unix)]
@@ -504,7 +566,10 @@ fn locked_refuses_a_lock_that_no_longer_matches() {
     let stack = Stack::new();
     std::fs::write(
         stack.project.path().join("happyview.toml"),
-        format!("[happyview]\nversion = \"{VERSION}\"\n[interpreters]\nlua = \"*\"\n"),
+        format!(
+            "[happyview]\nversion = \"{VERSION}\"\n[interpreters]\n\
+             lua = {{ did = \"{HV_DID}\", name = \"happyview-lua\", channel = \"latest\" }}\n"
+        ),
     )
     .unwrap();
     stack
@@ -920,102 +985,234 @@ fn test_watch_rebuilds_a_module_when_its_source_changes() {
 }
 
 #[test]
-fn add_validates_package_before_touching_the_network() {
+fn add_validates_the_project_before_touching_the_network() {
     let stack = Stack::new();
     stack
         .hpy()
-        .args(["hv", "add", "lua", "--package", "not-a-uri"])
+        .args(["hv", "add", "lua", "--project", "not-a-uri"])
         .assert()
         .code(2)
-        .stderr(says("--package"));
+        .stderr(says("--project"));
     assert!(!read(&stack.project.path().join("happyview.toml")).contains("lua"));
 }
 
-fn interpreter_release(slug: &str, version: &str, wasm: &[u8]) -> serde_json::Value {
-    serde_json::json!({
-        "uri": format!("at://did:plc:hv/at.happyproto.plugin.release/{slug}:{version}"),
-        "status": "active",
-        "record": {
-            "package": slug, "version": version,
-            "artifacts": { "package": { "checksum": hpy_plugin::checksum::checksum(wasm) } },
-            "extensions": { "at.happyproto.plugin.releaseExtension": {
-                "pluginType": "interpreter", "apiVersion": "2", "languageId": "lua",
-                "fileExtensions": ["lua"], "capabilities": ["script:host"]
-            } }
-        }
-    })
+const HV_DID: &str = "did:plc:hv";
+
+/// One plugin the fake registry serves: a single version, 1.4.2, which its
+/// `latest` channel points at.
+struct Plugin {
+    name: String,
+    plugin_type: &'static str,
+    display_name: String,
+    fields: serde_json::Value,
+    wasm: Vec<u8>,
+    manifest: Vec<u8>,
 }
 
-/// A registry whose interpreters are `slugs`, each published by `did:plc:hv`
-/// with the one release `release(slug)` (at 1.4.2), and which has no
-/// libraries. Search leaves the latest version out, as the deployed registry
-/// does.
-fn mount_interpreters(stack: &Stack, slugs: &[&str], release: fn(&str) -> serde_json::Value) {
-    use wiremock::matchers::query_param;
-    let packages: Vec<serde_json::Value> = slugs
-        .iter()
-        .map(|slug| {
-            serde_json::json!({
-                "uri": format!("at://did:plc:hv/at.happyproto.plugin.profile/{slug}"),
-                "did": "did:plc:hv", "record": { "name": "Lua" }, "status": "active"
-            })
+impl Plugin {
+    fn interpreter(name: &str, language: &str, wasm: &[u8]) -> Plugin {
+        Plugin {
+            name: name.into(),
+            plugin_type: "interpreter",
+            display_name: "Lua".into(),
+            fields: serde_json::json!({
+                "pluginType": "interpreter", "apiVersion": "2", "languageId": language,
+                "fileExtensions": [language], "capabilities": ["script:host"]
+            }),
+            wasm: wasm.to_vec(),
+            manifest: format!("{{\"id\":\"{name}\"}}").into_bytes(),
+        }
+    }
+
+    fn library(name: &str, namespace: &str, wasm: &[u8]) -> Plugin {
+        Plugin {
+            name: name.into(),
+            plugin_type: "library",
+            display_name: "HTTP".into(),
+            fields: serde_json::json!({
+                "pluginType": "library", "apiVersion": "2", "namespace": namespace,
+                "capabilities": []
+            }),
+            wasm: wasm.to_vec(),
+            manifest: format!("{{\"id\":\"{name}\"}}").into_bytes(),
+        }
+    }
+
+    fn version_json(&self) -> serde_json::Value {
+        use hpy_plugin::artifact::predicted_blob;
+        use hpy_plugin::checksum::raw_cid;
+        let mut artifact = serde_json::json!({
+            "$type": "at.happyproto.plugin.v1",
+            "package": predicted_blob(&self.wasm, "application/wasm"),
+            "manifest": predicted_blob(&self.manifest, "application/json"),
+            "capabilities": [],
+            "license": "MIT",
+            "sections": { "description": "A plugin." },
+        });
+        for (k, v) in self.fields.as_object().unwrap() {
+            artifact[k] = v.clone();
+        }
+        let name = &self.name;
+        serde_json::json!({
+            "uri": format!("at://{HV_DID}/software.release.version/{name}:1.4.2"),
+            "cid": raw_cid(format!("version {name}").as_bytes()),
+            "did": HV_DID, "name": name, "version": "1.4.2",
+            "manifest": {
+                "uri": format!("at://{HV_DID}/software.release.manifest/3l{name}"),
+                "cid": raw_cid(artifact.to_string().as_bytes()),
+            },
+            "artifact": artifact,
+            "availability": "available",
+            "suspect": false,
+            "lifecycle": { "state": "active", "installable": true, "events": [] },
+            "indexedAt": "2026-10-23T00:00:00Z"
         })
-        .collect();
+    }
+
+    fn project_json(&self) -> serde_json::Value {
+        let name = &self.name;
+        let version = self.version_json();
+        serde_json::json!({
+            "uri": format!("at://{HV_DID}/software.release.project/{name}"),
+            "did": HV_DID, "name": name,
+            "sidecar": { "uri": format!("at://{HV_DID}/at.happyproto.registry.project/{name}") },
+            "publication": {
+                "uri": format!("at://{HV_DID}/site.standard.publication/{name}"),
+                "cid": "bafypublication", "name": self.display_name,
+                "url": format!("https://happyproto.at/plugins/{HV_DID}/{name}")
+            },
+            "pluginType": self.plugin_type,
+            "channels": { "latest": {
+                "version": "1.4.2", "uri": version["uri"], "cid": version["cid"],
+                "state": "active", "availability": "available"
+            } },
+            "lifecycle": { "state": "active" },
+            "indexedAt": "2026-10-23T00:00:00Z"
+        })
+    }
+}
+
+/// A registry serving `plugins` through the read API, with the not-found
+/// answers the real one gives for anything else.
+fn mount_registry(stack: &Stack, plugins: &[Plugin]) {
+    use wiremock::matchers::query_param;
+    let get = |nsid: &str| {
+        Mock::given(method("GET")).and(path(format!("/xrpc/at.happyproto.registry.{nsid}")))
+    };
     stack.rt.block_on(async {
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
-            .and(query_param("pluginType", "interpreter"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({ "packages": packages })),
-            )
-            .mount(&stack.server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
-            .and(query_param("pluginType", "library"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(serde_json::json!({ "packages": [] })),
-            )
-            .mount(&stack.server)
-            .await;
-        for slug in slugs {
-            let release = release(slug);
-            Mock::given(method("GET"))
-                .and(path("/xrpc/at.happyproto.registry.getPackage"))
-                .and(query_param("slug", *slug))
-                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                    "uri": format!("at://did:plc:hv/at.happyproto.plugin.profile/{slug}"),
-                    "did": "did:plc:hv", "record": { "name": "Lua" },
-                    "status": "active", "latestVersion": "1.4.2"
-                })))
-                .mount(&stack.server)
-                .await;
-            Mock::given(method("GET"))
-                .and(path("/xrpc/at.happyproto.registry.getRelease"))
-                .and(query_param("slug", *slug))
-                .respond_with(ResponseTemplate::new(200).set_body_json(release.clone()))
-                .mount(&stack.server)
-                .await;
-            Mock::given(method("GET"))
-                .and(path("/xrpc/at.happyproto.registry.listReleases"))
-                .and(query_param("slug", *slug))
+        for plugin_type in ["interpreter", "library"] {
+            let projects: Vec<serde_json::Value> = plugins
+                .iter()
+                .filter(|p| p.plugin_type == plugin_type)
+                .map(Plugin::project_json)
+                .collect();
+            get("searchProjects")
+                .and(query_param("pluginType", plugin_type))
                 .respond_with(
                     ResponseTemplate::new(200)
-                        .set_body_json(serde_json::json!({ "releases": [release] })),
+                        .set_body_json(serde_json::json!({ "projects": projects })),
                 )
+                .mount(&stack.server)
+                .await;
+        }
+        for p in plugins {
+            let version = p.version_json();
+            let name = p.name.as_str();
+            get("getProject")
+                .and(query_param("name", name))
+                .respond_with(ResponseTemplate::new(200).set_body_json(p.project_json()))
+                .mount(&stack.server)
+                .await;
+            get("resolveChannel")
+                .and(query_param("name", name))
+                .and(query_param("channel", "latest"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(version.clone()))
+                .mount(&stack.server)
+                .await;
+            get("getVersion")
+                .and(query_param("name", name))
+                .and(query_param("version", "1.4.2"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(version.clone()))
+                .mount(&stack.server)
+                .await;
+            get("listVersions")
+                .and(query_param("name", name))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .set_body_json(serde_json::json!({ "versions": [version] })),
+                )
+                .mount(&stack.server)
+                .await;
+            for bytes in [&p.wasm, &p.manifest] {
+                get("getArtifact")
+                    .and(query_param(
+                        "cid",
+                        hpy_plugin::checksum::raw_cid(bytes).as_str(),
+                    ))
+                    .respond_with(
+                        ResponseTemplate::new(200)
+                            .insert_header("content-type", "application/octet-stream")
+                            .set_body_bytes(bytes.clone()),
+                    )
+                    .mount(&stack.server)
+                    .await;
+            }
+        }
+        for (nsid, error) in [
+            ("getProject", "ProjectNotFound"),
+            ("resolveChannel", "ChannelNotFound"),
+            ("getVersion", "VersionNotFound"),
+            ("listVersions", "ProjectNotFound"),
+            ("getArtifact", "ArtifactNotHeld"),
+        ] {
+            get(nsid)
+                .respond_with(
+                    ResponseTemplate::new(400)
+                        .set_body_json(serde_json::json!({ "error": error, "message": "no" })),
+                )
+                .with_priority(10)
                 .mount(&stack.server)
                 .await;
         }
     });
 }
 
-fn lua_release(slug: &str) -> serde_json::Value {
-    interpreter_release(slug, "1.4.2", slug.as_bytes())
+fn mount_lua(stack: &Stack) {
+    mount_registry(
+        stack,
+        &[Plugin::interpreter("happyview-lua", "lua", b"\0asm lua")],
+    );
 }
 
-fn mount_lua(stack: &Stack) {
-    mount_interpreters(stack, &["happyview-lua"], lua_release);
+const LUA_ENTRY: &str =
+    "lua = { did = \"did:plc:hv\", name = \"happyview-lua\", channel = \"latest\" }";
+
+#[test]
+fn add_writes_the_entry_and_the_lock_and_downloads() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    stack
+        .hpy()
+        .args(["hv", "add", "lua", "--json"])
+        .assert()
+        .success()
+        .stdout(says("\"channel\": \"latest\""))
+        .stdout(says("\"version\": \"1.4.2\""));
+    let toml = read(&stack.project.path().join("happyview.toml"));
+    assert!(toml.contains(LUA_ENTRY), "{toml}");
+    let lock = read(&stack.project.path().join("happyview.lock"));
+    assert!(lock.contains("version = 2"), "{lock}");
+    assert!(
+        lock.contains("project = \"at://did:plc:hv/software.release.project/happyview-lua\""),
+        "{lock}"
+    );
+    assert!(
+        stack
+            .cache
+            .path()
+            .join("plugins/happyview-lua/1.4.2/happyview-lua.wasm")
+            .is_file()
+    );
 }
 
 #[test]
@@ -1043,7 +1240,7 @@ fn create_writes_a_project_and_its_lock_without_downloading_anything() {
     let app = parent.path().join("my-app");
     let toml = read(&app.join("happyview.toml"));
     assert!(
-        toml.contains("lua = \"1.4.2\"") && toml.contains("app_name = \"my-app\""),
+        toml.contains(LUA_ENTRY) && toml.contains("app_name = \"my-app\""),
         "{toml}"
     );
     let lock = read(&app.join("happyview.lock"));
@@ -1095,14 +1292,9 @@ fn create_resolves_before_writing_anything() {
 fn create_writes_nothing_when_resolution_refuses_the_release() {
     let stack = Stack::new();
     // An interpreter from before project mode: no file extensions.
-    mount_interpreters(&stack, &["happyview-lua"], |slug| {
-        let mut release = lua_release(slug);
-        release["record"]["extensions"]["at.happyproto.plugin.releaseExtension"]
-            .as_object_mut()
-            .unwrap()
-            .remove("fileExtensions");
-        release
-    });
+    let mut lua = Plugin::interpreter("happyview-lua", "lua", b"\0asm lua");
+    lua.fields.as_object_mut().unwrap().remove("fileExtensions");
+    mount_registry(&stack, &[lua]);
     let parent = tempfile::tempdir().unwrap();
     stack
         .hpy()
@@ -1162,11 +1354,17 @@ fn create_refuses_a_directory_with_files_in_it() {
 }
 
 #[test]
-fn create_takes_a_package_where_several_answer() {
+fn create_takes_a_project_where_several_answer() {
     let stack = Stack::new();
-    mount_interpreters(&stack, &["happyview-lua", "other-lua"], lua_release);
+    mount_registry(
+        &stack,
+        &[
+            Plugin::interpreter("happyview-lua", "lua", b"\0asm lua"),
+            Plugin::interpreter("other-lua", "lua", b"\0asm other"),
+        ],
+    );
     let parent = tempfile::tempdir().unwrap();
-    let create = |name: &str, package: Option<&str>| {
+    let create = |name: &str, project: Option<&str>| {
         let mut cmd = stack.hpy();
         cmd.current_dir(parent.path()).args([
             "hv",
@@ -1179,25 +1377,26 @@ fn create_takes_a_package_where_several_answer() {
             "--happyview-version",
             VERSION,
         ]);
-        if let Some(uri) = package {
-            cmd.args(["--package", uri]);
+        if let Some(uri) = project {
+            cmd.args(["--project", uri]);
         }
         cmd.assert()
     };
     create("asked", None)
         .code(2)
-        .stderr(says("pass --package <AT-URI> to choose"))
-        .stderr(says("hpy happyview add").not());
-    let other = "at://did:plc:hv/at.happyproto.plugin.profile/other-lua";
+        .stderr(says("pass --project <AT-URI> to choose"));
+    let other = "at://did:plc:hv/software.release.project/other-lua";
     create("pinned", Some(other)).success();
     let lock = read(&parent.path().join("pinned/happyview.lock"));
     assert!(
         lock.contains("id = \"other-lua\"") && lock.contains(other),
         "{lock}"
     );
+    let toml = read(&parent.path().join("pinned/happyview.toml"));
+    assert!(toml.contains("name = \"other-lua\""), "{toml}");
     create(
         "stray",
-        Some("at://did:plc:hv/at.happyproto.plugin.profile/nobody"),
+        Some("at://did:plc:hv/software.release.project/nobody"),
     )
     .code(2)
     .stderr(says("nobody answers to"));
@@ -1348,54 +1547,15 @@ fn create_refuses_a_name_that_is_a_file() {
 }
 
 #[test]
-fn create_takes_a_library_by_namespace_or_id() {
-    use wiremock::matchers::query_param;
+fn create_takes_a_library_by_namespace_or_name() {
     let stack = Stack::new();
-    mount_lua(&stack);
-    let slug = "http-lib";
-    let release = serde_json::json!({
-        "uri": format!("at://did:plc:hv/at.happyproto.plugin.release/{slug}:1.0.3"),
-        "status": "active",
-        "record": {
-            "package": slug, "version": "1.0.3",
-            "artifacts": { "package": { "checksum": hpy_plugin::checksum::checksum(b"http") } },
-            "extensions": { "at.happyproto.plugin.releaseExtension": {
-                "pluginType": "library", "apiVersion": "2", "namespace": "happyview.http",
-                "capabilities": []
-            } }
-        }
-    });
-    stack.rt.block_on(async {
-        // Ahead of the empty library search `mount_lua` mounts.
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.searchPackages"))
-            .and(query_param("pluginType", "library"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "packages": [{
-                    "uri": format!("at://did:plc:hv/at.happyproto.plugin.profile/{slug}"),
-                    "did": "did:plc:hv", "record": { "name": "HTTP" }, "status": "active",
-                    "latestVersion": "1.0.3"
-                }]
-            })))
-            .with_priority(1)
-            .mount(&stack.server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.getRelease"))
-            .and(query_param("slug", slug))
-            .respond_with(ResponseTemplate::new(200).set_body_json(release.clone()))
-            .mount(&stack.server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/xrpc/at.happyproto.registry.listReleases"))
-            .and(query_param("slug", slug))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(serde_json::json!({ "releases": [release] })),
-            )
-            .mount(&stack.server)
-            .await;
-    });
+    mount_registry(
+        &stack,
+        &[
+            Plugin::interpreter("happyview-lua", "lua", b"\0asm lua"),
+            Plugin::library("http-lib", "happyview.http", b"\0asm http"),
+        ],
+    );
     let parent = tempfile::tempdir().unwrap();
     let create = |name: &str, library: &str| {
         stack
@@ -1416,12 +1576,13 @@ fn create_takes_a_library_by_namespace_or_id() {
             ])
             .assert()
     };
-    for (name, library) in [("by-namespace", "happyview.http"), ("by-id", slug)] {
+    for (name, library) in [("by-namespace", "happyview.http"), ("by-name", "http-lib")] {
         create(name, library).success();
         let toml = read(&parent.path().join(name).join("happyview.toml"));
+        let entry = "{ did = \"did:plc:hv\", name = \"http-lib\", channel = \"latest\" }";
         assert!(
-            toml.contains(&format!("\"{library}\" = \"1.0.3\""))
-                || toml.contains(&format!("{library} = \"1.0.3\"")),
+            toml.contains(&format!("\"{library}\" = {entry}"))
+                || toml.contains(&format!("{library} = {entry}")),
             "{toml}"
         );
         let lock = read(&parent.path().join(name).join("happyview.lock"));

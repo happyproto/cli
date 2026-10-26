@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use hpy_plugin::Problem;
 
+use crate::config::{PluginEntry, entry_value};
+
 pub const STARTER_NSID: &str = "com.example.hello";
 const LEXICON_DIR: &str = "src/lexicons/com/example";
 
@@ -13,8 +15,8 @@ pub struct Scaffold {
     pub app_name: String,
     pub superadmin: String,
     pub happyview_version: String,
-    pub interpreters: BTreeMap<String, String>,
-    pub libraries: BTreeMap<String, String>,
+    pub interpreters: BTreeMap<String, PluginEntry>,
+    pub libraries: BTreeMap<String, PluginEntry>,
     pub handler_language: Option<String>,
 }
 
@@ -42,8 +44,8 @@ fn happyview_toml(s: &Scaffold) -> String {
         ("libraries", &s.libraries),
     ] {
         let mut table = Table::new();
-        for (k, v) in entries {
-            table.insert(k, value(v));
+        for (k, entry) in entries {
+            table.insert(k, toml_edit::Item::Value(entry_value(entry)));
         }
         doc.insert(name, table.into());
     }
@@ -181,13 +183,25 @@ mod tests {
     use super::*;
     use crate::config::ProjectToml;
 
+    fn entry(name: &str, channel: &str) -> PluginEntry {
+        PluginEntry {
+            did: "did:plc:happyview".into(),
+            name: name.into(),
+            pin: crate::config::Pin::Channel(channel.into()),
+        }
+    }
+
     fn scaffold(language: Option<&str>) -> Scaffold {
         Scaffold {
             app_name: "Jo's \"App\"".into(),
             superadmin: "did:plc:abc".into(),
             happyview_version: "3.0.0".into(),
-            interpreters: [("lua".to_string(), "1.4.2".to_string())].into(),
-            libraries: [("happyview.http".to_string(), "1.0.3".to_string())].into(),
+            interpreters: [("lua".to_string(), entry("happyview-lua", "latest"))].into(),
+            libraries: [(
+                "happyview.http".to_string(),
+                entry("happyview-http", "beta"),
+            )]
+            .into(),
             handler_language: language.map(str::to_string),
         }
     }
@@ -205,7 +219,11 @@ mod tests {
         let text = file(&files, "happyview.toml").unwrap();
         let cfg = ProjectToml::parse(text).unwrap();
         assert_eq!(cfg.happyview_version().unwrap(), "3.0.0");
-        assert_eq!(cfg.libraries["happyview.http"], "1.0.3");
+        assert_eq!(
+            cfg.libraries["happyview.http"],
+            entry("happyview-http", "beta")
+        );
+        assert_eq!(cfg.interpreters["lua"], entry("happyview-lua", "latest"));
         let raw: toml::Value = toml::from_str(text).unwrap();
         assert_eq!(raw["instance"]["app_name"].as_str(), Some("Jo's \"App\""));
         assert_eq!(raw["instance"]["superadmin"].as_str(), Some("did:plc:abc"));

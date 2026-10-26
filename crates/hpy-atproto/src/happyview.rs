@@ -11,7 +11,19 @@ use crate::credential::Credential;
 use crate::dpop::DpopKey;
 use crate::{Error, Result};
 
-const NAMED_REGISTRY_ERRORS: [&str; 3] = ["InvalidRecord", "VersionExists", "ProfileMissing"];
+/// Refusals the gateway's procedures make on purpose; each message is written
+/// for the publisher, so they keep their name instead of becoming a bare
+/// transport error.
+const NAMED_REGISTRY_ERRORS: [&str; 8] = [
+    "InvalidRecord",
+    "VersionExists",
+    "ProjectMissing",
+    "InvalidSwap",
+    "NotInstallable",
+    "SubjectNotFound",
+    "InvalidStatus",
+    "VersionNotFound",
+];
 
 pub struct HappyView {
     base: String,
@@ -546,7 +558,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "error": "ProfileMissing", "message": "no profile is indexed at that slug"
+                "error": "ProjectMissing", "message": "no project is indexed under that name"
             })))
             .mount(&server)
             .await;
@@ -559,7 +571,40 @@ mod tests {
             )
             .await
             .unwrap_err();
-        assert_eq!(err.registry_name(), Some("ProfileMissing"), "{err:?}");
+        assert_eq!(err.registry_name(), Some("ProjectMissing"), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn every_named_registry_refusal_keeps_its_name() {
+        for name in [
+            "InvalidRecord",
+            "VersionExists",
+            "ProjectMissing",
+            "InvalidSwap",
+            "NotInstallable",
+            "SubjectNotFound",
+            "InvalidStatus",
+            "VersionNotFound",
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(400).set_body_json(
+                    serde_json::json!({ "error": name, "message": "refused for a reason" }),
+                ))
+                .mount(&server)
+                .await;
+            let c = cred(&server);
+            let err = HappyView::new(&server.uri(), "hvc_test")
+                .procedure(
+                    &c,
+                    "at.happyproto.registry.putStatus",
+                    &serde_json::json!({}),
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(err.registry_name(), Some(name), "{err:?}");
+            assert_eq!(err.to_string(), "refused for a reason");
+        }
     }
 
     #[tokio::test]
