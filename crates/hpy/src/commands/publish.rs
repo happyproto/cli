@@ -1122,7 +1122,7 @@ mod tests {
         assert!(!out.resumed);
         assert_eq!(
             out.uri,
-            "at://did:plc:testuser/software.release.version/my-plugin:1.0.0"
+            "at://did:plc:testuser/software.release.version/my-plugin.1.0.0"
         );
         assert_eq!(
             reg.calls.lock().unwrap().clone(),
@@ -1409,7 +1409,7 @@ mod tests {
         *reg.missing_blob_once.lock().unwrap() = true;
         let (_dir, next) = prepared("1.1.0");
         let out = published(run(&next, &repo, &reg, false).await.unwrap());
-        assert!(out.uri.ends_with("my-plugin:1.1.0"));
+        assert!(out.uri.ends_with("my-plugin.1.1.0"));
         let uploaded: Vec<String> = repo
             .blobs
             .lock()
@@ -1439,7 +1439,7 @@ mod tests {
         assert!(again.resumed);
         assert_eq!(
             again.uri,
-            "at://did:plc:testuser/software.release.version/my-plugin:1.0.0"
+            "at://did:plc:testuser/software.release.version/my-plugin.1.0.0"
         );
     }
 
@@ -1469,7 +1469,7 @@ mod tests {
         assert!(out.resumed);
         assert_eq!(
             out.uri,
-            "at://did:plc:testuser/software.release.version/my-plugin:1.0.0"
+            "at://did:plc:testuser/software.release.version/my-plugin.1.0.0"
         );
     }
 
@@ -1730,7 +1730,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             out.uri,
-            "at://did:plc:testuser/software.release.version/my-plugin:1.0.0"
+            "at://did:plc:testuser/software.release.version/my-plugin.1.0.0"
         );
         assert_eq!(
             reg.promoted.lock().unwrap()[0],

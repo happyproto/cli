@@ -31,7 +31,7 @@ impl Row {
 }
 
 fn version_of<'a>(name: &str, uri: &'a str) -> Option<&'a str> {
-    rkey_of(uri).strip_prefix(name)?.strip_prefix(':')
+    rkey_of(uri).strip_prefix(name)?.strip_prefix('.')
 }
 
 fn name_of<T: serde::Serialize>(value: T) -> String {
@@ -163,9 +163,19 @@ mod tests {
     use hpy_atproto::StoredRecord;
     use hpy_atproto::registry::{Availability, State};
 
+    #[test]
+    fn version_of_splits_at_the_first_dot_and_ignores_colon_keys() {
+        let uri = |k: &str| format!("at://did:plc:x/software.release.version/{k}");
+        assert_eq!(
+            version_of("lua", &uri("lua.1.0.0-alpha.4")),
+            Some("1.0.0-alpha.4")
+        );
+        assert_eq!(version_of("lua", &uri("lua:1.0.0")), None);
+    }
+
     fn mine(v: &str) -> StoredRecord {
         StoredRecord {
-            uri: format!("at://did:plc:x/software.release.version/p:{v}"),
+            uri: format!("at://did:plc:x/software.release.version/p.{v}"),
             cid: None,
             value: json!({}),
         }

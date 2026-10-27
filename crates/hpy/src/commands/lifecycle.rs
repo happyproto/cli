@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(
             got,
             json!({
-                "subject": "at://did:plc:testuser/software.release.version/my-plugin:1.0.0",
+                "subject": "at://did:plc:testuser/software.release.version/my-plugin.1.0.0",
                 "status": "endOfSupport", "kind": "security", "reason": "use 2.x"
             })
         );
@@ -300,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_withdrawal_names_the_status_and_its_subject() {
-        let subject = "at://did:plc:testuser/software.release.version/my-plugin:1.0.0";
+        let subject = "at://did:plc:testuser/software.release.version/my-plugin.1.0.0";
         let repo = FakeRepo::with(&[(
             STATUS_NSID,
             "3labc",
@@ -351,7 +351,7 @@ mod tests {
         let repo = FakeRepo::default();
         for uri in [
             "at://did:plc:someoneelse/software.release.status/3labc".to_string(),
-            format!("at://{DID}/software.release.version/my-plugin:1.0.0"),
+            format!("at://{DID}/software.release.version/my-plugin.1.0.0"),
             format!("at://{DID}/{STATUS_NSID}/3lnothere"),
         ] {
             let err = withdraw_input(&repo, &uri, None).await.unwrap_err();
