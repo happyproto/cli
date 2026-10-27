@@ -1,3 +1,10 @@
+# [1.0.0-alpha.16](https://github.com/happyproto/cli/compare/v1.0.0-alpha.15...v1.0.0-alpha.16) (2026-10-27)
+
+
+### Bug Fixes
+
+* key software.release version and channel records with a dot ([67e3edb](https://github.com/happyproto/cli/commit/67e3edb8e324a74c5585ce9fec98c1bf745f957c))
+
 # [1.0.0-alpha.15](https://github.com/happyproto/cli/compare/v1.0.0-alpha.14...v1.0.0-alpha.15) (2026-10-26)
 
 
