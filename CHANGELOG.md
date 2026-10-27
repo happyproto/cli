@@ -1,3 +1,29 @@
+# [1.0.0-alpha.16](https://github.com/happyproto/cli/compare/v1.0.0-alpha.15...v1.0.0-alpha.16) (2026-10-27)
+
+
+### Bug Fixes
+
+* key software.release version and channel records with a dot ([67e3edb](https://github.com/happyproto/cli/commit/67e3edb8e324a74c5585ce9fec98c1bf745f957c))
+
+# [1.0.0-alpha.15](https://github.com/happyproto/cli/compare/v1.0.0-alpha.14...v1.0.0-alpha.15) (2026-10-26)
+
+
+### Bug Fixes
+
+* accept a resumed publish without a manifest and tidy what hpy sends ([aa32ce0](https://github.com/happyproto/cli/commit/aa32ce022cd5f1e73d83721bf91d887d3492a95b))
+* **deps:** update webpage and triage the advisory in crypto-bigint 0.5 ([1b8e77c](https://github.com/happyproto/cli/commit/1b8e77cbaf610fc425488597fdcfdae6d66dd983))
+* keep project details, icons and pins in step with the registry ([8a645c8](https://github.com/happyproto/cli/commit/8a645c8d34618e8fa8295d5bf4b6d23ac7adc9fa))
+* only write back a project edit to the hpy.toml it belongs to ([02bd585](https://github.com/happyproto/cli/commit/02bd58540dd2fcb37568f1fa53bcb1cfc1026e5c))
+* refuse publication names and changelog headings the registry would reject ([ab3c35c](https://github.com/happyproto/cli/commit/ab3c35c8af2848c4b0963ec1f826dca695f9dfe5))
+
+
+### Features
+
+* describe plugins as software.release projects and artifacts ([aadffe2](https://github.com/happyproto/cli/commit/aadffe2c633ed20aaa30d5ae7b28385a52cbf3ed))
+* lock and install plugins from the software.release registry ([87ea2a5](https://github.com/happyproto/cli/commit/87ea2a5fad19be7c9278c8d1b14bca193759e8d8))
+* publish plugins through the software.release registry ([4b2727c](https://github.com/happyproto/cli/commit/4b2727c0d9a401fc25abfd765b9c86b0f164fa18))
+* speak the software.release registry api ([9efc899](https://github.com/happyproto/cli/commit/9efc89924cc1ee7fda8c1e9c2fb2722ab4b3b4ba))
+
 # [1.0.0-alpha.14](https://github.com/happyproto/cli/compare/v1.0.0-alpha.13...v1.0.0-alpha.14) (2026-10-23)
 
 

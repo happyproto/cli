@@ -41,23 +41,19 @@ pub struct Prepared {
     pub binary: PathBuf,
 }
 
-/// The flag that decides among several packages, as `dev`, `check` and
-/// `test` name it: they take no `--package`, so it means running `add`.
-pub const PACKAGE_VIA_ADD: &str = "--package <AT-URI> (with `hpy happyview add`)";
-/// The flag as `create` and `add` name it, which take it themselves.
-pub const PACKAGE_FLAG: &str = "--package <AT-URI>";
+/// The flag `create` and `add` take to decide among several projects.
+pub const PROJECT_FLAG: &str = "--project <AT-URI>";
 
-/// Asks which of several packages answering one key to use; without a
-/// terminal, the error names `flag` as what decides.
-pub fn choose_with_prompter<'a>(
-    ctx: &'a Ctx,
-    flag: &'a str,
-) -> impl Fn(&str, &[Candidate]) -> Result<usize, Failure> + Sync + 'a {
+/// Asks which of several projects answering one key to use; without a
+/// terminal, the error names `--project` as what decides.
+pub fn choose_with_prompter(
+    ctx: &Ctx,
+) -> impl Fn(&str, &[Candidate]) -> Result<usize, Failure> + Sync + '_ {
     move |key: &str, found: &[Candidate]| {
         let labels: Vec<String> = found.iter().map(Candidate::label).collect();
         ctx.prompter.choose(
-            flag,
-            &format!("Several packages answer to `{key}`."),
+            PROJECT_FLAG,
+            &format!("Several projects answer to `{key}`."),
             &labels,
         )
     }
@@ -96,13 +92,10 @@ pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failu
                     "happyview.lock does not match happyview.toml, and --locked forbids updating it:\n  {why}"
                 )));
             }
-            let choose = choose_with_prompter(ctx, PACKAGE_VIA_ADD);
             let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
             let r = Resolver {
                 registry: &registry,
-                choose: &choose,
                 warn: &warn,
-                pins: Default::default(),
             };
             let lock = resolve_lock(&r, &config, previous.as_ref()).await?;
             lock.write(&root).map_err(Failure::runtime)?;

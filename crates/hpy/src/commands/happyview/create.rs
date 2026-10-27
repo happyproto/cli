@@ -1,18 +1,16 @@
 use std::collections::BTreeMap;
 
-use hpy_atproto::Registry;
-use hpy_project::config::{HappyviewTable, PluginKind, ProjectToml};
-use hpy_project::lock::LOCK_FILE;
-use hpy_project::manifest::parse_package_uri;
+use hpy_plugin::validate::parse_project_uri;
+use hpy_project::config::{HappyviewTable, Pin, PluginEntry, PluginKind, ProjectToml};
+use hpy_project::lock::{LOCK_FILE, Lockfile};
 use hpy_project::scaffold::{Scaffold, render, starter_handler, write_new};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::cli::CreateArgs;
-use crate::commands::happyview::add::newest;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 use crate::project::binary::{HOST_TARGET, ReleaseSource, http_client, latest_version};
-use crate::project::prepare::{PACKAGE_FLAG, choose_with_prompter};
+use crate::project::prepare::choose_with_prompter;
 use crate::project::resolve::{Candidate, Choose, Resolver, candidates, resolve_lock};
 
 /// atproto's DID syntax, which HappyView checks `superadmin` against at boot.
@@ -62,42 +60,42 @@ pub fn order_languages(found: &[String]) -> Vec<String> {
     out
 }
 
-/// Which chosen key each `--package` answers. One that answers none, or a
+/// Which chosen key each `--project` answers. One that answers none, or a
 /// key two of them answer, is refused rather than guessed at.
-fn match_packages(
-    packages: &[String],
+fn match_projects(
+    projects: &[String],
     chosen: &[(PluginKind, &[String], &[Candidate])],
 ) -> Result<BTreeMap<(PluginKind, String), String>, Failure> {
     let mut pins = BTreeMap::new();
-    for uri in packages {
+    for uri in projects {
         let mut answered = false;
         for (kind, keys, found) in chosen {
             for key in keys.iter() {
                 if !found
                     .iter()
-                    .any(|c| &c.package == uri && c.answers(*kind, key))
+                    .any(|c| &c.project == uri && c.answers(*kind, key))
                 {
                     continue;
                 }
                 answered = true;
                 if let Some(other) = pins.insert((*kind, key.clone()), uri.clone()) {
                     return Err(Failure::usage(format!(
-                        "--package: {other} and {uri} both answer to `{key}`; pass one"
+                        "--project: {other} and {uri} both answer to `{key}`; pass one"
                     )));
                 }
             }
         }
         if !answered {
             return Err(Failure::usage(format!(
-                "--package: {uri} answers to none of the chosen interpreters or libraries"
+                "--project: {uri} answers to none of the chosen interpreters or libraries"
             )));
         }
     }
     Ok(pins)
 }
 
-/// The libraries to add: `--library` values, each a namespace or a package
-/// id as `add` takes them, else a choice among the namespaces found.
+/// The libraries to add: `--library` values, each a namespace or a project
+/// name as `add` takes them, else a choice among the namespaces found.
 fn choose_libraries(
     ctx: &Ctx,
     given: Vec<String>,
@@ -125,48 +123,75 @@ fn choose_libraries(
     Ok(given)
 }
 
-/// The package each key means and its newest release, as `add` would write
-/// it: the newest stable, else the newest prerelease.
-async fn pick(
-    reg: &dyn Registry,
+/// The entry each key gets: the project that answers to it, following its
+/// channel as `add` would.
+fn pick(
     kind: PluginKind,
     keys: &[String],
     found: &[Candidate],
-    pins: &mut BTreeMap<(PluginKind, String), String>,
+    pins: &BTreeMap<(PluginKind, String), String>,
     choose: Choose<'_>,
-) -> Result<BTreeMap<String, String>, Failure> {
+) -> Result<BTreeMap<String, PluginEntry>, Failure> {
     let mut out = BTreeMap::new();
     for key in keys {
-        let package = match pins.get(&(kind, key.clone())) {
-            Some(uri) => uri.clone(),
-            None => {
-                let matches: Vec<Candidate> = found
-                    .iter()
-                    .filter(|c| c.answers(kind, key))
-                    .cloned()
-                    .collect();
-                let chosen = match matches.len() {
-                    0 => {
-                        return Err(Failure::usage(format!(
-                            "no {} in the registry answers to `{key}`",
-                            kind.plugin_type()
-                        )));
-                    }
-                    1 => &matches[0],
-                    _ => &matches[choose(key, &matches)?],
-                };
-                chosen.package.clone()
+        let matches: Vec<Candidate> = found
+            .iter()
+            .filter(|c| c.answers(kind, key))
+            .filter(|c| {
+                pins.get(&(kind, key.clone()))
+                    .is_none_or(|uri| &c.project == uri)
+            })
+            .cloned()
+            .collect();
+        let chosen = match matches.len() {
+            0 => {
+                return Err(Failure::usage(format!(
+                    "no {} in the registry answers to `{key}`",
+                    kind.plugin_type()
+                )));
             }
+            1 => &matches[0],
+            _ => &matches[choose(key, &matches)?],
         };
-        let (did, slug) = parse_package_uri(&package)
-            .ok_or_else(|| Failure::usage(format!("`{package}` is not a registry package URI")))?;
-        let version = newest(&reg.list_releases(&did, &slug).await?)
-            .ok_or_else(|| Failure::usage(format!("{slug} has no active release")))?;
-        // Resolution then takes this package rather than searching again.
-        pins.insert((kind, key.clone()), package);
-        out.insert(key.clone(), version.to_string());
+        out.insert(
+            key.clone(),
+            PluginEntry {
+                did: chosen.did.clone(),
+                name: chosen.name.clone(),
+                pin: Pin::Channel(chosen.channel.clone()),
+            },
+        );
     }
     Ok(out)
+}
+
+/// The `--json` answer.
+pub fn report(dir: &std::path::Path, version: &str, toml: &ProjectToml, lock: &Lockfile) -> Value {
+    let entries = |table: &BTreeMap<String, PluginEntry>| -> Value {
+        table
+            .iter()
+            .map(|(key, e)| {
+                let pin = match &e.pin {
+                    Pin::Channel(c) => json!({ "channel": c }),
+                    Pin::Version(v) => json!({ "version": v }),
+                };
+                let mut entry = json!({ "project": e.project_uri() });
+                entry
+                    .as_object_mut()
+                    .expect("an object")
+                    .extend(pin.as_object().expect("an object").clone());
+                (key.clone(), entry)
+            })
+            .collect::<serde_json::Map<_, _>>()
+            .into()
+    };
+    json!({
+        "dir": dir,
+        "happyview": version,
+        "interpreters": entries(&toml.interpreters),
+        "libraries": entries(&toml.libraries),
+        "plugins": lock.plugins.iter().map(|p| json!({ "id": p.id, "version": p.version })).collect::<Vec<_>>(),
+    })
 }
 
 pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
@@ -184,12 +209,12 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
         )));
     }
     if let Some(uri) = args
-        .packages
+        .projects
         .iter()
-        .find(|u| parse_package_uri(u).is_none())
+        .find(|u| parse_project_uri(u).is_none())
     {
         return Err(Failure::usage(format!(
-            "--package: `{uri}` is not an at://<did>/at.happyproto.plugin.profile/<slug> URI"
+            "--project: `{uri}` is not an at://<did>/software.release.project/<name> URI"
         )));
     }
     let signed_in = hpy_atproto::session::current(&ctx.settings, ctx.keystore())
@@ -249,46 +274,40 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
     };
 
     // Resolve before writing, so a refusal leaves no half-made project behind.
-    let mut pins = match_packages(
-        &args.packages,
+    let pins = match_projects(
+        &args.projects,
         &[
             (PluginKind::Interpreter, &interpreters, &interpreters_found),
             (PluginKind::Library, &libraries, &libraries_found),
         ],
     )?;
-    let choose = choose_with_prompter(ctx, PACKAGE_FLAG);
-    let interpreter_versions = pick(
-        &registry,
+    let choose = choose_with_prompter(ctx);
+    let interpreter_entries = pick(
         PluginKind::Interpreter,
         &interpreters,
         &interpreters_found,
-        &mut pins,
+        &pins,
         &choose,
-    )
-    .await?;
-    let library_versions = pick(
-        &registry,
+    )?;
+    let library_entries = pick(
         PluginKind::Library,
         &libraries,
         &libraries_found,
-        &mut pins,
+        &pins,
         &choose,
-    )
-    .await?;
+    )?;
     let wanted = ProjectToml {
         happyview: HappyviewTable {
             version: Some(version.clone()),
         },
-        interpreters: interpreter_versions.clone(),
-        libraries: library_versions.clone(),
+        interpreters: interpreter_entries.clone(),
+        libraries: library_entries.clone(),
         dev: Default::default(),
     };
     let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
     let r = Resolver {
         registry: &registry,
-        choose: &choose,
         warn: &warn,
-        pins,
     };
     let lock = resolve_lock(&r, &wanted, None).await?;
     let handler_language = interpreters.first().cloned();
@@ -296,8 +315,8 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
         app_name,
         superadmin,
         happyview_version: version.clone(),
-        interpreters: interpreter_versions.clone(),
-        libraries: library_versions.clone(),
+        interpreters: interpreter_entries.clone(),
+        libraries: library_entries.clone(),
         handler_language: handler_language.clone(),
     };
     let mut files = render(&scaffold);
@@ -314,10 +333,12 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
         ));
     }
     let mut human = format!("created {}", dir.display());
-    for (key, v) in interpreter_versions.iter().chain(&library_versions) {
-        if semver::Version::parse(v).is_ok_and(|v| !v.pre.is_empty()) {
+    for (key, e) in interpreter_entries.iter().chain(&library_entries) {
+        if let Pin::Channel(c) = &e.pin
+            && c != "latest"
+        {
             human.push_str(&format!(
-                "\n  `{key}` has only prereleases, so happyview.toml accepts them from {v}"
+                "\n  `{key}` has no latest channel, so happyview.toml follows its {c} channel"
             ));
         }
     }
@@ -326,14 +347,7 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
         human.push_str(&format!("  cd {}\n", args.name.display()));
     }
     human.push_str("  hpy happyview dev");
-    ctx.out.done(
-        &human,
-        json!({
-            "dir": dir,
-            "happyview": version,
-            "plugins": lock.plugins.iter().map(|p| json!({ "id": p.id, "version": p.version })).collect::<Vec<_>>(),
-        }),
-    );
+    ctx.out.done(&human, report(&dir, &version, &wanted, &lock));
     Ok(())
 }
 
@@ -376,41 +390,122 @@ mod tests {
         assert_eq!(order_languages(&["js".into()]), ["js"]);
     }
 
-    fn candidate(package: &str, language: &str) -> Candidate {
-        let (did, slug) = parse_package_uri(package).unwrap();
+    fn candidate(project: &str, language: &str) -> Candidate {
+        let (did, name) = parse_project_uri(project).unwrap();
         Candidate {
-            package: package.into(),
+            project: project.into(),
             did,
-            slug: slug.clone(),
+            name: name.clone(),
             handle: None,
-            name: slug,
+            display_name: name,
+            channel: "latest".into(),
             version: "1.0.0".into(),
             language_id: Some(language.into()),
             namespace: None,
         }
     }
 
+    const ONE: &str = "at://did:plc:a/software.release.project/lua-one";
+    const TWO: &str = "at://did:plc:b/software.release.project/lua-two";
+
     #[test]
-    fn a_package_is_pinned_to_the_key_it_answers() {
-        let one = "at://did:plc:a/at.happyproto.plugin.profile/lua-one";
-        let two = "at://did:plc:b/at.happyproto.plugin.profile/lua-two";
-        let found = [candidate(one, "lua"), candidate(two, "lua")];
+    fn a_project_is_pinned_to_the_key_it_answers() {
+        let found = [candidate(ONE, "lua"), candidate(TWO, "lua")];
         let keys = ["lua".to_string()];
         let chosen = [(PluginKind::Interpreter, &keys[..], &found[..])];
-        let pins = match_packages(&[two.into()], &chosen).unwrap();
+        let pins = match_projects(&[TWO.into()], &chosen).unwrap();
         assert_eq!(
             pins.get(&(PluginKind::Interpreter, "lua".into()))
                 .map(String::as_str),
-            Some(two)
+            Some(TWO)
         );
-        let both = match_packages(&[one.into(), two.into()], &chosen).unwrap_err();
+        let both = match_projects(&[ONE.into(), TWO.into()], &chosen).unwrap_err();
         assert!(both.report.to_string().contains("both answer to `lua`"));
-        let none = match_packages(
-            &["at://did:plc:c/at.happyproto.plugin.profile/js".into()],
+        let none = match_projects(
+            &["at://did:plc:c/software.release.project/js".into()],
             &chosen,
         )
         .unwrap_err();
         assert_eq!(none.code, 2);
         assert!(none.report.to_string().contains("answers to none"));
+    }
+
+    fn never(_: &str, _: &[Candidate]) -> Result<usize, Failure> {
+        panic!("nothing should be ambiguous here")
+    }
+
+    #[test]
+    fn each_key_follows_its_projects_channel_and_a_pin_settles_several() {
+        let mut alpha = candidate(TWO, "lua");
+        alpha.channel = "alpha".into();
+        let found = [candidate(ONE, "lua"), alpha];
+        let keys = ["lua".to_string()];
+        let pins = BTreeMap::from([(
+            (PluginKind::Interpreter, "lua".to_string()),
+            TWO.to_string(),
+        )]);
+        let entries = pick(PluginKind::Interpreter, &keys, &found, &pins, &never).unwrap();
+        assert_eq!(
+            entries["lua"],
+            PluginEntry {
+                did: "did:plc:b".into(),
+                name: "lua-two".into(),
+                pin: Pin::Channel("alpha".into()),
+            }
+        );
+        let choose_first = |_: &str, _: &[Candidate]| -> Result<usize, Failure> { Ok(0) };
+        let entries = pick(
+            PluginKind::Interpreter,
+            &keys,
+            &found,
+            &BTreeMap::new(),
+            &choose_first,
+        )
+        .unwrap();
+        assert_eq!(entries["lua"].name, "lua-one");
+        let err = pick(
+            PluginKind::Interpreter,
+            &["python".to_string()],
+            &found,
+            &BTreeMap::new(),
+            &never,
+        )
+        .unwrap_err();
+        assert!(err.report.to_string().contains("answers to `python`"));
+    }
+
+    #[test]
+    fn the_json_names_each_entry_and_what_was_locked() {
+        let toml = ProjectToml {
+            happyview: HappyviewTable {
+                version: Some("3.0.0".into()),
+            },
+            interpreters: BTreeMap::from([(
+                "lua".to_string(),
+                PluginEntry {
+                    did: "did:plc:a".into(),
+                    name: "lua-one".into(),
+                    pin: Pin::Channel("latest".into()),
+                },
+            )]),
+            libraries: BTreeMap::new(),
+            dev: Default::default(),
+        };
+        let lock = Lockfile {
+            version: hpy_project::lock::LOCK_VERSION,
+            happyview: hpy_project::lock::LockedHappyview {
+                version: "3.0.0".into(),
+            },
+            plugins: vec![],
+        };
+        assert_eq!(
+            report(std::path::Path::new("app"), "3.0.0", &toml, &lock),
+            json!({
+                "dir": "app", "happyview": "3.0.0",
+                "interpreters": { "lua": { "project": ONE, "channel": "latest" } },
+                "libraries": {},
+                "plugins": []
+            })
+        );
     }
 }

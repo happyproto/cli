@@ -158,7 +158,7 @@ fn profile_init_without_tty_names_missing_flag() {
         .arg(plugin.path())
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--license"));
+        .stderr(predicate::str::contains("--author"));
 }
 
 #[test]
@@ -167,7 +167,7 @@ fn profile_init_local_only_from_flags_writes_hpy_toml() {
     let plugin = tempfile::tempdir().unwrap();
     std::fs::write(
         plugin.path().join("manifest.json"),
-        r#"{"id":"my-plugin","name":"Mine"}"#,
+        r#"{"id":"my-plugin","name":"Mine","plugin_type":"library"}"#,
     )
     .unwrap();
     hpy(config.path())
@@ -177,8 +177,6 @@ fn profile_init_local_only_from_flags_writes_hpy_toml() {
             "init",
             "--no-input",
             "--local-only",
-            "--license",
-            "MIT",
             "--author",
             "Ada <ada@x.io>",
             "--security",
@@ -190,9 +188,23 @@ fn profile_init_local_only_from_flags_writes_hpy_toml() {
         .success();
     let text = std::fs::read_to_string(plugin.path().join("hpy.toml")).unwrap();
     assert!(
-        text.contains("license = \"MIT\"") && text.contains("Ada"),
+        text.contains("[project]")
+            && text.contains("display_name = \"Mine\"")
+            && text.contains("Ada"),
         "{text}"
     );
+}
+
+#[test]
+fn withdraw_and_retry_are_unknown_subcommands() {
+    let dir = tempfile::tempdir().unwrap();
+    for gone in ["withdraw", "retry"] {
+        hpy(dir.path())
+            .args(["registry", "plugin", gone, "1.0.0"])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("unrecognized subcommand"));
+    }
 }
 
 #[test]

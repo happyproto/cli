@@ -70,42 +70,37 @@ pub struct LoginArgs {
 
 #[derive(Subcommand)]
 pub enum PluginCommand {
-    /// Write hpy.toml and create the plugin's registry profile on your PDS.
+    /// Write hpy.toml's [project] and create the plugin's project in the registry.
     Init(ProfileInitArgs),
-    /// Show the plugin's profile on your PDS.
-    Show(SlugArg),
-    /// Edit the plugin's profile on your PDS.
+    /// Show the plugin's project as the registry has it.
+    Show(NameArg),
+    /// Edit the plugin's project in the registry.
     Edit(ProfileEditArgs),
-    /// Copy the plugin's profile on your PDS into hpy.toml.
-    Pull(SlugArg),
-    /// Publish the plugin in the current directory as a new release.
+    /// Copy the plugin's project from the registry into hpy.toml's [project].
+    Pull(NameArg),
+    /// Publish the plugin in the current directory as a new version.
     Publish(PublishArgs),
-    /// Show what the registry knows about this plugin's releases.
+    /// Show what the registry knows about this plugin's versions.
     Status(StatusArgs),
-    /// Withdraw a published release (it stays installable by exact version).
-    Withdraw(WithdrawArgs),
-    /// Ask the registry to copy a pending release's artifact again.
-    Retry(RetryArgs),
+    /// Record a lifecycle event (end of support, end of life, …) for a version or the whole project.
+    Lifecycle(LifecycleArgs),
 }
 
 #[derive(Args, Default)]
-pub struct SlugArg {
-    /// Package slug (default: hpy.toml [profile] slug, then manifest.json id).
+pub struct NameArg {
+    /// Project name (default: hpy.toml [project] name, then manifest.json id).
     #[arg(long)]
-    pub slug: Option<String>,
+    pub name: Option<String>,
 }
 
 #[derive(Args, Default)]
 pub struct ProfileFields {
-    /// Display name.
+    /// The name people see (the publication's name).
     #[arg(long)]
-    pub name: Option<String>,
+    pub display_name: Option<String>,
     /// One-line description.
     #[arg(long)]
     pub description: Option<String>,
-    /// SPDX license expression, or "proprietary".
-    #[arg(long)]
-    pub license: Option<String>,
     /// Author as `Name <email> (url)`; repeatable.
     #[arg(long = "author", value_name = "AUTHOR")]
     pub authors: Vec<String>,
@@ -120,10 +115,10 @@ pub struct ProfileFields {
 #[derive(Args)]
 pub struct ProfileInitArgs {
     #[command(flatten)]
-    pub slug: SlugArg,
+    pub name: NameArg,
     #[command(flatten)]
     pub fields: ProfileFields,
-    /// Only write hpy.toml; do not create the record.
+    /// Only write hpy.toml; do not create the project.
     #[arg(long)]
     pub local_only: bool,
     /// Do not ask for confirmation.
@@ -134,7 +129,7 @@ pub struct ProfileInitArgs {
 #[derive(Args)]
 pub struct ProfileEditArgs {
     #[command(flatten)]
-    pub slug: SlugArg,
+    pub name: NameArg,
     /// Replace the fields given; authors/security/keywords given here are added.
     #[command(flatten)]
     pub fields: ProfileFields,
@@ -148,16 +143,22 @@ pub struct PublishArgs {
     /// Path to the built .wasm module, relative to the plugin's directory (-C).
     #[arg(long)]
     pub wasm: Option<PathBuf>,
-    /// Version to publish (default: hpy.toml [release] version, then manifest.json version).
+    /// Version to publish (default: manifest.json version).
     #[arg(long)]
     pub version: Option<String>,
-    /// Validate and print the record without publishing.
+    /// The channel to move to this version: latest, beta or alpha (default: latest for a stable version, else the prerelease's name).
+    #[arg(long)]
+    pub track: Option<String>,
+    /// Publish an already published version's artifact as --version instead of building one.
+    #[arg(long, value_name = "FROM_VERSION")]
+    pub promote: Option<String>,
+    /// Validate and print what would be published without publishing.
     #[arg(long)]
     pub dry_run: bool,
     /// Skip hpy.toml [build] command.
     #[arg(long)]
     pub no_build: bool,
-    /// Wait until the registry has copied the artifact.
+    /// Wait until the registry has copied the version's blobs.
     #[arg(long)]
     pub wait: bool,
     /// Do not ask for confirmation.
@@ -170,26 +171,34 @@ pub struct StatusArgs {
     /// A single version to inspect.
     pub version: Option<String>,
     #[command(flatten)]
-    pub slug: SlugArg,
+    pub name: NameArg,
 }
 
 #[derive(Args)]
-pub struct RetryArgs {
-    /// The pending version.
-    pub version: String,
-    #[command(flatten)]
-    pub slug: SlugArg,
-    /// Wait until the registry has copied the artifact.
+pub struct LifecycleArgs {
+    /// The version the event is about; with --project, the event itself.
+    #[arg(value_name = "VERSION")]
+    pub target: Option<String>,
+    /// endOfDevelopment, endOfSupport, supersededBy, endOfDistribution or endOfLife.
+    #[arg(value_name = "EVENT")]
+    pub event: Option<String>,
+    /// The event is about the whole project rather than one version.
     #[arg(long)]
-    pub wait: bool,
-}
-
-#[derive(Args)]
-pub struct WithdrawArgs {
-    /// The version to withdraw.
-    pub version: String,
+    pub project: bool,
+    /// What kind of event it is, in your own words (e.g. security).
+    #[arg(long)]
+    pub kind: Option<String>,
+    /// Why, for the people running it.
+    #[arg(long)]
+    pub reason: Option<String>,
+    /// The version to move to (with supersededBy).
+    #[arg(long, value_name = "VERSION")]
+    pub superseded_by: Option<String>,
+    /// Withdraw a status recorded in error, by its at:// URI.
+    #[arg(long, value_name = "STATUS_URI", conflicts_with_all = ["project", "superseded_by", "kind"])]
+    pub withdraw: Option<String>,
     #[command(flatten)]
-    pub slug: SlugArg,
+    pub name: NameArg,
     /// Do not ask for confirmation.
     #[arg(long, short)]
     pub yes: bool,
@@ -229,12 +238,12 @@ pub struct CreateArgs {
     /// Interpreter language id; repeatable (default: lua).
     #[arg(long = "interpreter", value_name = "LANGUAGE")]
     pub interpreters: Vec<String>,
-    /// Library namespace or id; repeatable.
+    /// Library namespace or project name; repeatable.
     #[arg(long = "library", value_name = "LIBRARY")]
     pub libraries: Vec<String>,
-    /// The registry package to use for the interpreter or library it answers to, when several do; repeatable.
-    #[arg(long = "package", value_name = "AT-URI")]
-    pub packages: Vec<String>,
+    /// The registry project to use for the interpreter or library it answers to, when several do; repeatable.
+    #[arg(long = "project", value_name = "AT-URI")]
+    pub projects: Vec<String>,
     /// The app's display name (default: the directory name).
     #[arg(long)]
     pub app_name: Option<String>,
@@ -313,7 +322,7 @@ pub fn parse_subnet(value: &str) -> Result<String, String> {
 
 #[derive(Args)]
 pub struct AddArgs {
-    /// A language id (interpreters) or a namespace or id (libraries), optionally `@version`.
+    /// A language id (interpreters) or a namespace or project name (libraries).
     #[arg(value_name = "PLUGIN")]
     pub plugins: Vec<String>,
     /// Treat every PLUGIN as an interpreter.
@@ -322,9 +331,15 @@ pub struct AddArgs {
     /// Treat every PLUGIN as a library.
     #[arg(long)]
     pub library: bool,
-    /// The registry package to use, when several answer to one name.
+    /// Follow this channel: latest, beta or alpha (default: latest, else the only channel there is).
+    #[arg(long, requires = "plugins", conflicts_with = "version")]
+    pub channel: Option<String>,
+    /// Pin this exact version instead of following a channel.
+    #[arg(long, requires = "plugins")]
+    pub version: Option<String>,
+    /// The registry project to use, when several answer to one name.
     #[arg(long, value_name = "AT-URI", requires = "plugins")]
-    pub package: Option<String>,
+    pub project: Option<String>,
 }
 
 #[derive(Args)]

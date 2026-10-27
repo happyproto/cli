@@ -7,5 +7,5 @@ pub mod manifest;
 pub mod place;
 pub mod scaffold;
 
-pub use config::{CONFIG_FILE, PluginKind, ProjectToml, Requirement, find_root};
+pub use config::{CONFIG_FILE, Pin, PluginEntry, PluginKind, ProjectToml, Requirement, find_root};
 pub use lock::{LOCK_FILE, LockedHappyview, LockedPlugin, Lockfile};

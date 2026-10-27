@@ -1,25 +1,27 @@
-use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use hpy_atproto::{Registry, ReleaseView, rkey_of};
-use hpy_plugin::checksum::same_digest;
-use hpy_project::config::{PluginKind, ProjectToml, version_matches};
+use hpy_atproto::{Registry, VersionView};
+use hpy_plugin::TRACKS;
+use hpy_plugin::artifact::PluginArtifact;
+use hpy_plugin::validate::{parse_project_uri, version_uri};
+use hpy_project::config::{Pin, PluginKind, ProjectToml, version_matches};
 use hpy_project::lock::{LOCK_VERSION, LockedHappyview, LockedPlugin, Lockfile};
-use hpy_project::manifest::{
-    happyview_requirement, package_requirements, package_uri, parse_package_uri, release_checksum,
-    release_extension,
-};
-use serde_json::Value;
+use hpy_project::manifest::{happyview_requirement, project_requirements};
 
 use crate::failure::Failure;
 
+/// A project that answers to an interpreter or library key, as `add` and
+/// `create` offer it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Candidate {
-    pub package: String,
+    pub project: String,
     pub did: String,
-    pub slug: String,
-    pub handle: Option<String>,
     pub name: String,
+    pub handle: Option<String>,
+    pub display_name: String,
+    /// The channel a new entry follows: `latest`, else the only one there is.
+    pub channel: String,
+    /// The version that channel points at.
     pub version: String,
     pub language_id: Option<String>,
     pub namespace: Option<String>,
@@ -29,8 +31,8 @@ impl Candidate {
     pub fn label(&self) -> String {
         let by = self.handle.as_deref().unwrap_or(&self.did);
         format!(
-            "{} ({}@{}, by {by}) {}",
-            self.name, self.slug, self.version, self.package
+            "{} ({} {} {}, by {by}) {}",
+            self.display_name, self.name, self.channel, self.version, self.project
         )
     }
 
@@ -40,8 +42,8 @@ impl Candidate {
             PluginKind::Interpreter => self
                 .language_id
                 .clone()
-                .unwrap_or_else(|| self.slug.clone()),
-            PluginKind::Library => self.namespace.clone().unwrap_or_else(|| self.slug.clone()),
+                .unwrap_or_else(|| self.name.clone()),
+            PluginKind::Library => self.namespace.clone().unwrap_or_else(|| self.name.clone()),
         }
     }
 
@@ -49,7 +51,7 @@ impl Candidate {
         answers(
             kind,
             key,
-            &self.slug,
+            &self.name,
             self.language_id.as_deref(),
             self.namespace.as_deref(),
         )
@@ -59,103 +61,128 @@ impl Candidate {
 fn answers(
     kind: PluginKind,
     key: &str,
-    slug: &str,
+    name: &str,
     language_id: Option<&str>,
     namespace: Option<&str>,
 ) -> bool {
     match kind {
         PluginKind::Interpreter => language_id == Some(key),
-        PluginKind::Library => namespace == Some(key) || slug == key,
+        PluginKind::Library => namespace == Some(key) || name == key,
     }
 }
 
-/// The packages a release requires. Only a library's count: HappyView links
+/// The artifact a version view carries, refused by name when unreadable.
+pub fn artifact_of(view: &VersionView) -> Result<PluginArtifact, Failure> {
+    PluginArtifact::from_value(&view.artifact).map_err(|e| {
+        Failure::runtime(format!(
+            "the registry's artifact for {} {} {e}",
+            view.name, view.version
+        ))
+    })
+}
+
+fn blob_cid(blob: &serde_json::Value) -> String {
+    blob["ref"]["$link"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// The projects a version requires. Only a library's count: HappyView links
 /// libraries to libraries, and an interpreter reaches them by namespace.
-fn library_requirements(record: &Value) -> Vec<(String, String)> {
-    if record["extensions"][hpy_plugin::EXTENSION_NSID]["pluginType"] == "library" {
-        package_requirements(record)
+fn library_requirements(artifact: &PluginArtifact) -> Vec<(String, String)> {
+    if artifact.plugin_type == "library" {
+        project_requirements(artifact)
     } else {
         Vec::new()
     }
 }
 
-/// Every package whose latest release is of this kind, with what it answers to.
+/// Every project of this kind with a channel to follow, with what it
+/// answers to.
 pub async fn candidates(reg: &dyn Registry, kind: PluginKind) -> Result<Vec<Candidate>, Failure> {
     let mut out = Vec::new();
-    for pkg in reg.search_packages(kind.plugin_type()).await? {
-        let slug = rkey_of(&pkg.uri).to_string();
-        // Search leaves the latest version and the handle out; the package
-        // view is where the registry states them.
-        let (latest, handle) = match pkg.latest_version.clone() {
-            Some(latest) => (latest, pkg.handle.clone()),
-            None => match reg.get_package(&pkg.did, &slug).await? {
-                Some(full) => match full.latest_version {
-                    Some(latest) => (latest, full.handle.or_else(|| pkg.handle.clone())),
-                    None => continue,
-                },
-                None => continue,
-            },
-        };
-        let Some(release) = reg.get_release(&pkg.did, &slug, &latest).await? else {
+    for project in reg.search_projects(Some(kind.plugin_type()), None).await? {
+        // A search may leave the channels out; then each is asked for.
+        let channels: Vec<&str> = TRACKS
+            .iter()
+            .copied()
+            .filter(|c| project.channels.is_empty() || project.channels.contains_key(*c))
+            .collect();
+        let mut head = None;
+        for channel in channels {
+            if let Some(view) = reg
+                .resolve_channel(&project.did, &project.name, channel)
+                .await?
+            {
+                head = Some((channel, view));
+                break;
+            }
+        }
+        let Some((channel, view)) = head else {
             continue;
         };
-        let Ok(ext) = release_extension(&release.record) else {
+        let Ok(artifact) = PluginArtifact::from_value(&view.artifact) else {
             continue;
         };
         out.push(Candidate {
-            package: package_uri(&pkg.did, &slug),
-            did: pkg.did.clone(),
-            name: pkg.record["name"].as_str().unwrap_or(&slug).to_string(),
-            slug,
-            handle,
-            version: latest,
-            language_id: ext.language_id,
-            namespace: ext.namespace,
+            project: project.uri.clone(),
+            did: project.did.clone(),
+            name: project.name.clone(),
+            handle: project.handle.clone(),
+            display_name: project.publication.name.clone(),
+            channel: channel.into(),
+            version: view.version.clone(),
+            language_id: artifact.language_id,
+            namespace: artifact.namespace,
         });
     }
     Ok(out)
 }
 
-/// The highest active release satisfying every range, with its record.
-pub fn pick_version(releases: &[ReleaseView], reqs: &[String]) -> Option<(String, Value)> {
-    releases
+/// The highest installable version satisfying every range.
+pub fn pick_version<'a>(versions: &'a [VersionView], reqs: &[String]) -> Option<&'a VersionView> {
+    versions
         .iter()
-        .filter(|r| r.status == "active")
-        .filter_map(|r| {
-            let v = r.record["version"].as_str()?;
-            let parsed = semver::Version::parse(v).ok()?;
+        .filter(|v| v.lifecycle.installable)
+        .filter_map(|v| {
+            let parsed = semver::Version::parse(&v.version).ok()?;
             reqs.iter()
-                .all(|req| version_matches(req, v))
-                .then(|| (parsed, r.record.clone()))
+                .all(|req| version_matches(req, &v.version))
+                .then_some((parsed, v))
         })
         .max_by(|a, b| a.0.cmp(&b.0))
-        .map(|(v, record)| (v.to_string(), record))
+        .map(|(_, v)| v)
 }
 
+/// Picks one of several candidates answering a key, by index.
 pub type Choose<'a> = &'a (dyn Fn(&str, &[Candidate]) -> Result<usize, Failure> + Sync);
 
 pub struct Resolver<'a> {
     pub registry: &'a dyn Registry,
-    pub choose: Choose<'a>,
     pub warn: &'a (dyn Fn(&str) + Sync),
-    /// `(kind, key)` → profile URI, answered before anything is searched.
-    pub pins: BTreeMap<(PluginKind, String), String>,
 }
 
-/// One range on a package and who stated it: `None` is `happyview.toml`,
-/// otherwise the requiring package's URI. A URI rather than a slug, because
-/// two publishers can share a slug and a re-pick must withdraw only its own.
-type Req = (String, Option<String>);
+/// A range on a project from the project URI of the library that asks it.
+type Req = (String, String);
+
+#[derive(Clone)]
+struct Chosen {
+    view: VersionView,
+    artifact: PluginArtifact,
+}
 
 struct Node {
     did: String,
-    slug: String,
+    name: String,
     kind: PluginKind,
     keys: BTreeSet<String>,
+    /// What `happyview.toml` pins it to, and under which key.
+    pin: Option<(Pin, String)>,
     reqs: Vec<Req>,
-    chosen: Option<(String, Value)>,
-    /// The newest release, when nothing satisfied the ranges and every
-    /// active release is a prerelease, which no plain range matches.
+    chosen: Option<Chosen>,
+    /// The newest version, when nothing satisfied the ranges and every
+    /// installable version is a prerelease, which no plain range matches.
     only_prereleases: Option<String>,
 }
 
@@ -163,19 +190,22 @@ impl Node {
     fn needed(&self) -> bool {
         !self.keys.is_empty() || !self.reqs.is_empty()
     }
+
+    fn version(&self) -> Option<&str> {
+        self.chosen.as_ref().map(|c| c.view.version.as_str())
+    }
 }
 
-/// Removes every requirement `package` stated and returns the nodes that lost
+/// Removes every requirement `project` stated and returns the nodes that lost
 /// one. A node left with no keys and no requirements is needed by nothing, so
 /// its own requirements are withdrawn in turn and its choice forgotten.
-fn withdraw(nodes: &mut BTreeMap<String, Node>, package: &str) -> BTreeSet<String> {
+fn withdraw(nodes: &mut BTreeMap<String, Node>, project: &str) -> BTreeSet<String> {
     let mut touched = BTreeSet::new();
-    let mut pending = vec![package.to_string()];
+    let mut pending = vec![project.to_string()];
     while let Some(requirer) = pending.pop() {
         for (uri, node) in nodes.iter_mut() {
             let before = node.reqs.len();
-            node.reqs
-                .retain(|(_, who)| who.as_deref() != Some(requirer.as_str()));
+            node.reqs.retain(|(_, who)| who != &requirer);
             if node.reqs.len() == before {
                 continue;
             }
@@ -188,27 +218,31 @@ fn withdraw(nodes: &mut BTreeMap<String, Node>, package: &str) -> BTreeSet<Strin
     touched
 }
 
-/// Every range on `package` with who stated it, including the version of each
-/// requiring package: that version is what a user can change to settle it.
-fn conflict(nodes: &BTreeMap<String, Node>, package: &str) -> Failure {
-    let node = &nodes[package];
+/// Every constraint on `project` with who stated it, including the version
+/// of each requiring library: that version is what a user can change.
+fn conflict(nodes: &BTreeMap<String, Node>, project: &str) -> Failure {
+    let node = &nodes[project];
+    let mut asked = Vec::new();
+    if let Some((pin, _)) = &node.pin {
+        let pin = match pin {
+            Pin::Channel(c) => format!("channel {c}"),
+            Pin::Version(v) => format!("version {v}"),
+        };
+        asked.push(format!("happyview.toml pins {} {pin}", node.name));
+    }
     let mut older = Vec::new();
-    let asked: Vec<String> = node
-        .reqs
-        .iter()
-        .map(|(req, who)| match who {
-            None => format!("happyview.toml needs {} {req}", node.slug),
-            Some(uri) => {
-                let requirer = &nodes[uri];
-                older.push(format!("`{}`", requirer.slug));
-                let version = requirer.chosen.as_ref().map_or("?", |(v, _)| v.as_str());
-                format!("{}@{version} needs {} {req}", requirer.slug, node.slug)
-            }
-        })
-        .collect();
+    for (req, who) in &node.reqs {
+        let requirer = &nodes[who];
+        older.push(format!("`{}`", requirer.name));
+        let version = requirer.version().unwrap_or("?");
+        asked.push(format!(
+            "{}@{version} needs {} {req}",
+            requirer.name, node.name
+        ));
+    }
     let mut msg = format!(
         "no version of {} satisfies every requirement: {}",
-        node.slug,
+        node.name,
         asked.join("; ")
     );
     if !older.is_empty() {
@@ -226,10 +260,25 @@ fn conflict(nodes: &BTreeMap<String, Node>, package: &str) -> Failure {
     {
         msg.push_str(&format!(
             "\n{} has only prereleases, which a range matches only when it names one, as \"^{newest}\" does",
-            node.slug
+            node.name
         ));
     }
     Failure::usage(msg)
+}
+
+fn state_name(view: &VersionView) -> String {
+    serde_json::to_value(view.lifecycle.state)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// `unavailable (withdrawn by its publisher)`, for messages.
+fn standing(view: &VersionView) -> String {
+    match &view.lifecycle.reason {
+        Some(reason) => format!("{}: {reason}", state_name(view)),
+        None => state_name(view),
+    }
 }
 
 pub async fn resolve_lock(
@@ -240,173 +289,113 @@ pub async fn resolve_lock(
     let hv = cfg.happyview_version()?.to_string();
     let mut nodes: BTreeMap<String, Node> = BTreeMap::new();
     let mut queue: VecDeque<String> = VecDeque::new();
-    let mut found: BTreeMap<PluginKind, Vec<Candidate>> = BTreeMap::new();
 
     for req in cfg.requirements() {
-        let pinned = r.pins.get(&(req.kind, req.key.clone())).cloned();
-        let locked = previous
-            .and_then(|l| l.find_key(req.kind, &req.key))
-            .map(|p| p.package.clone());
-        let package = match pinned.or(locked) {
-            Some(uri) => uri,
-            None => {
-                let all = match found.entry(req.kind) {
-                    Entry::Occupied(e) => e.into_mut(),
-                    Entry::Vacant(e) => e.insert(candidates(r.registry, req.kind).await?),
-                };
-                let matches: Vec<Candidate> = all
-                    .iter()
-                    .filter(|c| c.answers(req.kind, &req.key))
-                    .cloned()
-                    .collect();
-                match matches.len() {
-                    0 => {
-                        return Err(Failure::usage(format!(
-                            "no {} in the registry answers to `{}`",
-                            req.kind.plugin_type(),
-                            req.key
-                        )));
-                    }
-                    1 => matches[0].package.clone(),
-                    _ => matches[(r.choose)(&req.key, &matches)?].package.clone(),
-                }
-            }
-        };
-        let (did, slug) = parse_package_uri(&package)
-            .ok_or_else(|| Failure::usage(format!("`{package}` is not a registry package URI")))?;
-        let node = nodes.entry(package.clone()).or_insert_with(|| Node {
-            did,
-            slug,
+        let uri = req.entry.project_uri();
+        let node = nodes.entry(uri.clone()).or_insert_with(|| Node {
+            did: req.entry.did.clone(),
+            name: req.entry.name.clone(),
             kind: req.kind,
             keys: BTreeSet::new(),
+            pin: None,
             reqs: Vec::new(),
             chosen: None,
             only_prereleases: None,
         });
+        if node.kind != req.kind {
+            return Err(Failure::usage(format!(
+                "happyview.toml names {uri} as both an interpreter and a library"
+            )));
+        }
+        match &node.pin {
+            Some((pin, other)) if pin != &req.entry.pin => {
+                return Err(Failure::usage(format!(
+                    "happyview.toml's `{other}` and `{}` both name {uri} but pin it differently; pin it one way",
+                    req.key
+                )));
+            }
+            Some(_) => {}
+            None => node.pin = Some((req.entry.pin.clone(), req.key.clone())),
+        }
         node.keys.insert(req.key.clone());
-        node.reqs.push((req.req.clone(), None));
-        queue.push_back(package);
+        queue.push_back(uri);
     }
 
-    // A package no version satisfies is set aside rather than refused: a
+    // A project no version satisfies is set aside rather than refused: a
     // later re-pick of whoever asked can withdraw the request that caused it.
     let mut unsatisfied: BTreeSet<String> = BTreeSet::new();
     let mut rounds = 0;
-    while let Some(package) = queue.pop_front() {
+    while let Some(uri) = queue.pop_front() {
         rounds += 1;
         if rounds > 64 * (nodes.len() + 1) {
             let mut changing: BTreeSet<&str> =
-                queue.iter().map(|p| nodes[p].slug.as_str()).collect();
-            changing.insert(nodes[&package].slug.as_str());
+                queue.iter().map(|p| nodes[p].name.as_str()).collect();
+            changing.insert(nodes[&uri].name.as_str());
             let changing: Vec<&str> = changing.into_iter().collect();
             return Err(Failure::runtime(format!(
                 "plugin requirements do not settle on one set of versions; still changing: {}",
                 changing.join(", ")
             )));
         }
-        let (did, slug, kind, ranges) = {
-            let n = &nodes[&package];
+        let (ranges, pin) = {
+            let n = &nodes[&uri];
             if !n.needed() {
                 continue;
             }
             let ranges: Vec<String> = n.reqs.iter().map(|(req, _)| req.clone()).collect();
-            (n.did.clone(), n.slug.clone(), n.kind, ranges)
+            (ranges, n.pin.clone().map(|(pin, _)| pin))
         };
-        if let Some((v, _)) = &nodes[&package].chosen
+        if let Some(v) = nodes[&uri].version()
             && ranges.iter().all(|req| version_matches(req, v))
         {
-            unsatisfied.remove(&package);
+            unsatisfied.remove(&uri);
             continue;
         }
-        let chosen = match choose_release(r, previous, &package, &did, &slug, &ranges).await? {
+        let chosen = match choose(r, previous, &uri, &nodes[&uri], pin.as_ref(), &ranges).await? {
             Ok(chosen) => chosen,
             Err(only_prereleases) => {
-                nodes
-                    .get_mut(&package)
-                    .expect("node exists")
-                    .only_prereleases = only_prereleases;
-                unsatisfied.insert(package);
+                nodes.get_mut(&uri).expect("node exists").only_prereleases = only_prereleases;
+                unsatisfied.insert(uri);
                 continue;
             }
         };
-        unsatisfied.remove(&package);
-        let ext = release_extension(&chosen.1)?;
-        if ext.plugin_type != kind.plugin_type() {
-            return Err(Failure::usage(format!(
-                "{slug}@{} is a {} plugin, but it is wanted as {} {}",
-                chosen.0,
-                ext.plugin_type,
-                if kind == PluginKind::Interpreter {
-                    "an"
-                } else {
-                    "a"
-                },
-                kind.plugin_type()
-            )));
-        }
-        if let Some(key) = nodes[&package].keys.iter().find(|key| {
-            !answers(
-                kind,
-                key,
-                &slug,
-                ext.language_id.as_deref(),
-                ext.namespace.as_deref(),
-            )
-        }) {
-            return Err(Failure::usage(format!(
-                "{slug}@{} does not answer to `{key}`, which happyview.toml names it by",
-                chosen.0
-            )));
-        }
-        if ext.plugin_type == "interpreter" && ext.file_extensions.is_empty() {
-            return Err(Failure::usage(format!(
-                "{slug}@{} declares no file extensions, so no project file can name it; \
-                 it predates project mode, so pick a later version",
-                chosen.0
-            )));
-        }
-        if let Some(range) = happyview_requirement(&chosen.1)
-            && !version_matches(&range, &hv)
-        {
-            (r.warn)(&format!(
-                "{slug}@{} asks for HappyView {range}, and this project pins {hv}",
-                chosen.0
-            ));
-        }
-        // What the version this replaces asked of other packages no longer
+        unsatisfied.remove(&uri);
+        check_chosen(r, &nodes[&uri], &chosen, &hv)?;
+        // What the version this replaces asked of other projects no longer
         // holds; left in place, it would conflict with what this one asks.
-        for touched in withdraw(&mut nodes, &package) {
+        for touched in withdraw(&mut nodes, &uri) {
             if nodes[&touched].needed() {
                 queue.push_back(touched);
             } else {
                 unsatisfied.remove(&touched);
             }
         }
-        // In a cycle, what this package required may have been all that
+        // In a cycle, what this project required may have been all that
         // required it.
-        if !nodes[&package].needed() {
+        if !nodes[&uri].needed() {
             continue;
         }
-        for (dep, range) in library_requirements(&chosen.1) {
-            let Some((dep_did, dep_slug)) = parse_package_uri(&dep) else {
+        for (dep, range) in library_requirements(&chosen.artifact) {
+            let Some((dep_did, dep_name)) = parse_project_uri(&dep) else {
                 continue;
             };
             let node = nodes.entry(dep.clone()).or_insert_with(|| Node {
                 did: dep_did,
-                slug: dep_slug,
+                name: dep_name,
                 kind: PluginKind::Library,
                 keys: BTreeSet::new(),
+                pin: None,
                 reqs: Vec::new(),
                 chosen: None,
                 only_prereleases: None,
             });
-            node.reqs.push((range, Some(package.clone())));
+            node.reqs.push((range, uri.clone()));
             queue.push_back(dep);
         }
-        nodes.get_mut(&package).expect("node exists").chosen = Some(chosen);
+        nodes.get_mut(&uri).expect("node exists").chosen = Some(chosen);
     }
-    if let Some(package) = unsatisfied.first() {
-        return Err(conflict(&nodes, package));
+    if let Some(uri) = unsatisfied.first() {
+        return Err(conflict(&nodes, uri));
     }
 
     // Keep what the toml names and what those reach through requires.
@@ -416,9 +405,9 @@ pub async fn resolve_lock(
         .map(|(k, _)| k.clone())
         .collect();
     let mut stack: Vec<String> = reachable.iter().cloned().collect();
-    while let Some(package) = stack.pop() {
-        if let Some((_, record)) = &nodes[&package].chosen {
-            for (dep, _) in library_requirements(record) {
+    while let Some(uri) = stack.pop() {
+        if let Some(chosen) = &nodes[&uri].chosen {
+            for (dep, _) in library_requirements(&chosen.artifact) {
                 if nodes.contains_key(&dep) && reachable.insert(dep.clone()) {
                     stack.push(dep);
                 }
@@ -427,27 +416,35 @@ pub async fn resolve_lock(
     }
 
     let mut plugins: Vec<LockedPlugin> = Vec::new();
-    for package in &reachable {
-        let n = &nodes[package];
-        let (version, record) = n.chosen.clone().expect("every reachable node was resolved");
-        if let Some(other) = plugins.iter().find(|p| p.id == n.slug) {
+    for uri in &reachable {
+        let n = &nodes[uri];
+        let chosen = n.chosen.clone().expect("every reachable node was resolved");
+        if let Some(other) = plugins.iter().find(|p| p.id == n.name) {
             return Err(Failure::usage(format!(
-                "{} and {package} are both named `{}`, and HappyView loads plugins by id",
-                other.package, n.slug
+                "{} and {uri} are both named `{}`, and HappyView loads plugins by id",
+                other.project, n.name
             )));
         }
-        let dependencies = library_requirements(&record)
+        let dependencies = library_requirements(&chosen.artifact)
             .into_iter()
             .filter(|(dep, _)| reachable.contains(dep))
-            .filter_map(|(dep, _)| parse_package_uri(&dep).map(|(_, s)| s))
+            .filter_map(|(dep, _)| parse_project_uri(&dep).map(|(_, name)| name))
             .collect();
+        let version = chosen.view.version.clone();
         plugins.push(LockedPlugin {
-            id: n.slug.clone(),
+            id: n.name.clone(),
             kind: n.kind,
             keys: n.keys.iter().cloned().collect(),
-            package: package.clone(),
+            project: uri.clone(),
+            version_uri: version_uri(&n.did, &n.name, &version),
             version,
-            checksum: release_checksum(&record)?,
+            channel: match &n.pin {
+                Some((Pin::Channel(c), _)) => Some(c.clone()),
+                _ => None,
+            },
+            manifest_cid: chosen.view.manifest.cid.clone(),
+            package_cid: blob_cid(&chosen.artifact.package),
+            manifest_blob_cid: blob_cid(&chosen.artifact.manifest),
             dependencies,
         });
     }
@@ -458,51 +455,188 @@ pub async fn resolve_lock(
     })
 }
 
-/// The locked version when it still satisfies `ranges`, else the highest
-/// active one that does. When none does, the error is the newest release if
-/// every active one is a prerelease.
-async fn choose_release(
+/// That the version chosen for `node` is the kind, and answers the keys,
+/// `happyview.toml` names it by.
+fn check_chosen(r: &Resolver<'_>, node: &Node, chosen: &Chosen, hv: &str) -> Result<(), Failure> {
+    let a = &chosen.artifact;
+    let at = format!("{}@{}", node.name, chosen.view.version);
+    if a.plugin_type != node.kind.plugin_type() {
+        return Err(Failure::usage(format!(
+            "{at} is a {} plugin, but it is wanted as {} {}",
+            a.plugin_type,
+            if node.kind == PluginKind::Interpreter {
+                "an"
+            } else {
+                "a"
+            },
+            node.kind.plugin_type()
+        )));
+    }
+    if let Some(key) = node.keys.iter().find(|key| {
+        !answers(
+            node.kind,
+            key,
+            &node.name,
+            a.language_id.as_deref(),
+            a.namespace.as_deref(),
+        )
+    }) {
+        return Err(Failure::usage(format!(
+            "{at} does not answer to `{key}`, which happyview.toml names it by"
+        )));
+    }
+    if a.plugin_type == "interpreter" && a.file_extensions.is_empty() {
+        return Err(Failure::usage(format!(
+            "{at} declares no file extensions, so no project file can name it; \
+             it predates project mode, so pick a later version"
+        )));
+    }
+    if let Some(range) = happyview_requirement(a)
+        && !version_matches(&range, hv)
+    {
+        (r.warn)(&format!(
+            "{at} asks for HappyView {range}, and this project pins {hv}"
+        ));
+    }
+    Ok(())
+}
+
+/// `version` of the project, which the lock may already pin: a locked
+/// version whose manifest changed is not the one locked, so it is refused.
+async fn fetch_version(
+    r: &Resolver<'_>,
+    locked: Option<&LockedPlugin>,
+    node: &Node,
+    version: &str,
+) -> Result<Option<Chosen>, Failure> {
+    let Some(view) = r
+        .registry
+        .get_version(&node.did, &node.name, version)
+        .await?
+    else {
+        return Ok(None);
+    };
+    if let Some(p) = locked.filter(|p| p.version == version)
+        && p.manifest_cid != view.manifest.cid
+    {
+        return Err(Failure::runtime(format!(
+            "the registry's {} {version} no longer matches happyview.lock",
+            node.name
+        )));
+    }
+    let artifact = artifact_of(&view)?;
+    Ok(Some(Chosen { view, artifact }))
+}
+
+/// The version for a node: what a pin names, else the locked one while it
+/// still satisfies, else the highest installable one that does. When none
+/// does, the error is the newest version if every installable one is a
+/// prerelease.
+async fn choose(
     r: &Resolver<'_>,
     previous: Option<&Lockfile>,
-    package: &str,
-    did: &str,
-    slug: &str,
+    uri: &str,
+    node: &Node,
+    pin: Option<&Pin>,
     ranges: &[String],
-) -> Result<Result<(String, Value), Option<String>>, Failure> {
-    let locked = previous.and_then(|l| l.plugins.iter().find(|p| p.package == package));
+) -> Result<Result<Chosen, Option<String>>, Failure> {
+    let locked = previous.and_then(|l| l.plugins.iter().find(|p| p.project == uri));
+    let satisfies = |v: &str| ranges.iter().all(|req| version_matches(req, v));
+    match pin {
+        Some(Pin::Version(v)) => {
+            let chosen = fetch_version(r, locked, node, v)
+                .await?
+                .ok_or_else(|| Failure::usage(format!("the registry has no {} {v}", node.name)))?;
+            if !chosen.view.lifecycle.installable {
+                // An exact pin is the operator's call; they hear why it is
+                // not offered to anyone else.
+                (r.warn)(&format!(
+                    "{}@{v} is {}; happyview.toml pins it, so it is used anyway",
+                    node.name,
+                    standing(&chosen.view)
+                ));
+            }
+            return Ok(if satisfies(v) { Ok(chosen) } else { Err(None) });
+        }
+        Some(Pin::Channel(c)) => {
+            // Only a version this channel chose is kept: one locked from
+            // another channel or an exact pin is not what was asked for now.
+            if let Some(p) = locked
+                && p.channel.as_deref() == Some(c.as_str())
+                && satisfies(&p.version)
+                && let Some(chosen) = fetch_version(r, locked, node, &p.version).await?
+            {
+                if !chosen.view.lifecycle.installable {
+                    (r.warn)(&format!(
+                        "{}@{} in happyview.lock is {}; it stays until `hpy happyview add` moves it",
+                        node.name,
+                        p.version,
+                        standing(&chosen.view)
+                    ));
+                }
+                return Ok(Ok(chosen));
+            }
+            let view = r
+                .registry
+                .resolve_channel(&node.did, &node.name, c)
+                .await?
+                .ok_or_else(|| {
+                    Failure::usage(format!(
+                        "{} has no {c} channel; name another in happyview.toml",
+                        node.name
+                    ))
+                })?;
+            if !view.lifecycle.installable {
+                return Err(Failure::usage(format!(
+                    "{}'s {c} channel points at {}, which is {}; pin another version in happyview.toml",
+                    node.name,
+                    view.version,
+                    standing(&view)
+                )));
+            }
+            let satisfied = satisfies(&view.version);
+            let artifact = artifact_of(&view)?;
+            let chosen = Chosen { view, artifact };
+            return Ok(if satisfied { Ok(chosen) } else { Err(None) });
+        }
+        None => {}
+    }
     if let Some(p) = locked
-        && ranges.iter().all(|req| version_matches(req, &p.version))
+        && satisfies(&p.version)
     {
-        let release = r
-            .registry
-            .get_release(did, slug, &p.version)
+        let chosen = fetch_version(r, locked, node, &p.version)
             .await?
             .ok_or_else(|| {
-                Failure::runtime(format!("the registry no longer has {slug}@{}", p.version))
+                Failure::runtime(format!(
+                    "the registry no longer has {}@{}",
+                    node.name, p.version
+                ))
             })?;
-        let stated = release_checksum(&release.record)?;
-        if !same_digest(&stated, &p.checksum) {
-            return Err(Failure::runtime(format!(
-                "the registry states checksum {stated} for {slug}@{}, but happyview.lock records {}; \
-                 a published version must never change, so hpy refuses it",
-                p.version, p.checksum
-            )));
+        if !chosen.view.lifecycle.installable {
+            (r.warn)(&format!(
+                "{}@{} in happyview.lock is {}; it stays until something asks for another",
+                node.name,
+                p.version,
+                standing(&chosen.view)
+            ));
         }
-        return Ok(Ok((p.version.clone(), release.record)));
-    }
-    let releases = r.registry.list_releases(did, slug).await?;
-    if let Some(chosen) = pick_version(&releases, ranges) {
         return Ok(Ok(chosen));
     }
-    let active: Vec<semver::Version> = releases
+    let versions = r.registry.list_versions(&node.did, &node.name).await?;
+    if let Some(view) = pick_version(&versions, ranges) {
+        let view = view.clone();
+        let artifact = artifact_of(&view)?;
+        return Ok(Ok(Chosen { view, artifact }));
+    }
+    let installable: Vec<semver::Version> = versions
         .iter()
-        .filter(|r| r.status == "active")
-        .filter_map(|r| semver::Version::parse(r.record["version"].as_str()?).ok())
+        .filter(|v| v.lifecycle.installable)
+        .filter_map(|v| semver::Version::parse(&v.version).ok())
         .collect();
-    let only_prereleases = active
+    let only_prereleases = installable
         .iter()
         .all(|v| !v.pre.is_empty())
-        .then(|| active.iter().max().map(|v| v.to_string()))
+        .then(|| installable.iter().max().map(|v| v.to_string()))
         .flatten();
     Ok(Err(only_prereleases))
 }
@@ -511,6 +645,7 @@ async fn choose_release(
 mod tests {
     use super::*;
     use crate::testing::{RegistryFixture, interpreter_ext, library_ext};
+    use hpy_plugin::validate::project_uri;
     use serde_json::json;
     use std::sync::Mutex;
 
@@ -524,8 +659,9 @@ mod tests {
         .unwrap()
     }
 
-    fn never(_: &str, _: &[Candidate]) -> Result<usize, Failure> {
-        panic!("nothing should be ambiguous here")
+    /// `key = { did = HV, name, <pin> }` in `table`.
+    fn entry(table: &str, key: &str, name: &str, pin: &str) -> String {
+        format!("[{table}]\n{key} = {{ did = \"{HV}\", name = \"{name}\", {pin} }}\n")
     }
 
     async fn resolve(
@@ -535,39 +671,27 @@ mod tests {
     ) -> Result<Lockfile, Failure> {
         let r = Resolver {
             registry: reg,
-            choose: &never,
             warn: &|_| {},
-            pins: BTreeMap::new(),
         };
         resolve_lock(&r, cfg, prev).await
     }
 
     fn registry() -> RegistryFixture {
         let mut reg = RegistryFixture::default();
-        reg.publish(
-            HV,
-            "happyview-lua",
-            "1.4.0",
-            interpreter_ext("lua", "lua"),
-            json!({}),
-            b"lua140",
-        );
-        reg.publish(
-            HV,
-            "happyview-lua",
-            "1.4.2",
-            interpreter_ext("lua", "lua"),
-            json!({}),
-            b"lua142",
-        );
-        reg.publish(
-            HV,
-            "happyview-lua",
-            "2.0.0",
-            interpreter_ext("lua", "lua"),
-            json!({}),
-            b"lua200",
-        );
+        for (v, wasm) in [
+            ("1.4.0", b"lua140"),
+            ("1.4.2", b"lua142"),
+            ("2.0.0", b"lua200"),
+        ] {
+            reg.publish(
+                HV,
+                "happyview-lua",
+                v,
+                interpreter_ext("lua", "lua"),
+                json!({}),
+                wasm,
+            );
+        }
         reg.publish(
             HV,
             "happyview-db",
@@ -581,29 +705,46 @@ mod tests {
             "happyview-record",
             "2.1.0",
             library_ext("happyview.record"),
-            json!({ "at://did:plc:happyview/at.happyproto.plugin.profile/happyview-db": "^0.1" }),
+            json!({ project_uri(HV, "happyview-db"): "^0.1" }),
             b"record210",
         );
         reg
     }
 
     #[tokio::test]
-    async fn resolves_by_language_and_namespace_with_dependencies() {
+    async fn a_channel_and_a_version_resolve_with_dependencies() {
         let reg = registry();
-        let lock = resolve(
-            &reg,
-            &toml("[interpreters]\nlua = \"1.4.0\"\n[libraries]\n\"happyview.record\" = \"2\"\n"),
-            None,
-        )
-        .await
-        .unwrap();
+        let cfg = toml(&format!(
+            "{}{}",
+            entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\""
+            ),
+            entry(
+                "libraries",
+                "\"happyview.record\"",
+                "happyview-record",
+                "version = \"2.1.0\""
+            ),
+        ));
+        let lock = resolve(&reg, &cfg, None).await.unwrap();
         assert_eq!(lock.happyview.version, "3.0.0-alpha.12");
         let lua = lock.find_key(PluginKind::Interpreter, "lua").unwrap();
         assert_eq!(
             (lua.id.as_str(), lua.version.as_str()),
-            ("happyview-lua", "1.4.2")
+            ("happyview-lua", "2.0.0")
         );
-        assert_eq!(lua.checksum, hpy_plugin::checksum::checksum(b"lua142"));
+        assert_eq!(lua.package_cid, hpy_plugin::checksum::raw_cid(b"lua200"));
+        assert_eq!(lua.project, project_uri(HV, "happyview-lua"));
+        let view = reg.find(HV, "happyview-lua", "2.0.0").unwrap();
+        assert_eq!(lua.version_uri, view.uri);
+        assert_eq!(lua.manifest_cid, view.manifest.cid);
+        assert_eq!(
+            lua.manifest_blob_cid,
+            view.artifact["manifest"]["ref"]["$link"].as_str().unwrap()
+        );
         let record = lock
             .find_key(PluginKind::Library, "happyview.record")
             .unwrap();
@@ -615,149 +756,278 @@ mod tests {
             .unwrap();
         assert!(db.keys.is_empty());
         assert_eq!(db.version, "0.1.0");
+        // The lock it writes reads back.
+        Lockfile::parse(&lock.render()).unwrap();
     }
 
     #[tokio::test]
-    async fn search_without_latest_version_falls_back_to_the_package_view() {
+    async fn a_channel_that_points_at_an_uninstallable_version_is_refused() {
         let mut reg = registry();
-        let uri = package_uri(HV, "happyview-lua");
-        reg.packages
-            .iter_mut()
-            .find(|p| p.uri == uri)
-            .unwrap()
-            .handle = Some("happyview.dev".into());
-        let search = reg.search_packages("interpreter").await.unwrap();
-        assert!(
-            search
-                .iter()
-                .all(|p| p.latest_version.is_none() && p.handle.is_none())
-        );
-
-        let found = candidates(&reg, PluginKind::Interpreter).await.unwrap();
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].version, "2.0.0");
-        assert_eq!(found[0].handle.as_deref(), Some("happyview.dev"));
-        assert!(
-            reg.calls
-                .lock()
-                .unwrap()
-                .contains(&"getPackage happyview-lua".to_string())
-        );
-    }
-
-    #[tokio::test]
-    async fn a_locked_version_that_still_satisfies_is_kept() {
-        let reg = registry();
-        let cfg = toml("[interpreters]\nlua = \"1.4.0\"\n");
-        let mut prev = resolve(&reg, &cfg, None).await.unwrap();
-        prev.plugins[0].version = "1.4.0".into();
-        prev.plugins[0].checksum = hpy_plugin::checksum::checksum(b"lua140");
-        let lock = resolve(&reg, &cfg, Some(&prev)).await.unwrap();
-        assert_eq!(lock.plugins[0].version, "1.4.0");
-    }
-
-    #[tokio::test]
-    async fn previous_lock_package_is_kept_without_asking() {
-        let mut reg = registry();
-        reg.publish(
-            OTHER,
+        reg.retire(HV, "happyview-lua", "2.0.0");
+        reg.set_channel(HV, "happyview-lua", "latest", "2.0.0");
+        let cfg = toml(&entry(
+            "interpreters",
             "lua",
-            "9.0.0",
-            interpreter_ext("lua", "lua"),
-            json!({}),
-            b"impostor",
-        );
-        let cfg = toml("[interpreters]\nlua = \"1.4.0\"\n");
-        let choose = |_: &str, c: &[Candidate]| -> Result<usize, Failure> {
-            Ok(c.iter().position(|c| c.did == HV).unwrap())
-        };
-        let r = Resolver {
-            registry: &reg,
-            choose: &choose,
-            warn: &|_| {},
-            pins: BTreeMap::new(),
-        };
-        let first = resolve_lock(&r, &cfg, None).await.unwrap();
-        let bumped = toml("[interpreters]\nlua = \"2.0.0\"\n");
-        let second = resolve(&reg, &bumped, Some(&first)).await.unwrap();
-        let lua = second.find_key(PluginKind::Interpreter, "lua").unwrap();
-        assert_eq!(
-            (lua.id.as_str(), lua.version.as_str()),
-            ("happyview-lua", "2.0.0")
-        );
-    }
-
-    #[tokio::test]
-    async fn ambiguity_without_a_choice_is_an_error_naming_package() {
-        let mut reg = registry();
-        reg.publish(
-            OTHER,
-            "lua",
-            "9.0.0",
-            interpreter_ext("lua", "lua"),
-            json!({}),
-            b"impostor",
-        );
-        let refuse = |key: &str, c: &[Candidate]| -> Result<usize, Failure> {
-            Err(Failure::usage(format!(
-                "{key}: {} packages; pass --package",
-                c.len()
-            )))
-        };
-        let r = Resolver {
-            registry: &reg,
-            choose: &refuse,
-            warn: &|_| {},
-            pins: BTreeMap::new(),
-        };
-        let err = resolve_lock(&r, &toml("[interpreters]\nlua = \"*\"\n"), None)
-            .await
-            .unwrap_err();
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
+        let err = resolve(&reg, &cfg, None).await.unwrap_err();
         assert_eq!(err.code, 2);
-        assert!(format!("{:?}", err.report).contains("--package"));
+        let text = err.report.to_string();
+        assert!(
+            text.contains("2.0.0") && text.contains("unavailable"),
+            "{text}"
+        );
+        assert!(text.contains("withdrawn by its publisher"), "{text}");
     }
 
     #[tokio::test]
-    async fn a_pin_answers_before_choose() {
+    async fn a_pinned_version_that_is_not_installable_warns_but_resolves() {
         let mut reg = registry();
-        reg.publish(
-            OTHER,
+        reg.retire(HV, "happyview-lua", "1.4.0");
+        let cfg = toml(&entry(
+            "interpreters",
             "lua",
-            "9.0.0",
-            interpreter_ext("lua", "lua"),
-            json!({}),
-            b"impostor",
-        );
-        let pins = BTreeMap::from([(
-            (PluginKind::Interpreter, "lua".to_string()),
-            package_uri(OTHER, "lua"),
-        )]);
+            "happyview-lua",
+            "version = \"1.4.0\"",
+        ));
+        let warnings = Mutex::new(Vec::new());
+        let warn = |m: &str| warnings.lock().unwrap().push(m.to_string());
         let r = Resolver {
             registry: &reg,
-            choose: &never,
-            warn: &|_| {},
-            pins,
+            warn: &warn,
         };
-        let lock = resolve_lock(&r, &toml("[interpreters]\nlua = \"*\"\n"), None)
-            .await
-            .unwrap();
-        assert_eq!(lock.plugins[0].id, "lua");
+        let lock = resolve_lock(&r, &cfg, None).await.unwrap();
+        assert_eq!(lock.plugins[0].version, "1.4.0");
+        let warnings = warnings.into_inner().unwrap();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("1.4.0") && w.contains("unavailable")),
+            "{warnings:?}"
+        );
     }
 
     #[tokio::test]
-    async fn withdrawn_versions_are_not_picked_but_a_locked_one_stays() {
-        let mut reg = registry();
-        let cfg = toml("[interpreters]\nlua = \"1.4.0\"\n");
+    async fn a_missing_channel_or_version_is_named() {
+        let reg = registry();
+        let err = resolve(
+            &reg,
+            &toml(&entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"beta\"",
+            )),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.report.to_string().contains("no beta channel"),
+            "{}",
+            err.report
+        );
+        let err = resolve(
+            &reg,
+            &toml(&entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "version = \"9.0.0\"",
+            )),
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.report.to_string().contains("9.0.0"), "{}", err.report);
+    }
+
+    #[tokio::test]
+    async fn a_locked_version_is_kept_while_the_channel_moves_on() {
+        let mut reg = RegistryFixture::default();
+        reg.publish(
+            HV,
+            "happyview-lua",
+            "1.4.0",
+            interpreter_ext("lua", "lua"),
+            json!({}),
+            b"a",
+        );
+        let cfg = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
         let first = resolve(&reg, &cfg, None).await.unwrap();
-        reg.withdraw(HV, "happyview-lua", "1.4.2");
-        assert_eq!(
-            resolve(&reg, &cfg, Some(&first)).await.unwrap().plugins[0].version,
-            "1.4.2"
+        reg.publish(
+            HV,
+            "happyview-lua",
+            "1.5.0",
+            interpreter_ext("lua", "lua"),
+            json!({}),
+            b"b",
         );
-        assert_eq!(
-            resolve(&reg, &cfg, None).await.unwrap().plugins[0].version,
-            "1.4.0"
+        let again = resolve(&reg, &cfg, Some(&first)).await.unwrap();
+        assert_eq!(again.plugins[0].version, "1.4.0");
+        let fresh = resolve(&reg, &cfg, None).await.unwrap();
+        assert_eq!(fresh.plugins[0].version, "1.5.0");
+    }
+
+    #[tokio::test]
+    async fn the_lock_records_the_channel_each_entry_follows() {
+        let reg = registry();
+        let cfg = toml(&format!(
+            "{}{}",
+            entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\""
+            ),
+            entry(
+                "libraries",
+                "\"happyview.record\"",
+                "happyview-record",
+                "version = \"2.1.0\""
+            ),
+        ));
+        let lock = resolve(&reg, &cfg, None).await.unwrap();
+        let channel = |id: &str| {
+            lock.plugins
+                .iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .channel
+                .clone()
+        };
+        assert_eq!(channel("happyview-lua").as_deref(), Some("latest"));
+        assert_eq!(channel("happyview-record"), None);
+        assert_eq!(channel("happyview-db"), None);
+        assert!(lock.drift(&cfg).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_locked_version_from_another_channel_is_not_kept() {
+        let mut reg = registry();
+        reg.publish(
+            HV,
+            "happyview-lua",
+            "2.1.0-beta.1",
+            interpreter_ext("lua", "lua"),
+            json!({}),
+            b"beta",
         );
+        let latest = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
+        let first = resolve(&reg, &latest, None).await.unwrap();
+        let beta = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"beta\"",
+        ));
+        assert!(!first.drift(&beta).is_empty());
+        let moved = resolve(&reg, &beta, Some(&first)).await.unwrap();
+        assert_eq!(moved.plugins[0].version, "2.1.0-beta.1");
+        assert_eq!(moved.plugins[0].channel.as_deref(), Some("beta"));
+    }
+
+    #[tokio::test]
+    async fn a_kept_locked_version_that_is_no_longer_installable_warns() {
+        let mut reg = registry();
+        let cfg = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
+        let first = resolve(&reg, &cfg, None).await.unwrap();
+        reg.retire(HV, "happyview-lua", "2.0.0");
+        let warnings = Mutex::new(Vec::new());
+        let warn = |m: &str| warnings.lock().unwrap().push(m.to_string());
+        let r = Resolver {
+            registry: &reg,
+            warn: &warn,
+        };
+        let lock = resolve_lock(&r, &cfg, Some(&first)).await.unwrap();
+        assert_eq!(lock.plugins[0].version, "2.0.0");
+        let warnings = warnings.into_inner().unwrap();
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("2.0.0") && w.contains("unavailable")),
+            "{warnings:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_locked_version_whose_manifest_changed_is_refused() {
+        let reg = registry();
+        let cfg = toml(&entry(
+            "interpreters",
+            "lua",
+            "happyview-lua",
+            "channel = \"latest\"",
+        ));
+        let mut prev = resolve(&reg, &cfg, None).await.unwrap();
+        prev.plugins[0].manifest_cid = "bafyreisomethingelse".into();
+        let err = resolve(&reg, &cfg, Some(&prev)).await.unwrap_err();
+        assert!(
+            err.report
+                .to_string()
+                .contains("the registry's happyview-lua 2.0.0 no longer matches happyview.lock"),
+            "{}",
+            err.report
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dependency_takes_the_highest_installable_version_in_range() {
+        let mut reg = registry();
+        reg.publish(
+            HV,
+            "happyview-db",
+            "0.1.5",
+            library_ext("happyview.db"),
+            json!({}),
+            b"db015",
+        );
+        reg.publish(
+            HV,
+            "happyview-db",
+            "0.1.7",
+            library_ext("happyview.db"),
+            json!({}),
+            b"db017",
+        );
+        reg.publish(
+            HV,
+            "happyview-db",
+            "0.2.0",
+            library_ext("happyview.db"),
+            json!({}),
+            b"db020",
+        );
+        reg.retire(HV, "happyview-db", "0.1.7");
+        let cfg = toml(&entry(
+            "libraries",
+            "\"happyview.record\"",
+            "happyview-record",
+            "channel = \"latest\"",
+        ));
+        let lock = resolve(&reg, &cfg, None).await.unwrap();
+        let db = lock
+            .plugins
+            .iter()
+            .find(|p| p.id == "happyview-db")
+            .unwrap();
+        assert_eq!(db.version, "0.1.5");
     }
 
     #[tokio::test]
@@ -765,15 +1035,29 @@ mod tests {
         let reg = registry();
         let with = resolve(
             &reg,
-            &toml("[libraries]\n\"happyview.record\" = \"2\"\n"),
+            &toml(&entry(
+                "libraries",
+                "\"happyview.record\"",
+                "happyview-record",
+                "channel = \"latest\"",
+            )),
             None,
         )
         .await
         .unwrap();
         assert_eq!(with.plugins.len(), 2);
-        let without = resolve(&reg, &toml("[interpreters]\nlua = \"1\"\n"), Some(&with))
-            .await
-            .unwrap();
+        let without = resolve(
+            &reg,
+            &toml(&entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\"",
+            )),
+            Some(&with),
+        )
+        .await
+        .unwrap();
         assert_eq!(
             without
                 .plugins
@@ -785,10 +1069,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn conflicting_requirements_name_both_requirers() {
+    async fn a_pin_a_requirement_refuses_names_both() {
         let mut reg = registry();
-        // 0.2 satisfies the toml on its own, so the conflict appears only once
-        // happyview-record's `^0.1` arrives.
         reg.publish(
             HV,
             "happyview-db",
@@ -797,27 +1079,25 @@ mod tests {
             json!({}),
             b"db020",
         );
-        let err = resolve(
-            &reg,
-            &toml("[libraries]\n\"happyview.record\" = \"2\"\n\"happyview.db\" = \"0.2\"\n"),
-            None,
-        )
-        .await
-        .unwrap_err();
+        let cfg = toml(&format!(
+            "[libraries]\n\"happyview.record\" = {{ did = \"{HV}\", name = \"happyview-record\", channel = \"latest\" }}\n\
+             \"happyview.db\" = {{ did = \"{HV}\", name = \"happyview-db\", version = \"0.2.0\" }}\n"
+        ));
+        let err = resolve(&reg, &cfg, None).await.unwrap_err();
         assert_eq!(err.code, 2);
         assert_eq!(
             err.report.to_string(),
             "no version of happyview-db satisfies every requirement: \
-             happyview.toml needs happyview-db 0.2; happyview-record@2.1.0 needs happyview-db ^0.1\n\
+             happyview.toml pins happyview-db version 0.2.0; happyview-record@2.1.0 needs happyview-db ^0.1\n\
              an older version of `happyview-record` may ask for less; \
              naming one in happyview.toml may settle this"
         );
     }
 
     #[tokio::test]
-    async fn a_conflict_a_later_repick_clears_is_not_reported() {
-        let c_uri = package_uri(HV, "c");
-        let a_uri = package_uri(HV, "a");
+    async fn a_repick_withdraws_its_old_requirements() {
+        let c_uri = project_uri(HV, "c");
+        let a_uri = project_uri(HV, "a");
         let mut reg = RegistryFixture::default();
         reg.publish(HV, "c", "1.0.0", library_ext("c"), json!({}), b"c1");
         reg.publish(HV, "c", "2.0.0", library_ext("c"), json!({}), b"c2");
@@ -845,76 +1125,40 @@ mod tests {
             json!({ &a_uri: "^1" }),
             b"x1",
         );
+        reg.publish(
+            HV,
+            "y",
+            "1.0.0",
+            library_ext("y"),
+            json!({ &a_uri: "*" }),
+            b"y1",
+        );
 
-        // `c` is reached holding the toml's `^1` and `a@2.0.0`'s `^2` before
-        // `x` moves `a` back to 1, which withdraws the `^2`.
-        let lock = resolve(
-            &reg,
-            &toml("[libraries]\na = \"*\"\nc = \"^1\"\nx = \"*\"\n"),
-            None,
-        )
-        .await
-        .unwrap();
+        // `y` asks for any `a`, which picks 2 and asks for `c ^2`; then `x`
+        // forces `a` back to 1, whose `c ^1` must replace that request.
+        let cfg = toml(&format!(
+            "[libraries]\ny = {{ did = \"{HV}\", name = \"y\", channel = \"latest\" }}\n\
+             x = {{ did = \"{HV}\", name = \"x\", channel = \"latest\" }}\n"
+        ));
+        let lock = resolve(&reg, &cfg, None).await.unwrap();
         let versions: Vec<(&str, &str)> = lock
             .plugins
             .iter()
             .map(|p| (p.id.as_str(), p.version.as_str()))
             .collect();
-        assert_eq!(versions, [("a", "1.0.0"), ("c", "1.0.0"), ("x", "1.0.0")]);
-    }
-
-    #[tokio::test]
-    async fn a_package_nothing_needs_any_more_is_not_resolved() {
-        let c_uri = package_uri(HV, "c");
-        let d_uri = package_uri(HV, "d");
-        let a_uri = package_uri(HV, "a");
-        let mut reg = RegistryFixture::default();
-        // `c` has nothing to offer: resolving it at all would fail.
-        reg.publish(HV, "c", "1.0.0", library_ext("c"), json!({}), b"c1");
-        reg.withdraw(HV, "c", "1.0.0");
-        reg.publish(
-            HV,
-            "d",
-            "1.0.0",
-            library_ext("d"),
-            json!({ &c_uri: "*" }),
-            b"d1",
-        );
-        reg.publish(HV, "a", "1.0.0", library_ext("a"), json!({}), b"a1");
-        reg.publish(
-            HV,
-            "a",
-            "2.0.0",
-            library_ext("a"),
-            json!({ &d_uri: "*" }),
-            b"a2",
-        );
-        reg.publish(
-            HV,
-            "x",
-            "1.0.0",
-            library_ext("x"),
-            json!({ &a_uri: "^1" }),
-            b"x1",
-        );
-
-        // `a@2.0.0` brings in `d`, which queues `c`; `x` then moves `a` to 1,
-        // so neither `d` nor `c` is needed by the time `c` comes up.
-        let lock = resolve(&reg, &toml("[libraries]\na = \"*\"\nx = \"*\"\n"), None)
-            .await
-            .unwrap();
-        let ids: Vec<&str> = lock.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, ["a", "x"]);
-        assert!(
-            !reg.calls
-                .lock()
-                .unwrap()
-                .contains(&"listReleases c".to_string())
+        assert_eq!(
+            versions,
+            [
+                ("a", "1.0.0"),
+                ("c", "1.0.0"),
+                ("x", "1.0.0"),
+                ("y", "1.0.0")
+            ]
         );
     }
 
     #[tokio::test]
-    async fn a_release_must_be_the_kind_and_answer_the_key_it_was_chosen_for() {
+    async fn a_release_must_be_the_kind_and_answer_the_key_it_was_named_for() {
         let mut reg = registry();
         reg.publish(
             OTHER,
@@ -924,24 +1168,31 @@ mod tests {
             json!({}),
             b"js",
         );
-        let pinned = |uri: String| Resolver {
-            registry: &reg,
-            choose: &never,
-            warn: &|_| {},
-            pins: BTreeMap::from([((PluginKind::Interpreter, "lua".to_string()), uri)]),
-        };
-        let cfg = toml("[interpreters]\nlua = \"*\"\n");
-
-        let library = resolve_lock(&pinned(package_uri(HV, "happyview-db")), &cfg, None)
-            .await
-            .unwrap_err();
+        let library = resolve(
+            &reg,
+            &toml(&entry(
+                "interpreters",
+                "lua",
+                "happyview-db",
+                "channel = \"latest\"",
+            )),
+            None,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(
             library.report.to_string(),
             "happyview-db@0.1.0 is a library plugin, but it is wanted as an interpreter"
         );
-        let other_language = resolve_lock(&pinned(package_uri(OTHER, "js")), &cfg, None)
-            .await
-            .unwrap_err();
+        let other_language = resolve(
+            &reg,
+            &toml(&format!(
+                "[interpreters]\nlua = {{ did = \"{OTHER}\", name = \"js\", channel = \"latest\" }}\n"
+            )),
+            None,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(
             other_language.report.to_string(),
             "js@1.0.0 does not answer to `lua`, which happyview.toml names it by"
@@ -949,170 +1200,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn star_skips_prereleases_unless_the_range_names_one() {
+    async fn only_prereleases_suggests_pinning_a_channel() {
         let mut reg = RegistryFixture::default();
-        for version in ["1.2.0", "1.3.0-alpha.1"] {
-            reg.publish(
-                HV,
-                "happyview-lua",
-                version,
-                interpreter_ext("lua", "lua"),
-                json!({}),
-                version.as_bytes(),
-            );
-        }
-        let picked = |range: &str| {
-            let cfg = toml(&format!("[interpreters]\nlua = \"{range}\"\n"));
-            let reg = &reg;
-            async move {
-                resolve(reg, &cfg, None).await.unwrap().plugins[0]
-                    .version
-                    .clone()
-            }
-        };
-        assert_eq!(picked("*").await, "1.2.0");
-        assert_eq!(picked("^1.3.0-alpha").await, "1.3.0-alpha.1");
-    }
-
-    #[tokio::test]
-    async fn only_prereleases_suggests_a_range_that_names_one() {
-        let mut reg = RegistryFixture::default();
-        for version in ["0.1.0-alpha.1", "0.1.0-alpha.3", "0.1.0-alpha.2"] {
-            reg.publish(
-                HV,
-                "happyview-js",
-                version,
-                interpreter_ext("javascript", "js"),
-                json!({}),
-                version.as_bytes(),
-            );
-        }
-        let err = resolve(&reg, &toml("[interpreters]\njavascript = \"*\"\n"), None)
-            .await
-            .unwrap_err();
-        assert_eq!(err.code, 2);
-        assert_eq!(
-            err.report.to_string(),
-            "no version of happyview-js satisfies every requirement: \
-             happyview.toml needs happyview-js *\n\
-             happyview-js has only prereleases, which a range matches only when it names one, \
-             as \"^0.1.0-alpha.3\" does"
+        reg.publish(
+            HV,
+            "a",
+            "1.0.0",
+            library_ext("a"),
+            json!({ project_uri(HV, "b"): "*" }),
+            b"a",
         );
-        let suggested = resolve(
+        for v in ["0.1.0-alpha.1", "0.1.0-alpha.3"] {
+            reg.publish(HV, "b", v, library_ext("b"), json!({}), v.as_bytes());
+        }
+        let err = resolve(
             &reg,
-            &toml("[interpreters]\njavascript = \"^0.1.0-alpha.3\"\n"),
-            None,
-        )
-        .await
-        .unwrap();
-        assert_eq!(suggested.plugins[0].version, "0.1.0-alpha.3");
-        // A range that already names a prerelease gets no such advice.
-        let named = resolve(
-            &reg,
-            &toml("[interpreters]\njavascript = \"^0.2.0-alpha\"\n"),
+            &toml(&entry("libraries", "a", "a", "channel = \"latest\"")),
             None,
         )
         .await
         .unwrap_err();
-        assert!(
-            !named.report.to_string().contains("only prereleases"),
-            "{}",
-            named.report
-        );
-    }
-
-    #[tokio::test]
-    async fn a_repick_withdraws_its_old_requirements() {
-        let c_uri = package_uri(HV, "c");
-        let a_uri = package_uri(HV, "a");
-        let mut reg = RegistryFixture::default();
-        reg.publish(HV, "c", "1.0.0", library_ext("c"), json!({}), b"c1");
-        reg.publish(HV, "c", "2.0.0", library_ext("c"), json!({}), b"c2");
-        reg.publish(
-            HV,
-            "a",
-            "1.0.0",
-            library_ext("a"),
-            json!({ &c_uri: "^1" }),
-            b"a1",
-        );
-        reg.publish(
-            HV,
-            "a",
-            "2.0.0",
-            library_ext("a"),
-            json!({ &c_uri: "^2" }),
-            b"a2",
-        );
-        reg.publish(
-            HV,
-            "x",
-            "1.0.0",
-            library_ext("x"),
-            json!({ &a_uri: "^1" }),
-            b"x1",
-        );
-
-        // `a` first picks 2, which asks for `c ^2`; then `x` forces `a` back
-        // to 1, whose `c ^1` must replace that request rather than join it.
-        let lock = resolve(&reg, &toml("[libraries]\na = \"*\"\nx = \"*\"\n"), None)
-            .await
-            .unwrap();
-        let version = |id: &str| {
-            lock.plugins
-                .iter()
-                .find(|p| p.id == id)
-                .unwrap()
-                .version
-                .clone()
-        };
         assert_eq!(
-            (version("a"), version("c"), version("x")),
-            ("1.0.0".into(), "1.0.0".into(), "1.0.0".into())
-        );
-    }
-
-    #[tokio::test]
-    async fn resolution_is_deterministic() {
-        let cfg = toml("[interpreters]\nlua = \"1\"\n[libraries]\n\"happyview.record\" = \"2\"\n");
-        let first = resolve(&registry(), &cfg, None).await.unwrap().render();
-        assert_eq!(
-            resolve(&registry(), &cfg, None).await.unwrap().render(),
-            first
-        );
-
-        // The same releases published in the opposite order give the same lock.
-        let forward = registry();
-        let mut reversed = RegistryFixture::default();
-        for ((did, slug), releases) in forward.releases.iter().rev() {
-            for release in releases.iter().rev() {
-                let version = release.record["version"].as_str().unwrap();
-                reversed.publish(
-                    did,
-                    slug,
-                    version,
-                    release.record["extensions"][hpy_plugin::EXTENSION_NSID].clone(),
-                    release.record["requires"].clone(),
-                    &forward.artifacts[&(did.clone(), slug.clone(), version.to_string())],
-                );
-            }
-        }
-        assert_eq!(
-            resolve(&reversed, &cfg, None).await.unwrap().render(),
-            first
-        );
-    }
-
-    #[tokio::test]
-    async fn an_unknown_key_says_what_was_searched() {
-        let reg = registry();
-        let err = resolve(&reg, &toml("[interpreters]\npython = \"*\"\n"), None)
-            .await
-            .unwrap_err();
-        assert_eq!(err.code, 2);
-        assert!(
-            format!("{:?}", err.report)
-                .contains("no interpreter in the registry answers to `python`")
+            err.report.to_string(),
+            "no version of b satisfies every requirement: a@1.0.0 needs b *\n\
+             an older version of `a` may ask for less; naming one in happyview.toml may settle this\n\
+             b has only prereleases, which a range matches only when it names one, as \"^0.1.0-alpha.3\" does"
         );
     }
 
@@ -1127,9 +1239,18 @@ mod tests {
             json!({}),
             b"old",
         );
-        let err = resolve(&reg, &toml("[interpreters]\nlua = \"*\"\n"), None)
-            .await
-            .unwrap_err();
+        let err = resolve(
+            &reg,
+            &toml(&entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\"",
+            )),
+            None,
+        )
+        .await
+        .unwrap_err();
         assert!(format!("{:?}", err.report).contains("no file extensions"));
     }
 
@@ -1148,13 +1269,20 @@ mod tests {
         let warn = |m: &str| warnings.lock().unwrap().push(m.to_string());
         let r = Resolver {
             registry: &reg,
-            choose: &never,
             warn: &warn,
-            pins: BTreeMap::new(),
         };
-        resolve_lock(&r, &toml("[interpreters]\nlua = \"*\"\n"), None)
-            .await
-            .unwrap();
+        resolve_lock(
+            &r,
+            &toml(&entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\"",
+            )),
+            None,
+        )
+        .await
+        .unwrap();
         let warnings = warnings.into_inner().unwrap();
         assert_eq!(warnings.len(), 1);
         assert!(
@@ -1164,23 +1292,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_changed_checksum_for_a_locked_version_is_refused() {
-        let reg = registry();
-        let cfg = toml("[interpreters]\nlua = \"1.4.0\"\n");
-        let mut prev = resolve(&reg, &cfg, None).await.unwrap();
-        // The same digest written differently is the same release, as
-        // `ensure_plugin` reads it.
-        let stated = prev.plugins[0].checksum.clone();
-        prev.plugins[0].checksum = format!("b{}", stated[1..].to_ascii_uppercase());
-        assert_ne!(prev.plugins[0].checksum, stated);
-        resolve(&reg, &cfg, Some(&prev)).await.unwrap();
-        prev.plugins[0].checksum = hpy_plugin::checksum::checksum(b"something else");
-        let err = resolve(&reg, &cfg, Some(&prev)).await.unwrap_err();
-        assert!(format!("{:?}", err.report).contains("must never change"));
-    }
-
-    #[tokio::test]
-    async fn two_packages_with_one_slug_are_refused() {
+    async fn two_projects_with_one_name_are_refused() {
         let mut reg = registry();
         reg.publish(
             OTHER,
@@ -1190,13 +1302,76 @@ mod tests {
             json!({}),
             b"x",
         );
-        let err = resolve(
-            &reg,
-            &toml("[libraries]\n\"happyview.record\" = \"2\"\n\"other.db\" = \"*\"\n"),
-            None,
-        )
-        .await
-        .unwrap_err();
+        let cfg = toml(&format!(
+            "[libraries]\n\"happyview.record\" = {{ did = \"{HV}\", name = \"happyview-record\", channel = \"latest\" }}\n\
+             \"other.db\" = {{ did = \"{OTHER}\", name = \"happyview-db\", channel = \"latest\" }}\n"
+        ));
+        let err = resolve(&reg, &cfg, None).await.unwrap_err();
         assert!(format!("{:?}", err.report).contains("by id"));
+    }
+
+    #[tokio::test]
+    async fn two_keys_pinning_one_project_differently_are_refused() {
+        let reg = registry();
+        let cfg = toml(&format!(
+            "[libraries]\none = {{ did = \"{HV}\", name = \"happyview-db\", channel = \"latest\" }}\n\
+             two = {{ did = \"{HV}\", name = \"happyview-db\", version = \"0.1.0\" }}\n"
+        ));
+        let err = resolve(&reg, &cfg, None).await.unwrap_err();
+        assert_eq!(err.code, 2);
+        assert!(
+            err.report.to_string().contains("`one`") && err.report.to_string().contains("`two`")
+        );
+    }
+
+    #[tokio::test]
+    async fn candidates_follow_each_projects_newest_channel() {
+        let mut reg = registry();
+        reg.publish(
+            HV,
+            "happyview-js",
+            "0.1.0-alpha.2",
+            interpreter_ext("javascript", "js"),
+            json!({}),
+            b"js",
+        );
+        let found = candidates(&reg, PluginKind::Interpreter).await.unwrap();
+        let summary: Vec<(&str, &str, &str)> = found
+            .iter()
+            .map(|c| (c.name.as_str(), c.channel.as_str(), c.version.as_str()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                ("happyview-lua", "latest", "2.0.0"),
+                ("happyview-js", "alpha", "0.1.0-alpha.2")
+            ]
+        );
+        assert!(found[0].answers(PluginKind::Interpreter, "lua"));
+        assert_eq!(found[1].key(PluginKind::Interpreter), "javascript");
+    }
+
+    #[tokio::test]
+    async fn resolution_is_deterministic() {
+        let cfg = toml(&format!(
+            "{}{}",
+            entry(
+                "interpreters",
+                "lua",
+                "happyview-lua",
+                "channel = \"latest\""
+            ),
+            entry(
+                "libraries",
+                "\"happyview.record\"",
+                "happyview-record",
+                "channel = \"latest\""
+            ),
+        ));
+        let first = resolve(&registry(), &cfg, None).await.unwrap().render();
+        assert_eq!(
+            resolve(&registry(), &cfg, None).await.unwrap().render(),
+            first
+        );
     }
 }

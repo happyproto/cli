@@ -19,7 +19,24 @@ impl Problem {
 }
 
 impl fmt::Display for Problem {
+    /// A problem with no path is a whole sentence already, such as one about
+    /// a file as a whole that names the file itself.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.path, self.message)
+        if self.path.is_empty() {
+            write!(f, "{}", self.message)
+        } else {
+            write!(f, "{}: {}", self.path, self.message)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_problem_without_a_path_prints_only_its_message() {
+        assert_eq!(Problem::new("a.b", "is wrong").to_string(), "a.b: is wrong");
+        assert_eq!(Problem::new("", "x is wrong").to_string(), "x is wrong");
     }
 }
