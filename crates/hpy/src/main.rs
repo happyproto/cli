@@ -69,8 +69,7 @@ async fn run(cli: Cli) -> Result<(), Failure> {
             PluginCommand::Pull(a) => commands::profile::pull(&ctx, a).await,
             PluginCommand::Publish(a) => commands::publish::run(&ctx, a).await,
             PluginCommand::Status(a) => commands::status::run(&ctx, a).await,
-            PluginCommand::Withdraw(a) => commands::withdraw::run(&ctx, a).await,
-            PluginCommand::Retry(a) => commands::retry::run(&ctx, a).await,
+            PluginCommand::Lifecycle(a) => commands::lifecycle::run(&ctx, a).await,
         },
     }
 }
@@ -97,5 +96,59 @@ mod tests {
         assert!(!checks_for_updates(&command(&["hpy", "hv", "check"])));
         assert!(!checks_for_updates(&command(&["hpy", "update"])));
         assert!(checks_for_updates(&command(&["hpy", "registry", "whoami"])));
+    }
+
+    /// Withdrawing became a lifecycle status and the registry retries copies
+    /// itself, so neither command is kept as an alias.
+    #[test]
+    fn withdraw_and_retry_are_gone() {
+        for gone in ["withdraw", "retry"] {
+            let err = Cli::try_parse_from(["hpy", "registry", "plugin", gone, "1.0.0"])
+                .err()
+                .unwrap();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::InvalidSubcommand,
+                "{gone}"
+            );
+        }
+    }
+
+    #[test]
+    fn lifecycle_takes_a_version_and_an_event_or_the_project_and_one() {
+        let parse = |args: &[&str]| match Cli::try_parse_from(args).unwrap().command {
+            Command::Registry(RegistryCommand::Plugin(PluginCommand::Lifecycle(a))) => a,
+            _ => panic!(),
+        };
+        let a = parse(&[
+            "hpy",
+            "registry",
+            "plugin",
+            "lifecycle",
+            "1.0.0",
+            "endOfLife",
+        ]);
+        assert_eq!(
+            (a.target.as_deref(), a.event.as_deref(), a.project),
+            (Some("1.0.0"), Some("endOfLife"), false)
+        );
+        let a = parse(&[
+            "hpy",
+            "registry",
+            "plugin",
+            "lifecycle",
+            "--project",
+            "endOfLife",
+        ]);
+        assert_eq!((a.target.as_deref(), a.project), (Some("endOfLife"), true));
+        let a = parse(&[
+            "hpy",
+            "registry",
+            "plugin",
+            "lifecycle",
+            "--withdraw",
+            "at://x",
+        ]);
+        assert_eq!(a.withdraw.as_deref(), Some("at://x"));
     }
 }

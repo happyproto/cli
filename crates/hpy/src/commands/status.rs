@@ -1,61 +1,77 @@
-use hpy_atproto::{ReleaseView, StoredRecord, rkey_of};
-use hpy_plugin::RELEASE_NSID;
-use serde_json::json;
+use hpy_atproto::{Registry, StoredRecord, VersionView, rkey_of};
+use hpy_plugin::VERSION_NSID;
+use serde_json::{Value, json};
 
 use crate::cli::StatusArgs;
-use crate::commands::profile::resolve_slug;
+use crate::commands::profile::resolve_name;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub version: String,
-    pub registry: String,
+    /// The registry's `availability`, or `not indexed` for a version only
+    /// the repo has, or `unknown` when the registry could not be asked.
+    pub availability: String,
+    pub state: String,
+    pub installable: bool,
     pub in_repo: bool,
 }
 
-fn version_of<'a>(slug: &str, uri: &'a str) -> Option<&'a str> {
-    rkey_of(uri).strip_prefix(slug)?.strip_prefix(':')
+impl Row {
+    pub fn to_json(&self) -> Value {
+        json!({
+            "version": self.version,
+            "availability": self.availability,
+            "state": self.state,
+            "installable": self.installable,
+            "inRepo": self.in_repo,
+        })
+    }
 }
 
-/// Every version of `slug` in the user's repo or the registry, newest first,
-/// with the registry's status for each.
+fn version_of<'a>(name: &str, uri: &'a str) -> Option<&'a str> {
+    rkey_of(uri).strip_prefix(name)?.strip_prefix('.')
+}
+
+fn name_of<T: serde::Serialize>(value: T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// Every version of `name` in the user's repo or the registry, newest first.
 pub fn rows(
-    slug: &str,
+    name: &str,
     mine: Vec<StoredRecord>,
-    registry: Result<Vec<ReleaseView>, hpy_atproto::Error>,
+    registry: Result<Vec<VersionView>, hpy_atproto::Error>,
 ) -> Vec<Row> {
     let reachable = registry.is_ok();
     let views = registry.unwrap_or_default();
-    let mut out: Vec<Row> = Vec::new();
+    let mut out: Vec<Row> = views
+        .iter()
+        .map(|v| Row {
+            version: v.version.clone(),
+            availability: name_of(v.availability),
+            state: name_of(v.lifecycle.state),
+            installable: v.lifecycle.installable,
+            in_repo: false,
+        })
+        .collect();
     for r in &mine {
-        if let Some(v) = version_of(slug, &r.uri) {
-            let status = views
-                .iter()
-                .find(|x| version_of(slug, &x.uri) == Some(v))
-                .map(|x| x.status.clone());
-            out.push(Row {
+        let Some(v) = version_of(name, &r.uri) else {
+            continue;
+        };
+        match out.iter_mut().find(|row| row.version == v) {
+            Some(row) => row.in_repo = true,
+            None => out.push(Row {
                 version: v.into(),
-                registry: status.unwrap_or_else(|| {
-                    if reachable {
-                        "not indexed".into()
-                    } else {
-                        "unknown".into()
-                    }
-                }),
+                availability: if reachable { "not indexed" } else { "unknown" }.into(),
+                state: "active".into(),
+                installable: false,
                 in_repo: true,
-            });
-        }
-    }
-    for x in &views {
-        if let Some(v) = version_of(slug, &x.uri)
-            && !out.iter().any(|r| r.version == v)
-        {
-            out.push(Row {
-                version: v.into(),
-                registry: x.status.clone(),
-                in_repo: false,
-            });
+            }),
         }
     }
     out.sort_by(|a, b| {
@@ -70,79 +86,107 @@ pub fn rows(
     out
 }
 
+/// The `--json` answer, which the plugin-publish action reads.
+pub fn report(name: &str, project: Option<&str>, rows: &[Row]) -> Value {
+    json!({
+        "name": name,
+        "project": project,
+        "versions": rows.iter().map(Row::to_json).collect::<Vec<_>>(),
+    })
+}
+
 pub async fn run(ctx: &Ctx, args: StatusArgs) -> Result<(), Failure> {
-    let slug = resolve_slug(&ctx.dir, args.slug.slug)?;
+    let name = resolve_name(&ctx.dir, args.name.name)?;
     let session = ctx.session()?;
     let registry = ctx.registry();
     let did = session.repo.did().to_string();
-    let package = hpy_atproto::Registry::get_package(&registry, &did, &slug).await;
+    let project = registry.get_project(&did, &name).await;
     let mut rows = rows(
-        &slug,
-        session.repo.list_records(RELEASE_NSID).await?,
-        hpy_atproto::Registry::list_releases(&registry, &did, &slug).await,
+        &name,
+        session.repo.list_records(VERSION_NSID).await?,
+        registry.list_versions(&did, &name).await,
     );
     if let Some(v) = &args.version {
         rows.retain(|r| &r.version == v);
         if rows.is_empty() {
             return Err(Failure::usage(format!(
-                "{slug} {v} is neither in your repo nor in the registry"
+                "{name} {v} is neither in your repo nor in the registry"
             )));
         }
     }
-    let package_status = match &package {
-        Ok(Some(p)) => format!(
-            "{} (latest: {})",
-            p.status,
-            p.latest_version.as_deref().unwrap_or("none active")
-        ),
+    let project_line = match &project {
+        Ok(Some(p)) => {
+            let heads: Vec<String> = p
+                .channels
+                .iter()
+                .map(|(c, h)| format!("{c} {}", h.version))
+                .collect();
+            format!(
+                "{} ({})",
+                name_of(p.lifecycle.state),
+                if heads.is_empty() {
+                    "no channels".into()
+                } else {
+                    heads.join(", ")
+                }
+            )
+        }
         Ok(None) => "not indexed".into(),
         Err(e) => format!("unknown ({e})"),
     };
-    let mut human = vec![format!("{slug}: {package_status}")];
+    let mut human = vec![format!("{name}: {project_line}")];
     for r in &rows {
-        let note = match (r.in_repo, r.registry.as_str()) {
+        let note = match (r.in_repo, r.availability.as_str()) {
             (true, "not indexed") => "  ← the registry refused it or has not seen it yet",
-            (true, "pending") => {
-                "  ← indexed; artifact not copied yet (if it stays so, `hpy registry plugin retry`)"
-            }
+            (_, "pending") => "  ← indexed; the registry has not copied its blobs yet",
             (false, _) => "  (no longer in your repo)",
             _ => "",
         };
-        human.push(format!("  {:<16} {:<12}{note}", r.version, r.registry));
+        human.push(format!(
+            "  {:<16} {:<16} {:<12}{note}",
+            r.version, r.availability, r.state
+        ));
     }
     if rows.is_empty() {
-        human.push("  no releases".into());
+        human.push("  no versions".into());
     }
-    let json_rows: Vec<_> = rows
-        .iter()
-        .map(|r| json!({ "version": r.version, "registry": r.registry, "inRepo": r.in_repo }))
-        .collect();
-    ctx.out.done(
-        &human.join("\n"),
-        json!({ "slug": slug, "package": package_status, "releases": json_rows }),
-    );
+    let uri = project.ok().flatten().map(|p| p.uri);
+    ctx.out
+        .done(&human.join("\n"), report(&name, uri.as_deref(), &rows));
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hpy_atproto::{ReleaseView, StoredRecord};
+    use crate::testing::version_view;
+    use hpy_atproto::StoredRecord;
+    use hpy_atproto::registry::{Availability, State};
+
+    #[test]
+    fn version_of_splits_at_the_first_dot_and_ignores_colon_keys() {
+        let uri = |k: &str| format!("at://did:plc:x/software.release.version/{k}");
+        assert_eq!(
+            version_of("lua", &uri("lua.1.0.0-alpha.4")),
+            Some("1.0.0-alpha.4")
+        );
+        assert_eq!(version_of("lua", &uri("lua:1.0.0")), None);
+    }
 
     fn mine(v: &str) -> StoredRecord {
         StoredRecord {
-            uri: format!("at://did:plc:x/at.happyproto.plugin.release/p:{v}"),
+            uri: format!("at://did:plc:x/software.release.version/p.{v}"),
             cid: None,
-            value: serde_json::json!({}),
+            value: json!({}),
         }
     }
-    fn view(v: &str, s: &str) -> ReleaseView {
-        ReleaseView {
-            uri: format!("at://did:plc:x/at.happyproto.plugin.release/p:{v}"),
-            status: s.into(),
-            record: serde_json::json!({}),
-            indexed_at: None,
-        }
+
+    fn view(v: &str, availability: Availability, state: State, installable: bool) -> VersionView {
+        let mut view = version_view("did:plc:x", "p", v, json!({}));
+        view.availability = availability;
+        view.lifecycle.state = state;
+        view.lifecycle.installable = installable;
+        view
     }
 
     #[test]
@@ -150,29 +194,45 @@ mod tests {
         let rows = rows(
             "p",
             vec![mine("1.10.0"), mine("1.9.0"), mine("2.0.0-rc.1")],
-            Ok(vec![view("1.9.0", "active"), view("1.8.0", "deleted")]),
+            Ok(vec![
+                view("1.9.0", Availability::Available, State::Deprecated, true),
+                view(
+                    "1.8.0",
+                    Availability::DeletedAtSource,
+                    State::Retired,
+                    false,
+                ),
+            ]),
         );
         let got: Vec<_> = rows
             .iter()
-            .map(|r| (r.version.as_str(), r.registry.as_str(), r.in_repo))
+            .map(|r| {
+                (
+                    r.version.as_str(),
+                    r.availability.as_str(),
+                    r.state.as_str(),
+                    r.installable,
+                    r.in_repo,
+                )
+            })
             .collect();
         assert_eq!(
             got,
             [
-                ("2.0.0-rc.1", "not indexed", true),
-                ("1.10.0", "not indexed", true),
-                ("1.9.0", "active", true),
-                ("1.8.0", "deleted", false),
+                ("2.0.0-rc.1", "not indexed", "active", false, true),
+                ("1.10.0", "not indexed", "active", false, true),
+                ("1.9.0", "available", "deprecated", true, true),
+                ("1.8.0", "deletedAtSource", "retired", false, false),
             ]
         );
     }
 
     #[test]
-    fn other_packages_are_ignored_and_unreachable_registry_is_marked() {
+    fn other_projects_are_ignored_and_an_unreachable_registry_is_marked() {
         let other = StoredRecord {
-            uri: "at://did:plc:x/at.happyproto.plugin.release/q:1.0.0".into(),
+            uri: "at://did:plc:x/software.release.version/q:1.0.0".into(),
             cid: None,
-            value: serde_json::json!({}),
+            value: json!({}),
         };
         let rows = rows(
             "p",
@@ -180,6 +240,34 @@ mod tests {
             Err(hpy_atproto::Error::Other("down".into())),
         );
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].registry, "unknown");
+        assert_eq!(rows[0].availability, "unknown");
+    }
+
+    #[test]
+    fn the_json_names_what_the_publish_action_reads() {
+        let rows = rows(
+            "p",
+            vec![mine("1.2.0")],
+            Ok(vec![view(
+                "1.2.0",
+                Availability::Pending,
+                State::Active,
+                true,
+            )]),
+        );
+        assert_eq!(
+            report(
+                "p",
+                Some("at://did:plc:x/software.release.project/p"),
+                &rows
+            ),
+            json!({
+                "name": "p",
+                "project": "at://did:plc:x/software.release.project/p",
+                "versions": [{ "version": "1.2.0", "availability": "pending", "state": "active",
+                               "installable": true, "inRepo": true }]
+            })
+        );
+        assert_eq!(report("p", None, &[])["project"], Value::Null);
     }
 }
