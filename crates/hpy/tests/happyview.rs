@@ -1054,7 +1054,7 @@ impl Plugin {
         }
         let name = &self.name;
         serde_json::json!({
-            "uri": format!("at://{HV_DID}/software.release.version/{name}:1.4.2"),
+            "uri": format!("at://{HV_DID}/software.release.version/{name}.1.4.2"),
             "cid": raw_cid(format!("version {name}").as_bytes()),
             "did": HV_DID, "name": name, "version": "1.4.2",
             "manifest": {

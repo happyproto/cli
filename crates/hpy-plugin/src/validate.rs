@@ -118,7 +118,7 @@ pub fn project_uri(did: &str, name: &str) -> String {
 }
 
 pub fn version_uri(did: &str, name: &str, version: &str) -> String {
-    format!("at://{did}/{VERSION_NSID}/{name}:{version}")
+    format!("at://{did}/{VERSION_NSID}/{name}.{version}")
 }
 
 /// The DID and name in a `software.release.project` URI, or `None` for any
@@ -262,7 +262,7 @@ mod tests {
         );
         assert_eq!(
             version_uri("did:plc:abc", "happyview-lua", "1.2.0"),
-            "at://did:plc:abc/software.release.version/happyview-lua:1.2.0"
+            "at://did:plc:abc/software.release.version/happyview-lua.1.2.0"
         );
         assert_eq!(
             parse_project_uri("at://did:plc:abc/software.release.project/happyview-lua"),

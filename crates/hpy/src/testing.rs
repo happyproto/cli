@@ -355,7 +355,7 @@ impl Registry for FakeRegistry {
             },
             channel: Some(refs(
                 hpy_plugin::CHANNEL_NSID,
-                &format!("{name}:{}", input["track"].as_str().unwrap_or("")),
+                &format!("{name}.{}", input["track"].as_str().unwrap_or("")),
                 "bafychannel",
             )),
             changelog: None,

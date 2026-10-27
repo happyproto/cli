@@ -284,7 +284,7 @@ mod tests {
             project: format!("at://{DID}/software.release.project/{id}"),
             version: version.into(),
             channel: (!keys.is_empty()).then(|| "latest".to_string()),
-            version_uri: format!("at://{DID}/software.release.version/{id}:{version}"),
+            version_uri: format!("at://{DID}/software.release.version/{id}.{version}"),
             manifest_cid: "bafyreimanifest".into(),
             package_cid: "bafkreipackage".into(),
             manifest_blob_cid: "bafkreimanifestblob".into(),
@@ -390,7 +390,7 @@ mod tests {
         assert!(e.path.ends_with("plugin[1].project"), "{e}");
         let e = parse_with(|l| {
             l.plugins[0].version_uri =
-                "at://did:plc:abc/software.release.version/happyview-lua:9.9.9".into()
+                "at://did:plc:abc/software.release.version/happyview-lua.9.9.9".into()
         });
         assert!(e.path.ends_with("plugin[1].version_uri"), "{e}");
     }
@@ -438,7 +438,7 @@ kind = \"library\"
 keys = []
 project = \"at://did:plc:abc/software.release.project/happyview-http\"
 version = \"1.0.3\"
-version_uri = \"at://did:plc:abc/software.release.version/happyview-http:1.0.3\"
+version_uri = \"at://did:plc:abc/software.release.version/happyview-http.1.0.3\"
 manifest_cid = \"bafyreimanifest\"
 package_cid = \"bafkreipackage\"
 manifest_blob_cid = \"bafkreimanifestblob\"
@@ -451,7 +451,7 @@ keys = [\"lua\"]
 project = \"at://did:plc:abc/software.release.project/happyview-lua\"
 version = \"1.4.2\"
 channel = \"latest\"
-version_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.4.2\"
+version_uri = \"at://did:plc:abc/software.release.version/happyview-lua.1.4.2\"
 manifest_cid = \"bafyreimanifest\"
 package_cid = \"bafkreipackage\"
 manifest_blob_cid = \"bafkreimanifestblob\"
