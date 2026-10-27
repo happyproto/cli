@@ -193,8 +193,22 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 | `hpy happyview add <plugin>` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. Each follows a channel (`--channel`, default `latest`) or is pinned to `--version`; `--project <at-uri>` picks between projects that answer to one name. Adding a plugin again moves it to its channel's current version. With no plugin (or as `install`), brings the lock up to date and downloads it. |
 | `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
 | `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
+| `hpy happyview types` | Writes editor types for the project into `.happyview/types/`, one directory per interpreter, so your editor's language server can check handlers against their lexicons, `ctx` and the installed libraries. Needs a HappyView that has `happyview types`. |
 
-`hv` is short for `happyview`. `dev`, `check` and `test` take `--locked`,
+### Editor types
+
+`hpy happyview dev` keeps `.happyview/types/` current as you work: HappyView
+rewrites it after every build that changes what a script can see.
+`hpy happyview types` writes it once, which is what to run before opening an
+editor without the dev server, or in CI.
+
+`dev`, `types` and `create` also write the settings file that points a
+language server at those types, when the project does not have one yet:
+`.luarc.json` for Lua (LuaLS) and `tsconfig.json` for TypeScript or
+JavaScript. A file you already have is never changed; `hpy` says what to add
+to it instead. The starter handler `create` writes already names its types.
+
+`hv` is short for `happyview`. `dev`, `check`, `test` and `types` take `--locked`,
 which fails instead of updating a lock that no longer matches
 `happyview.toml`; use it in CI. They exit with HappyView's own exit code.
 

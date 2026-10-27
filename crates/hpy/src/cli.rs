@@ -223,6 +223,8 @@ pub enum HappyviewCommand {
     Check(RunArgs),
     /// Run the project's tests.
     Test(TestArgs),
+    /// Write editor types for the project into .happyview/types/, and the tsconfig.json or .luarc.json that points editors at them.
+    Types(RunArgs),
 }
 
 #[derive(Args)]

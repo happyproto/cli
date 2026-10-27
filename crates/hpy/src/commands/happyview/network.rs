@@ -494,6 +494,9 @@ async fn start<'r>(
         target,
     };
     let prepared = abandonable(interrupt, prepare(ctx, &options)).await?;
+    // The project is mounted into HappyView's container, so the types its dev
+    // server writes land in the project as they do natively.
+    super::check::point_editors_at_types(ctx, &prepared.root)?;
     // Before HappyView first boots, which refuses a module with no build.
     // Taken before the build, so a save made while it runs is rebuilt.
     let from = Snapshot::take(&prepared.root, modules::read_modules(&prepared.root)?);

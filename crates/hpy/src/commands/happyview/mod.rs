@@ -18,5 +18,6 @@ pub async fn run(ctx: &Ctx, command: HappyviewCommand) -> Result<(), Failure> {
         HappyviewCommand::Build => build::run(ctx).await,
         HappyviewCommand::Check(a) => check::check(ctx, a).await,
         HappyviewCommand::Test(a) => check::test(ctx, a).await,
+        HappyviewCommand::Types(a) => check::types(ctx, a).await,
     }
 }

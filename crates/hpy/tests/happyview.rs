@@ -387,6 +387,49 @@ fn a_bare_version_in_happyview_toml_names_the_table_form() {
 
 #[cfg(unix)]
 #[test]
+fn types_runs_the_binary_then_points_editors_at_the_types() {
+    let stack = Stack::new();
+    lua_project(&stack);
+    stack
+        .hpy()
+        .args(["hv", "types"])
+        .assert()
+        .success()
+        .stderr(says(
+            "wrote .luarc.json, which points editors at .happyview/types/lua",
+        ));
+    assert_eq!(stack.log().trim(), "types .");
+    let luarc = read(&stack.project.path().join(".luarc.json"));
+    assert!(luarc.contains("\".happyview/types/lua\""), "{luarc}");
+    assert!(!stack.project.path().join("tsconfig.json").exists());
+
+    // An existing file is the author's: it is named, not rewritten.
+    std::fs::write(stack.project.path().join(".luarc.json"), "{}\n").unwrap();
+    stack
+        .hpy()
+        .args(["hv", "types"])
+        .assert()
+        .success()
+        .stderr(says(".luarc.json does not name .happyview/types/lua"));
+    assert_eq!(read(&stack.project.path().join(".luarc.json")), "{}\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_types_run_still_points_editors_and_passes_its_code_through() {
+    let stack = Stack::new();
+    lua_project(&stack);
+    stack
+        .hpy()
+        .args(["hv", "types"])
+        .env("HV_EXIT", "1")
+        .assert()
+        .code(1);
+    assert!(stack.project.path().join(".luarc.json").exists());
+}
+
+#[cfg(unix)]
+#[test]
 fn an_inherited_plugin_dir_is_named_and_kept_from_the_binary() {
     let stack = Stack::new();
     stack
@@ -594,6 +637,24 @@ fn dev_runs_happyview_dev_in_the_project() {
             .display()
             .to_string()
     );
+}
+
+/// HappyView's dev server writes the types; hpy points editors at them
+/// before starting it.
+#[cfg(unix)]
+#[test]
+fn dev_points_editors_at_the_types() {
+    let stack = Stack::new();
+    lua_project(&stack);
+    stack
+        .hpy()
+        .args(["hv", "dev"])
+        .assert()
+        .success()
+        .stderr(says(
+            "wrote .luarc.json, which points editors at .happyview/types/lua",
+        ));
+    assert_eq!(stack.log().trim(), "dev .");
 }
 
 #[cfg(unix)]
@@ -1249,6 +1310,10 @@ fn create_writes_a_project_and_its_lock_without_downloading_anything() {
         "{lock}"
     );
     assert!(app.join("src/lexicons/com/example/hello.lua").is_file());
+    // Lua is the default interpreter, so the project starts pointing LuaLS at
+    // the types `hpy happyview dev` writes.
+    assert!(read(&app.join(".luarc.json")).contains(".happyview/types/lua"));
+    assert!(!app.join("tsconfig.json").exists());
     assert_eq!(read(&app.join(".gitignore")), ".env\n.happyview/\n");
     assert!(
         std::fs::read_dir(stack.cache.path())
