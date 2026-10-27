@@ -1,3 +1,11 @@
+# [1.0.0-alpha.17](https://github.com/happyproto/cli/compare/v1.0.0-alpha.16...v1.0.0-alpha.17) (2026-10-27)
+
+
+### Features
+
+* pass --json through to happyview check ([58ae52e](https://github.com/happyproto/cli/commit/58ae52e58329fb69a41c65d7a1fc4ae47ca9e232))
+* point editors at the types happyview writes ([650e39b](https://github.com/happyproto/cli/commit/650e39ba737dcd44502d8e043db7589b8eb822f9))
+
 # [1.0.0-alpha.16](https://github.com/happyproto/cli/compare/v1.0.0-alpha.15...v1.0.0-alpha.16) (2026-10-27)
 
 
