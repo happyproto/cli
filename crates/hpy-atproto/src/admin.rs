@@ -383,6 +383,17 @@ impl Admin {
                     self.base, self.base
                 ))
             }
+            StatusCode::FORBIDDEN
+                if r.error
+                    .iter()
+                    .chain(&r.message)
+                    .any(|m| m.contains("did not grant dev.happyview.adminFull")) =>
+            {
+                Error::LoginRequired(format!(
+                    "your sign-in to {} didn't grant managing it; run `hpy hv login --url {}` and approve managing your HappyView instances",
+                    self.base, self.base
+                ))
+            }
             StatusCode::FORBIDDEN => Error::Other(format!(
                 "{} refused {what}: {}. Give the API key that permission in the dashboard, or create one that has it",
                 self.base,
@@ -600,6 +611,23 @@ mod tests {
         let err = Admin::new(&server.uri(), KEY).project().await.unwrap_err();
         assert!(err.is_auth(), "{err}");
         assert!(err.to_string().contains("hpy hv login --url"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_sign_in_without_the_admin_grant_says_to_approve_it() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": "Forbidden",
+                "message": "this sign-in did not grant dev.happyview.adminFull; sign in again and approve managing your HappyView instances"
+            })))
+            .mount(&server)
+            .await;
+        let err = Admin::new(&server.uri(), KEY).project().await.unwrap_err();
+        assert!(err.is_auth(), "{err}");
+        let text = err.to_string();
+        assert!(text.contains("hpy hv login --url"), "{text}");
+        assert!(text.contains("approve"), "{text}");
     }
 
     #[tokio::test]
