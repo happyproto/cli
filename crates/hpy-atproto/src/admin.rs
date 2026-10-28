@@ -73,15 +73,17 @@ struct Refusal {
 pub struct ProjectProblem {
     #[serde(default)]
     pub path: String,
+    #[serde(default)]
+    pub line: Option<u32>,
     pub message: String,
 }
 
 impl std::fmt::Display for ProjectProblem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.path.is_empty() {
-            write!(f, "{}", self.message)
-        } else {
-            write!(f, "{}: {}", self.path, self.message)
+        match (self.path.as_str(), self.line) {
+            ("", _) => write!(f, "{}", self.message),
+            (path, Some(line)) => write!(f, "{path}:{line}: {}", self.message),
+            (path, None) => write!(f, "{path}: {}", self.message),
         }
     }
 }
@@ -767,7 +769,8 @@ mod tests {
                 "error": "InvalidProject", "message": "the project has 2 problems",
                 "problems": [
                     {"path": "src/lexicons/com/example/hello.json", "message": "id does not match the path"},
-                    {"path": "happyview.toml", "message": "unknown table [scirpts]"}
+                    {"path": "happyview.toml", "line": 7, "message": "unknown table [scirpts]"},
+                    {"path": "", "message": "the archive expands past 200 MB"}
                 ]
             })))
             .mount(&server)
@@ -783,7 +786,11 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("happyview.toml: unknown table [scirpts]"),
+            text.contains("happyview.toml:7: unknown table [scirpts]"),
+            "{text}"
+        );
+        assert!(
+            text.contains("  • the archive expands past 200 MB"),
             "{text}"
         );
     }
