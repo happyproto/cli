@@ -4,9 +4,19 @@ use crate::cli::{RunArgs, TestArgs};
 use crate::commands::happyview::build::build_modules;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
+use crate::project::editor::{languages, write_editor_config};
 use crate::project::modules::{Snapshot, read_modules};
 use crate::project::prepare::{PrepareOptions, REMOVED_ENV, prepare, project_root};
 use crate::project::run::{finish, run_foreground, run_rebuilding_modules};
+
+/// Point editors at the types HappyView writes, for the interpreters the
+/// project has, reporting each settings file written or left to the author.
+pub fn point_editors_at_types(ctx: &Ctx, root: &std::path::Path) -> Result<(), Failure> {
+    for line in write_editor_config(root, &languages(root)).map_err(Failure::runtime)? {
+        ctx.out.status(&line);
+    }
+    Ok(())
+}
 
 // `happyview check` reads a `.env` from its working directory, which is the
 // project root here.
@@ -15,16 +25,12 @@ pub async fn check(ctx: &Ctx, args: RunArgs) -> Result<(), Failure> {
     // first; one that does not compile fails before anything is fetched.
     build_modules(project_root(ctx)?).await?;
     let p = prepare(ctx, &PrepareOptions::native(args.locked)).await?;
-    finish(
-        run_foreground(
-            &p.binary,
-            &["check".into(), ".".into()],
-            &p.root,
-            &[],
-            REMOVED_ENV,
-        )
-        .await?,
-    )
+    // HappyView's report is the result, so under --json it is the JSON.
+    let mut argv: Vec<OsString> = vec!["check".into(), ".".into()];
+    if ctx.out.is_json() {
+        argv.push("--json".into());
+    }
+    finish(run_foreground(&p.binary, &argv, &p.root, &[], REMOVED_ENV).await?)
 }
 
 pub async fn test(ctx: &Ctx, args: TestArgs) -> Result<(), Failure> {
@@ -51,4 +57,23 @@ pub async fn test(ctx: &Ctx, args: TestArgs) -> Result<(), Failure> {
     // HappyView re-runs the tests when a module's build file changes, so
     // keeping the builds current is what makes a source edit re-run them.
     finish(run_rebuilding_modules(&p.binary, &argv, &p.root, from).await?)
+}
+
+pub async fn types(ctx: &Ctx, args: RunArgs) -> Result<(), Failure> {
+    // The build reads the modules' build files, as `check`'s does.
+    build_modules(project_root(ctx)?).await?;
+    let p = prepare(ctx, &PrepareOptions::native(args.locked)).await?;
+    // Before the binary, which replaces hpy on unix; the settings name the
+    // directories, not what is in them.
+    point_editors_at_types(ctx, &p.root)?;
+    finish(
+        run_foreground(
+            &p.binary,
+            &["types".into(), ".".into()],
+            &p.root,
+            &[],
+            REMOVED_ENV,
+        )
+        .await?,
+    )
 }

@@ -20,7 +20,12 @@ pub async fn run(ctx: &Ctx, args: DevArgs) -> Result<(), Failure> {
     if args.reset {
         return Err(Failure::usage("--reset applies only to --network local"));
     }
+    if args.subnet.is_some() {
+        return Err(Failure::usage("--subnet applies only to --network local"));
+    }
     let p = prepare(ctx, &PrepareOptions::native(args.run.locked)).await?;
+    // HappyView's dev server writes the types themselves, after every build.
+    super::check::point_editors_at_types(ctx, &p.root)?;
     let specs = modules::read_modules(&p.root)?;
     // Before the first build, so a save made while it runs is rebuilt.
     let from = Snapshot::take(&p.root, specs);

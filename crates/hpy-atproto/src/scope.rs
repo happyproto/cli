@@ -10,8 +10,57 @@
 //! what keeps that from happening.
 //!
 //! The grammar here is only as much of proposal 0011 as `hpy` needs: a
-//! space-separated grant string, and `blob:` permissions whose parameter is a
-//! mime pattern. `repo:` and the rest are the server's business.
+//! space-separated grant string, `blob:` permissions whose parameter is a
+//! mime pattern, and `repo:` permissions whose parameter is a collection.
+//! The rest is the server's business.
+
+use hpy_plugin::{
+    CHANNEL_NSID, DOCUMENT_NSID, MANIFEST_NSID, PROJECT_NSID, PUBLICATION_NSID, SIDECAR_NSID,
+    STATUS_NSID, VERSION_NSID,
+};
+
+/// The collections a publish writes to through the gateway. Checked up front
+/// for the same reason as blobs: the gateway writes several records in turn,
+/// so a grant that omits a later one fails with the earlier ones already
+/// written.
+pub const PUBLISH_COLLECTIONS: [&str; 8] = [
+    PROJECT_NSID,
+    MANIFEST_NSID,
+    VERSION_NSID,
+    CHANNEL_NSID,
+    STATUS_NSID,
+    SIDECAR_NSID,
+    PUBLICATION_NSID,
+    DOCUMENT_NSID,
+];
+
+/// Whether `granted` carries a `repo:` permission covering `collection`.
+pub fn covers_repo(granted: &str, collection: &str) -> bool {
+    granted
+        .split_whitespace()
+        .filter_map(|token| token.strip_prefix("repo:"))
+        // `repo:a.b.c?action=create` names the collection before its
+        // parameters, which narrow the actions rather than the collection.
+        .map(|permission| permission.split('?').next().unwrap_or(permission))
+        .any(|named| named == "*" || named == collection)
+}
+
+/// The collections among `collections` that `granted` cannot write to, in the
+/// order given and without repeats, as the `repo:` scopes a new authorization
+/// would have to ask for.
+pub fn missing_repo_scopes<'a>(
+    granted: &str,
+    collections: impl IntoIterator<Item = &'a str>,
+) -> Vec<String> {
+    let mut missing: Vec<String> = Vec::new();
+    for collection in collections {
+        let scope = format!("repo:{collection}");
+        if !covers_repo(granted, collection) && !missing.contains(&scope) {
+            missing.push(scope);
+        }
+    }
+    missing
+}
 
 /// Whether `granted` carries a `blob:` permission covering `mime`.
 ///
@@ -110,6 +159,35 @@ mod tests {
             vec!["blob:image/png".to_string()]
         );
         assert!(missing_blob_scopes(granted, ["application/wasm"]).is_empty());
+    }
+
+    #[test]
+    fn a_repo_permission_covers_its_collection_and_a_wildcard_covers_all() {
+        assert!(covers_repo("repo:a.b.c", "a.b.c"));
+        assert!(!covers_repo("repo:a.b.c", "a.b.d"));
+        // Action and other parameters narrow what may be done, not which
+        // collection; a grant that names the collection counts.
+        assert!(covers_repo("atproto repo:a.b.c?action=create", "a.b.c"));
+        assert!(covers_repo("repo:*", "a.b.c"));
+        assert!(!covers_repo("blob:a.b.c", "a.b.c"));
+        assert!(!covers_repo("", "a.b.c"));
+    }
+
+    #[test]
+    fn the_missing_repo_scopes_are_named_once_each_in_order() {
+        assert_eq!(
+            missing_repo_scopes("atproto repo:a.b", ["a.b", "c.d", "c.d", "e.f"]),
+            vec!["repo:c.d".to_string(), "repo:e.f".to_string()]
+        );
+    }
+
+    #[test]
+    fn the_default_scope_covers_every_collection_a_publish_writes() {
+        assert!(missing_repo_scopes(DEFAULT_SCOPE, PUBLISH_COLLECTIONS).is_empty());
+        assert_eq!(PUBLISH_COLLECTIONS.len(), 8);
+        // A grant from before the registry moved collections cannot publish.
+        let old = "atproto repo:at.happyproto.plugin.profile repo:at.happyproto.plugin.release blob:application/wasm";
+        assert_eq!(missing_repo_scopes(old, PUBLISH_COLLECTIONS).len(), 8);
     }
 
     /// The scope a login asks for has to cover what a publish uploads, or

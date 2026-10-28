@@ -10,8 +10,32 @@ pub struct Sandbox<'a> {
     pub runner: &'a dyn Runner,
     pub checkout: PathBuf,
     pub project: String,
-    /// The /24 `create` asks for; see `NetworkDir::subnet`.
+    /// The network `create` asks for; see `choose_subnet`.
     pub subnet: String,
+}
+
+/// The network a sandbox is created on. The one it was last created on is
+/// kept, through `--reset` too, until `--subnet` names another; a project
+/// with neither gets the one derived from its path. A created sandbox cannot
+/// move, so asking one to is refused rather than ignored.
+pub fn choose_subnet(
+    asked: Option<&str>,
+    recorded: Option<&str>,
+    derived: &str,
+    created: bool,
+    reset: bool,
+) -> Result<String, Failure> {
+    if let (Some(asked), Some(recorded)) = (asked, recorded)
+        && created
+        && !reset
+        && ipv4_range(asked) != ipv4_range(recorded)
+    {
+        return Err(Failure::usage(format!(
+            "this project's local network was created on {recorded}; to move it to {asked}, \
+             run this again with --reset, which discards its accounts, records and database"
+        )));
+    }
+    Ok(asked.or(recorded).unwrap_or(derived).to_string())
 }
 
 /// An IPv4 CIDR as its first and last address; `None` for anything else,
@@ -107,6 +131,15 @@ impl Sandbox<'_> {
         Ok(exit)
     }
 
+    /// The network the sandbox's manifest says it was created on; `None`
+    /// when there is no manifest or it names none.
+    pub fn recorded_subnet(&self) -> Option<String> {
+        std::fs::read_to_string(self.checkout.join("state/manifest.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|manifest| manifest.get("subnet")?.as_str().map(str::to_string))
+    }
+
     pub fn created(&self) -> bool {
         self.checkout.join("state/manifest.json").is_file()
     }
@@ -171,7 +204,8 @@ impl Sandbox<'_> {
         if let Some((name, theirs)) = overlapping_network(&inspect, &self.subnet) {
             return Err(Failure::usage(format!(
                 "the local network for this project uses {}, which overlaps Docker network `{name}` ({theirs}); \
-                 remove that network (`docker network rm {name}`) or stop what uses it, then run this again",
+                 choose another with `--subnet <CIDR>` (a private IPv4 network from /16 to /28, such as 10.40.0.0/24), \
+                 or remove that network (`docker network rm {name}`) if nothing needs it, then run this again",
                 self.subnet
             )));
         }
@@ -459,6 +493,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_subnet_once_chosen_is_kept_until_another_is_asked_for() {
+        let derived = "172.30.17.0/24";
+        // A new project takes the derived network, or the one asked for.
+        assert_eq!(
+            choose_subnet(None, None, derived, false, false).unwrap(),
+            derived
+        );
+        assert_eq!(
+            choose_subnet(Some("10.40.0.0/24"), None, derived, false, false).unwrap(),
+            "10.40.0.0/24"
+        );
+        // `--reset` without `--subnet` recreates it where it was.
+        assert_eq!(
+            choose_subnet(None, Some("10.40.0.0/24"), derived, true, true).unwrap(),
+            "10.40.0.0/24"
+        );
+        // `--reset` with `--subnet` moves it.
+        assert_eq!(
+            choose_subnet(
+                Some("10.41.0.0/24"),
+                Some("10.40.0.0/24"),
+                derived,
+                true,
+                true
+            )
+            .unwrap(),
+            "10.41.0.0/24"
+        );
+        // Naming the network it already has is not a move.
+        assert!(
+            choose_subnet(
+                Some("10.40.0.0/24"),
+                Some("10.40.0.0/24"),
+                derived,
+                true,
+                false
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_created_network_asked_to_move_without_reset_is_refused() {
+        let err = choose_subnet(
+            Some("10.41.0.0/24"),
+            Some("10.40.0.0/24"),
+            "172.30.17.0/24",
+            true,
+            false,
+        )
+        .unwrap_err();
+        let report = err.report.to_string();
+        assert!(report.contains("created on 10.40.0.0/24"), "{report}");
+        assert!(report.contains("--reset"), "{report}");
+        assert_eq!(err.code, 2);
+    }
+
+    #[test]
+    fn the_recorded_subnet_is_the_manifests() {
+        let dir = tempfile::tempdir().unwrap();
+        let runner = FakeRunner::default();
+        let s = sandbox(&runner, dir.path());
+        assert_eq!(s.recorded_subnet(), None);
+        write_manifest(dir.path(), r#"{"applications":[],"subnet":"10.40.0.0/24"}"#);
+        assert_eq!(s.recorded_subnet().as_deref(), Some("10.40.0.0/24"));
+    }
+
     #[tokio::test]
     async fn create_refuses_a_subnet_another_network_holds_and_names_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -476,6 +578,7 @@ mod tests {
         let report = err.report.to_string();
         assert!(report.contains("`someone-else`"), "{report}");
         assert!(report.contains("172.30.0.0/16"), "{report}");
+        assert!(report.contains("--subnet <CIDR>"), "{report}");
         assert_eq!(err.code, 2);
         let calls = runner.calls();
         // This sandbox's own network is never counted against it, and

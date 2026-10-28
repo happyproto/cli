@@ -142,7 +142,7 @@ pub fn extract_binary(archive: &[u8], target: &str) -> Result<Vec<u8>, Failure> 
         for i in 0..zip.len() {
             let mut file = zip.by_index(i).map_err(Failure::runtime)?;
             let entry = Entry {
-                name: file.name().to_string(),
+                name: file.name().map_err(Failure::runtime)?.into_owned(),
                 link: file.is_symlink(),
                 file: file.is_file(),
             };

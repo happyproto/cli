@@ -14,13 +14,22 @@ pub enum Error {
         message: Option<String>,
     },
     /// A refusal from the registry's own procedures (`InvalidRecord`,
-    /// `VersionExists`, `ProfileMissing`, …); its message is written for the
+    /// `VersionExists`, `ProjectMissing`, …); its message is written for the
     /// publisher.
     #[error("{message}")]
     Registry { name: String, message: String },
     #[error("{0}")]
     Other(String),
 }
+
+/// Registry refusals the publisher fixes by changing what they ran or wrote.
+const USAGE_ERRORS: [&str; 5] = [
+    "InvalidRecord",
+    "VersionExists",
+    "ProjectMissing",
+    "NotInstallable",
+    "VersionNotFound",
+];
 
 impl Error {
     pub fn is_auth(&self) -> bool {
@@ -32,7 +41,7 @@ impl Error {
 
     /// Errors that are the publisher's to fix, not a failure of the tool.
     pub fn is_usage(&self) -> bool {
-        matches!(self, Error::Registry { name, .. } if name == "InvalidRecord" || name == "VersionExists")
+        matches!(self, Error::Registry { name, .. } if USAGE_ERRORS.contains(&name.as_str()))
     }
 
     /// The registry's error name, for errors that came from it.

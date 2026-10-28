@@ -93,25 +93,51 @@ glibc or musl distribution, on x86_64 and arm64.
 
 ## How publishing works
 
-Your plugin lives in **your own atproto repo**, as two kinds of record that
-the registry indexes:
+Your plugin lives in **your own atproto repo**, as `software.release`
+records that the registry indexes:
 
 | Record | Key | What it is |
 | --- | --- | --- |
-| `at.happyproto.plugin.profile` | `<slug>` | The package: license, authors, security contacts, description. |
-| `at.happyproto.plugin.release` | `<slug>:<version>` | One version: the `.wasm` (uploaded as a blob), its checksum, its manifest, its dependencies. |
+| `software.release.project` | `<name>` | The plugin as a whole. |
+| `site.standard.publication` | `<name>` | Its display name, description and icon. |
+| `at.happyproto.registry.project` | `<name>` | What the registry adds: plugin type, keywords, authors, security contacts. |
+| `software.release.manifest` | TID | One build: the `.wasm` and its `manifest.json` (uploaded as blobs), images, license, sections and `requires`. |
+| `software.release.version` | `<name>:<version>` | A version, pointing at its manifest. |
+| `software.release.channel` | `<name>:<channel>` | Where `latest`, `beta` or `alpha` points. |
+| `software.release.status` | TID | A lifecycle event: end of support, end of life, … |
+| `site.standard.document` | TID | A version's changelog. |
 
 `hpy` signs you in through the registry's HappyView
-(`https://api.happyproto.at`). It publishes with the registry's
-`publishProfile` and `publishRelease` procedures, which check a record against
-the indexer's rules, explain any refusal, and then write the record to your
-repo for you. `hpy` checks the same rules locally first, so most mistakes show
-up before anything leaves your machine. It then asks the registry for its
-verdict before uploading a single byte. Once a release is written, the
-registry copies the module and marks the release `active`.
+(`https://api.happyproto.at`). It writes through the registry's gateway
+procedures, which check what you send against the indexer's rules, explain
+any refusal, and then write the records to your repo for you:
 
-**Releases are immutable.** A published version can never be changed. A
-withdrawn version can never be published again.
+| Procedure | Used by |
+| --- | --- |
+| `putProject` | `init`, `edit` and `publish`: the project, its publication and the registry's sidecar. |
+| `publishRelease` | `publish`: the manifest, the version, the channel it moves and the changelog. |
+| `promoteRelease` | `publish --promote`: a new version of an existing version's build. |
+| `putStatus` | `lifecycle`: a lifecycle event, or the withdrawal of one. |
+
+`hpy` checks the same rules locally first, so most mistakes show up before
+anything leaves your machine. It then asks the registry for its verdict
+before uploading a single byte. Every upload is checked against the CID the record names it by, and an image a previous
+version or the project already holds isn't sent again. Once a version is
+written, the registry copies its blobs and marks it `available`.
+
+**Versions are immutable.** A published version can never be changed. If a
+publish is cut off partway, run it again: the registry finishes the version
+it started rather than refusing it.
+
+**Channels** (`latest`, `beta`, `alpha`) say which version to install by
+default. A publish moves one channel to the new version (`--track` picks it).
+Installing from a channel, or `hpy happyview add`, resolves it to an exact
+version.
+
+**Signing in again.** The default `oauth.scope` covers the `software.release`
+collections, which an older `hpy` login does not. After updating `hpy`, run
+`hpy registry login` again, and export a new `HPY_CREDENTIAL` for CI with
+`hpy registry login --export`.
 
 ## Quick start
 
@@ -119,15 +145,15 @@ From a plugin directory, meaning one with a `manifest.json`:
 
 ```sh
 hpy registry login alice.bsky.social
-hpy registry plugin init            # prompts; writes hpy.toml and creates the profile
+hpy registry plugin init            # prompts; writes [project] in hpy.toml and creates the project
 cargo build --release --target wasm32-unknown-unknown
-hpy registry plugin publish --wait  # validates, uploads, writes the release, waits for "active"
+hpy registry plugin publish --wait  # validates, uploads, writes the version, waits for "available"
 ```
 
 Every prompt has a flag equivalent, so this also works without a terminal:
 
 ```sh
-hpy registry plugin init --no-input --license MIT \
+hpy registry plugin init --no-input \
   --author "Ada <ada@example.com> (https://ada.dev)" \
   --security security@example.com --keyword atproto --yes
 ```
@@ -139,14 +165,13 @@ hpy registry plugin init --no-input --license MIT \
 | `hpy registry login [handle]` | Signs in through your browser. `--no-browser` prints the URL instead of opening it. `--export` signs in for CI and prints a credential instead of saving it (see below). |
 | `hpy registry logout` | Revokes the session and deletes stored credentials. |
 | `hpy registry whoami` | Shows the account you're signed in as. |
-| `hpy registry plugin init` | Writes `[profile]` in `hpy.toml` and creates the profile record, but only if one doesn't exist yet (`--local-only` skips the record). |
-| `hpy registry plugin show` | Shows the profile on your PDS. |
-| `hpy registry plugin edit` | Edits the profile on your PDS: with flags (`--name`, `--license`, `--author`, `--keyword`, `--remove-keyword` …) or in `$EDITOR`. |
-| `hpy registry plugin pull` | Copies the PDS profile into `hpy.toml`. |
-| `hpy registry plugin publish` | Publishes a new release. `--dry-run` prints the record without publishing, `--wait` polls until the release is active, `--version` overrides the version, `--wasm` points at the module. |
-| `hpy registry plugin status [version]` | Lists releases from your repo and from the registry, with the registry's status for each. |
-| `hpy registry plugin retry <version>` | Asks the registry to copy a pending release's artifact again, when its first copy failed. `--wait` polls until the release is active. |
-| `hpy registry plugin withdraw <version>` | Deletes a release record. The release stays installable by its exact version, but that version can never be reused. |
+| `hpy registry plugin init` | Writes `[project]` in `hpy.toml` and creates the project, but only if the registry doesn't have it yet (`--local-only` skips that). `--name` sets the project name; `--display-name`, `--description`, `--author`, `--security` and `--keyword` fill in the rest. |
+| `hpy registry plugin show` | Shows the project as the registry has it. |
+| `hpy registry plugin edit` | Edits the project: with flags (`--display-name`, `--description`, `--author`, `--security`, `--keyword`, `--remove-keyword`; `--name` picks the project) or in `$EDITOR`. `hpy.toml` follows only when its `[project]` is this project. |
+| `hpy registry plugin pull` | Copies the registry's project into `[project]` in `hpy.toml`. |
+| `hpy registry plugin publish` | Publishes a new version. `--track latest\|beta\|alpha` picks the channel it moves (default: `latest` for a stable version, else the prerelease's name, `beta` or `alpha`); `--promote <from>` republishes an existing version's build as `--version` instead of building; `--dry-run` prints what would be published; `--wait` polls until the version is available; `--version` overrides the version; `--wasm` points at the module. |
+| `hpy registry plugin status [version]` | Lists versions from your repo and from the registry, with each one's availability and lifecycle state. |
+| `hpy registry plugin lifecycle <version> <event>` | Records a lifecycle event for a version: `endOfDevelopment`, `endOfSupport`, `supersededBy` (with `--superseded-by <version>`), `endOfDistribution` or `endOfLife`, with an optional `--kind` and `--reason`. `--project <event>` records it for the whole project. `--withdraw <status at-uri>` withdraws one recorded in error. A version at `endOfDistribution` or `endOfLife` is no longer offered for install. |
 | `hpy update` | Updates `hpy` to the newest release on your channel (see [Updates](#updates)). |
 | `hpy channel [stable\|beta\|alpha]` | Shows your release channel, or switches to another. `--yes` skips the confirmation. |
 
@@ -163,28 +188,65 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 
 | Command | Does |
 | --- | --- |
-| `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--package <at-uri>` picks between packages with one name. Each plugin is pinned to its newest stable release, or its newest prerelease when it has nothing else. Writes the lock but downloads nothing. |
+| `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--project <at-uri>` picks between projects that answer to one name. Each plugin follows its project's `latest` channel, or the only channel it has. Writes the lock but downloads nothing. |
 | `hpy happyview dev` | Runs the project with its pinned HappyView, in the foreground. |
-| `hpy happyview add <plugin>[@version]` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. `--package <at-uri>` picks between packages with one name. With no plugin (or as `install`), brings the lock up to date and downloads it. |
+| `hpy happyview add <plugin>` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. Each follows a channel (`--channel`, default `latest`) or is pinned to `--version`; `--project <at-uri>` picks between projects that answer to one name. Adding a plugin again moves it to its channel's current version. With no plugin (or as `install`), brings the lock up to date and downloads it. |
 | `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
 | `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
+| `hpy happyview types` | Writes editor types for the project into `.happyview/types/`, one directory per interpreter, so your editor's language server can check handlers against their lexicons, `ctx` and the installed libraries. Needs a HappyView that has `happyview types`. |
 
-`hv` is short for `happyview`. `dev`, `check` and `test` take `--locked`,
+### Editor types
+
+`hpy happyview dev` keeps `.happyview/types/` current as you work: HappyView
+rewrites it after every build that changes what a script can see.
+`hpy happyview types` writes it once, which is what to run before opening an
+editor without the dev server, or in CI.
+
+`dev`, `types` and `create` also write the settings file that points a
+language server at those types, when the project does not have one yet:
+`.luarc.json` for Lua (LuaLS) and `tsconfig.json` for TypeScript or
+JavaScript. A file you already have is never changed; `hpy` says what to add
+to it instead. The starter handler `create` writes already names its types.
+
+`hv` is short for `happyview`. `dev`, `check`, `test` and `types` take `--locked`,
 which fails instead of updating a lock that no longer matches
 `happyview.toml`; use it in CI. They exit with HappyView's own exit code.
 
-A range in `happyview.toml` such as `"1.4"` or `"*"` never matches a
-prerelease. A plugin that has published only prereleases needs a range that
-names one, such as `"^0.1.0-alpha.3"`.
+Each plugin in `happyview.toml` names its project by its publisher's DID and
+its name, and follows a channel or is pinned to one version:
+
+```toml
+[interpreters]
+lua = { did = "did:plc:mo7vq4jbioxwafy5zkcc3eux", name = "happyview-lua", channel = "latest" }
+
+[libraries]
+"happyview.db" = { did = "did:plc:mo7vq4jbioxwafy5zkcc3eux", name = "happyview-db", version = "1.2.0" }
+```
+
+A channel is resolved when the lock is written. The lock records the channel
+it followed (`channel = "latest"`, left out for a pinned version) and keeps
+that version until you `add` the plugin again, so `check` and `dev` stay
+reproducible as the channel moves on; changing an entry's channel or version
+in `happyview.toml` makes the lock out of date. A channel pointing at a
+version its publisher has ended distribution of is refused. A pinned version
+is used even then, with a warning, since pinning it was your call. A plain
+version string (`lua = "^1"`), from before the `software.release` registry, is
+refused with the table form to use instead, and so is a `happyview.lock` from
+then: delete it and run `hpy happyview check`.
+
+A library a plugin requires is resolved to the highest installable version in
+the range it asks for. Such a range never matches a prerelease unless it names
+one, such as `"^0.1.0-alpha.3"`.
 
 HappyView binaries are cached at `~/.cache/hpy/happyview/<version>/`
 (`HPY_CACHE_DIR` moves the cache) and checked against the `.sha256`
 published with each release. Plugins come from the registry into
-`~/.cache/hpy/plugins/<id>/<version>/`, checked against the checksum in
-their release record and in `happyview.lock`; a registry that ever states a
-different checksum for a locked version is refused. `dev`, `check` and
-`test` link them into the project's `.happyview/plugins/` (on Windows they
-copy them), which `hpy` owns: anything else placed there is removed.
+`~/.cache/hpy/plugins/<id>/<version>/`. Their module and `manifest.json` are
+checked against the blob CIDs in `happyview.lock`, and a registry whose
+version no longer matches the manifest record the lock names is refused.
+`dev`, `check` and `test` link them into the project's `.happyview/plugins/`
+(on Windows they copy them), which `hpy` owns: anything else placed there is
+removed.
 
 ### A local network
 
@@ -213,42 +275,49 @@ against the real network.
 Only one local network can run at a time, since its browser relay holds
 `127.0.0.1:443`.
 
+Each project's network gets a `/24` under `172.30.0.0/16`, chosen from the
+project's path. If that range is already in use on your computer, by a VPN or
+another Docker network, `dev` refuses to start and names what holds it. Pick
+another range with `--subnet`, such as `--subnet 10.40.0.0/24`. It must be a
+private IPv4 network, from `/16` to `/28`. The network keeps that range, even
+through `--reset`, until you give another. A network that already exists can
+move only by being recreated, so use `--reset --subnet <CIDR>` for that.
+
 ## `hpy.toml`
 
 This file sits next to `manifest.json`. `manifest.json` stays the file
 HappyView's loader reads, and `hpy` takes the plugin's type, version,
 capabilities and allowed hosts from it. `hpy.toml` holds what the registry
-needs on top of that.
+needs on top of that: `[project]` describes the plugin as a whole, and
+`[release]` what every version carries.
 
-The profile on your PDS is the source of truth. `hpy.toml` seeds it the first
-time, and `publish` creates the profile from `hpy.toml` only when none
-exists yet. After that, change it with `profile edit`, and use `profile pull`
-to sync it back into the file.
+`publish` creates the project from `[project]` when the registry doesn't
+have it, and updates it when `[project]` has changed. `edit` changes it
+directly, and `pull` copies it back into the file.
 
 ```toml
-[profile]
-slug = "happyview-atproto"          # default: manifest id
-name = "Atproto"                    # default: manifest name
+[project]
+name = "happyview-atproto"          # default: manifest id
+display_name = "Atproto"            # default: manifest name
 description = "AT Protocol service resolution, blob download, labels, signing."
-license = "MIT"
+icon = { path = "assets/icon.png" }
 keywords = ["atproto", "library"]
 authors = [{ name = "Ada", url = "https://ada.dev", email = "ada@example.com" }]
 security = [{ email = "security@example.com" }]
 
-[profile.sections]                  # Markdown file paths, or { text = "…" }
-description = "README.md"
-changelog = "CHANGELOG.md"
-
 [release]
-repo = "https://github.com/example/happyview-atproto"
-# version = "0.1.0"                 # default: manifest version
+license = "MIT"
+changelog = "CHANGELOG.md"          # this version's entry becomes its changelog
+
+[release.sections]                  # Markdown file paths, or { text = "…" }
+description = "README.md"
+installation = { text = "Add it with `hpy happyview add happyview.atproto`." }
 
 [release.requires]
 "env:happyview" = ">=3.0.0"
-# "at://did:plc:…/at.happyproto.plugin.profile/happyview-http" = "^0.1"
+# "at://did:plc:…/software.release.project/happyview-http" = "^0.1"
 
 [release.artifacts]
-icon = { path = "assets/icon.png", alt = "Atproto logo" }
 banner = { path = "assets/banner.png" }
 screenshots = [{ path = "assets/shot1.png", alt = "…" }]
 
@@ -256,6 +325,9 @@ screenshots = [{ path = "assets/shot1.png", alt = "…" }]
 command = "cargo build --release --target wasm32-unknown-unknown -p happyview-atproto"
 wasm = "../../target/wasm32-unknown-unknown/release/happyview_atproto.wasm"
 ```
+
+An `hpy.toml` written by an older `hpy`, with a `[profile]` table, is refused
+until its fields move to `[project]` and `[release]`.
 
 If `[build] wasm` and `--wasm` are both absent, `hpy` uses the manifest's
 `wasm_file`. Failing that, it looks for `<cargo target dir>/wasm32-*/release/<crate>.wasm`,
@@ -341,7 +413,7 @@ The daily check is skipped in CI, when there's no terminal, and when
 | `registry.url` | `HPY_REGISTRY_URL` | `https://api.happyproto.at` |
 | `registry.client_key` | `HPY_CLIENT_KEY` | `hpy`'s API client on `api.happyproto.at` |
 | `oauth.client_id` | `HPY_OAUTH_CLIENT_ID` | `https://happyproto.at/oauth/hpy/client-metadata.json` |
-| `oauth.scope` | `HPY_OAUTH_SCOPE` | `atproto repo:at.happyproto.plugin.profile repo:at.happyproto.plugin.release blob:application/wasm blob:image/*` |
+| `oauth.scope` | `HPY_OAUTH_SCOPE` | `atproto repo:software.release.project repo:software.release.manifest repo:software.release.version repo:software.release.channel repo:software.release.status repo:at.happyproto.registry.project repo:site.standard.publication repo:site.standard.document blob:application/wasm blob:application/json blob:image/*` |
 | `oauth.redirect` | `HPY_OAUTH_REDIRECT` | `https://happyproto.at/oauth/hpy/callback` (the relay); or `loopback` |
 | `oauth.client_auth` | `HPY_OAUTH_CLIENT_AUTH` | `assertion` (confidential, signed by HappyView); or `none` (public) |
 | `credentials.store` | `HPY_CREDENTIAL_STORE` | `auto` (the OS keychain, falling back to the file); also `keychain` or `file` |
@@ -404,14 +476,14 @@ cargo run -p hpy-cli -- --help
 
 | Crate | Responsibility |
 | --- | --- |
-| `crates/hpy-plugin` | No network: reads `manifest.json` and `hpy.toml`, validates against the registry's rules, computes checksums, builds records. |
+| `crates/hpy-plugin` | No network: reads `manifest.json` and `hpy.toml`, validates against the registry's rules, computes blob CIDs, builds what the gateway is sent. |
 | `crates/hpy-atproto` | Signing in through HappyView: DPoP keys, PKCE, atproto OAuth with HappyView-signed client assertions, identity resolution via [jacquard](https://crates.io/crates/jacquard). Also the credential and keychain storage, the `Repo` trait (reads from your PDS, writes through HappyView), and the `Registry` trait (queries and publish procedures). |
 | `crates/hpy` | The `hpy` binary: commands, prompts, output. |
 
 ### Manual verification
 
 The automated tests use in-memory fakes for the PDS and the registry. Before
-a release, run through the real flow once, using a scratch slug:
+a release, run through the real flow once, using a scratch project name:
 
 1. `hpy registry login <handle>` with a bsky.social account: the browser opens, you
    approve, and `whoami` shows you with "key in the OS keychain". Keychain
@@ -422,8 +494,10 @@ a release, run through the real flow once, using a scratch slug:
 3. In a scratch plugin directory: `hpy registry plugin init`, then `hpy registry plugin show`.
 4. `hpy registry plugin edit --keyword test`, then `hpy registry plugin show`.
 5. `hpy registry plugin publish --dry-run`, then `hpy registry plugin publish --wait`.
-6. `hpy registry plugin status` shows the version as `active`.
-7. `hpy registry plugin withdraw <version>`, then `status` shows `deleted`.
+6. `hpy registry plugin status` shows the version as `available`.
+7. `hpy registry plugin lifecycle <version> endOfDistribution`, then `status`
+   shows it `unavailable` and not installable; `lifecycle --withdraw <its uri>`
+   undoes it.
 8. `hpy registry logout`: the keychain item is gone, and `whoami` exits with code 3.
    `HPY_CREDENTIAL=<it> hpy registry logout` revokes the exported session.
 
