@@ -30,9 +30,33 @@ pub const OAUTH_CLIENT_ID: &str = "https://happyproto.at/oauth/hpy-cli/client-me
 /// The built-in API client's key, when an instance's `/config` doesn't say.
 pub const DEFAULT_CLIENT_KEY: &str = "hvc_hpy";
 
+/// What a login asks the PDS for: who the user is, and HappyView's
+/// permission set for managing an instance, which every instance accepts.
+pub const SCOPE: &str = "atproto include:dev.happyview.adminFull";
+
+/// The permission the set grants, as a PDS spells it out in the token's
+/// scope once it has expanded the `include:`.
+const ADMIN_RPC: &str = "rpc:dev.happyview.admin.manage";
+
+/// Whether a granted scope lets the session manage an instance: the admin
+/// permission for any audience. A PDS that doesn't know permission sets
+/// grants only `atproto`, and a sign-in through it can't deploy.
+pub fn grants_admin(scopes: &str) -> bool {
+    scopes.split_whitespace().any(|scope| {
+        scope
+            .strip_prefix(ADMIN_RPC)
+            .and_then(|rest| rest.strip_prefix('?'))
+            .is_some_and(|params| {
+                params
+                    .split('&')
+                    .any(|p| p == "aud=*" || p.eq_ignore_ascii_case("aud=%2A"))
+            })
+    })
+}
+
 /// The settings `hpy registry login` signs in with, turned toward an
 /// instance: its HappyView and its `hpy` client, as a public client with a
-/// loopback redirect, asking the PDS for nothing beyond who the user is.
+/// loopback redirect, asking for HappyView's instance-management permissions.
 pub fn login_settings(base: &Settings, url: &str, client_key: &str) -> Settings {
     let mut s = base.clone();
     s.registry_url = url.to_string();
@@ -41,7 +65,7 @@ pub fn login_settings(base: &Settings, url: &str, client_key: &str) -> Settings 
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| OAUTH_CLIENT_ID.into());
-    s.oauth_scope = "atproto".into();
+    s.oauth_scope = SCOPE.into();
     s.oauth_redirect = Redirect::Loopback;
     s.oauth_client_auth = ClientAuth::None;
     s
@@ -755,12 +779,29 @@ mod tests {
     }
 
     #[test]
+    fn a_grant_manages_the_instance_only_with_the_admin_rpc() {
+        assert!(grants_admin("atproto rpc:dev.happyview.admin.manage?aud=*"));
+        // A PDS may percent-encode the audience.
+        assert!(grants_admin(
+            "rpc:dev.happyview.admin.manage?aud=%2A atproto"
+        ));
+        for no in [
+            "atproto",
+            "atproto include:dev.happyview.adminFull",
+            "atproto rpc:dev.happyview.admin.manage?aud=did:web:other#hv",
+            "atproto rpc:dev.happyview.admin.manageX?aud=*",
+        ] {
+            assert!(!grants_admin(no), "{no}");
+        }
+    }
+
+    #[test]
     fn instance_logins_use_the_public_hpy_client() {
         let base = Settings::from_sources(None, &|_| None, "/c".into()).unwrap();
         let s = login_settings(&base, "https://api.example.com", "hvc_hpy");
         assert_eq!(s.registry_url, "https://api.example.com");
         assert_eq!(s.client_key, "hvc_hpy");
-        assert_eq!(s.oauth_scope, "atproto");
+        assert_eq!(s.oauth_scope, "atproto include:dev.happyview.adminFull");
         assert_eq!(s.oauth_redirect, Redirect::Loopback);
         assert!(matches!(s.oauth_client_auth, ClientAuth::None));
         assert_eq!(s.config_dir, base.config_dir);

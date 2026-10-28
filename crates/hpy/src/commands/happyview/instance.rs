@@ -127,6 +127,14 @@ async fn login_with_browser(
     )
     .await?;
     // A session the instance won't let deploy is no use; don't keep it.
+    if !instance::grants_admin(&cred.scopes) {
+        revoke(&cred).await;
+        return Err(Failure::runtime(format!(
+            "the sign-in didn't grant managing {url}: your account's server (PDS) gave only `{}`. \
+             Signing in to deploy needs a PDS that supports atproto permission sets",
+            cred.scopes
+        )));
+    }
     if let Err(e) = Admin::with_session(cred.clone()).project().await {
         revoke(&cred).await;
         return Err(e.into());
