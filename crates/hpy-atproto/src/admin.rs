@@ -56,6 +56,102 @@ struct Refusal {
     message: Option<String>,
     #[serde(default)]
     dependents: Vec<String>,
+    #[serde(default)]
+    problems: Vec<ProjectProblem>,
+}
+
+/// Something wrong with a project file, as the instance's loader says it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ProjectProblem {
+    #[serde(default)]
+    pub path: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for ProjectProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.path.is_empty() {
+            write!(f, "{}", self.message)
+        } else {
+            write!(f, "{}: {}", self.path, self.message)
+        }
+    }
+}
+
+/// The project an instance serves, as `GET /admin/project` answers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeployedProject {
+    pub sha256: String,
+    pub deployed_at: Option<String>,
+    pub deployed_by: Option<String>,
+    /// Why the stored project failed to build at the instance's last boot,
+    /// leaving it serving none; empty when it is being served.
+    pub problems: Vec<ProjectProblem>,
+}
+
+#[derive(Deserialize)]
+struct RawDeployed {
+    sha256: String,
+    #[serde(default)]
+    deployed_at: Option<String>,
+    #[serde(default)]
+    deployed_by: Option<String>,
+    #[serde(default)]
+    error: Option<RawBootError>,
+}
+
+#[derive(Deserialize)]
+struct RawBootError {
+    #[serde(default)]
+    problems: Vec<ProjectProblem>,
+}
+
+/// What one kind of thing in the project gained, changed or lost.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct Changes {
+    #[serde(default)]
+    pub added: Vec<String>,
+    #[serde(default)]
+    pub changed: Vec<String>,
+    #[serde(default)]
+    pub removed: Vec<String>,
+}
+
+impl Changes {
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.changed.is_empty() && self.removed.is_empty()
+    }
+}
+
+/// What `PUT /admin/project` did, or on a dry run would do.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ProjectDeploy {
+    pub sha256: String,
+    pub dry_run: bool,
+    #[serde(default)]
+    pub deployed_at: Option<String>,
+    /// By kind: `lexicons`, `scripts`, `modules`, `network_lexicons`,
+    /// `labelers`, and any the instance adds later.
+    #[serde(default)]
+    pub changes: std::collections::BTreeMap<String, Changes>,
+    /// Record lexicons whose backfill this started (or would start).
+    #[serde(default)]
+    pub backfills: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<ProjectProblem>,
+}
+
+impl ProjectDeploy {
+    /// Nothing in the project differs from what the instance serves.
+    pub fn is_empty(&self) -> bool {
+        self.changes.values().all(Changes::is_empty) && self.backfills.is_empty()
+    }
+}
+
+enum Body<'a> {
+    None,
+    Json(&'a Value),
+    Gzip(Vec<u8>),
 }
 
 impl Admin {
@@ -75,8 +171,53 @@ impl Admin {
         &self.base
     }
 
-    /// Sends one admin request and answers its JSON body (`Null` for an
-    /// empty one). `what` names the call in errors.
+    /// Sends one admin request and answers its status and body; only a
+    /// request that never got an answer is an error here.
+    async fn request(
+        &self,
+        what: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Body<'_>,
+        if_match: Option<&str>,
+    ) -> Result<(reqwest::StatusCode, Vec<u8>)> {
+        let url = format!("{}/admin{path}", self.base);
+        let mut req = self.http.request(method, &url).bearer_auth(&self.key);
+        req = match body {
+            Body::None => req,
+            Body::Json(body) => req.json(body),
+            Body::Gzip(bytes) => req.header("content-type", "application/gzip").body(bytes),
+        };
+        if let Some(etag) = if_match {
+            req = req.header("if-match", format!("\"{etag}\""));
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| Error::Other(format!("could not reach {} ({what}): {e}", self.base)))?;
+        let status = resp.status();
+        let bytes = resp.bytes().await.map_err(Error::other)?.to_vec();
+        Ok((status, bytes))
+    }
+
+    /// The JSON body of a successful answer (`Null` for an empty one), or
+    /// the refusal as an error. `what` names the call in errors.
+    fn answer(&self, what: &str, status: reqwest::StatusCode, bytes: &[u8]) -> Result<Value> {
+        if status.is_success() {
+            if bytes.is_empty() {
+                return Ok(Value::Null);
+            }
+            return serde_json::from_slice(bytes).map_err(|e| {
+                Error::Other(format!(
+                    "{} answered {what} with something unreadable: {e}",
+                    self.base
+                ))
+            });
+        }
+        let refusal: Refusal = serde_json::from_slice(bytes).unwrap_or_default();
+        Err(self.refused(what, status, refusal))
+    }
+
     async fn send(
         &self,
         what: &str,
@@ -84,30 +225,61 @@ impl Admin {
         path: &str,
         body: Option<&Value>,
     ) -> Result<Value> {
-        let url = format!("{}/admin{path}", self.base);
-        let mut req = self.http.request(method, &url).bearer_auth(&self.key);
-        if let Some(body) = body {
-            req = req.json(body);
-        }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| Error::Other(format!("could not reach {} ({what}): {e}", self.base)))?;
-        let status = resp.status();
-        let bytes = resp.bytes().await.map_err(Error::other)?;
-        if status.is_success() {
-            if bytes.is_empty() {
-                return Ok(Value::Null);
+        let body = body.map_or(Body::None, Body::Json);
+        let (status, bytes) = self.request(what, method, path, body, None).await?;
+        self.answer(what, status, &bytes)
+    }
+
+    /// The project the instance serves; `None` when none was ever deployed.
+    pub async fn project(&self) -> Result<Option<DeployedProject>> {
+        let what = "reading the deployed project";
+        let (status, bytes) = self
+            .request(what, reqwest::Method::GET, "/project", Body::None, None)
+            .await?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            let refusal: Refusal = serde_json::from_slice(&bytes).unwrap_or_default();
+            if refusal.error.as_deref() == Some("NoProject") {
+                return Ok(None);
             }
-            return serde_json::from_slice(&bytes).map_err(|e| {
+            return Err(Error::Other(format!(
+                "{} has no project deploys; it runs a HappyView too old for `hpy happyview deploy`",
+                self.base
+            )));
+        }
+        let raw: RawDeployed =
+            serde_json::from_value(self.answer(what, status, &bytes)?).map_err(|e| {
                 Error::Other(format!(
-                    "{} answered {what} with something unreadable: {e}",
+                    "{} described its project unreadably: {e}",
                     self.base
                 ))
-            });
-        }
-        let refusal: Refusal = serde_json::from_slice(&bytes).unwrap_or_default();
-        Err(self.refused(what, status, refusal))
+            })?;
+        Ok(Some(DeployedProject {
+            sha256: raw.sha256,
+            deployed_at: raw.deployed_at,
+            deployed_by: raw.deployed_by,
+            problems: raw.error.map(|e| e.problems).unwrap_or_default(),
+        }))
+    }
+
+    /// Sends a project bundle. `seen` is the sha256 of the project this
+    /// deploy compared against, so one deployed meanwhile is not overwritten.
+    pub async fn deploy_project(
+        &self,
+        bundle: Vec<u8>,
+        dry_run: bool,
+        seen: Option<&str>,
+    ) -> Result<ProjectDeploy> {
+        let what = if dry_run {
+            "checking the project"
+        } else {
+            "deploying the project"
+        };
+        let path = format!("/project?dry_run={dry_run}");
+        let (status, bytes) = self
+            .request(what, reqwest::Method::PUT, &path, Body::Gzip(bundle), seen)
+            .await?;
+        serde_json::from_value(self.answer(what, status, &bytes)?)
+            .map_err(|e| Error::Other(format!("{} answered {what} unreadably: {e}", self.base)))
     }
 
     fn refused(&self, what: &str, status: reqwest::StatusCode, r: Refusal) -> Error {
@@ -116,6 +288,33 @@ impl Admin {
             StatusCode::UNAUTHORIZED => Error::LoginRequired(format!(
                 "{} refused the API key; create a new one in its dashboard and run `hpy hv login --url {}`",
                 self.base, self.base
+            )),
+            _ if r.error.as_deref() == Some("InvalidProject") => {
+                let mut message = format!("{} refused the project", self.base);
+                if let Some(m) = &r.message {
+                    message = format!("{message}: {m}");
+                }
+                for p in &r.problems {
+                    message.push_str(&format!("\n  • {p}"));
+                }
+                Error::Registry {
+                    name: "InvalidProject".into(),
+                    message,
+                }
+            }
+            StatusCode::PRECONDITION_FAILED => Error::Other(format!(
+                "the project on {} changed since this deploy read it; run the deploy again to see what it would change now",
+                self.base
+            )),
+            StatusCode::CONFLICT if r.error.as_deref() == Some("ProjectFromFile") => {
+                Error::Other(format!(
+                    "{} takes its project from a directory (HAPPYVIEW_PROJECT), so a deploy can't change it; update that directory instead",
+                    self.base
+                ))
+            }
+            StatusCode::PAYLOAD_TOO_LARGE => Error::Other(format!(
+                "the project is too large for {} to accept; it takes bundles up to 50 MB compressed",
+                self.base
             )),
             StatusCode::FORBIDDEN => Error::Other(format!(
                 "{} refused {what}: {}. Give the API key that permission in the dashboard, or create one that has it",
@@ -203,7 +402,7 @@ fn segment(s: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-    use wiremock::matchers::{body_json, header, method, path};
+    use wiremock::matchers::{body_bytes, body_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     const KEY: &str = "hv_0123456789abcdef0123456789abcdef";
@@ -344,6 +543,153 @@ mod tests {
             .mount(&server)
             .await;
         Admin::new(&server.uri(), KEY).remove("old").await.unwrap();
+    }
+
+    fn deploy_answer(dry_run: bool) -> serde_json::Value {
+        json!({
+            "sha256": "abc", "dry_run": dry_run,
+            "deployed_at": if dry_run { serde_json::Value::Null } else { json!("2026-10-28T20:00:00Z") },
+            "changes": {
+                "lexicons": {"added": ["com.example.hello"], "changed": [], "removed": []},
+                "scripts": {"added": ["xrpc.query:com.example.hello"], "changed": [], "removed": []},
+                "modules": {"added": [], "changed": [], "removed": []}
+            },
+            "backfills": ["com.example.post"],
+            "warnings": [{"path": "happyview.toml", "message": "[jetstream] is ignored"}]
+        })
+    }
+
+    #[tokio::test]
+    async fn no_deployed_project_is_none() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/admin/project"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({"error": "NoProject"})))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            Admin::new(&server.uri(), KEY).project().await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn the_deployed_project_carries_its_boot_problems() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/admin/project"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "sha256": "abc", "deployed_at": "2026-10-28T20:00:00Z", "deployed_by": "did:plc:me",
+                "error": {"problems": [{"path": "src/x.ts", "message": "no interpreter claims .ts"}]}
+            })))
+            .mount(&server)
+            .await;
+        let deployed = Admin::new(&server.uri(), KEY)
+            .project()
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(deployed.sha256, "abc");
+        assert_eq!(deployed.problems.len(), 1);
+        assert_eq!(deployed.problems[0].path, "src/x.ts");
+    }
+
+    #[tokio::test]
+    async fn deploys_a_bundle_as_gzip_with_the_version_it_saw() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/admin/project"))
+            .and(query_param("dry_run", "true"))
+            .and(header("content-type", "application/gzip"))
+            .and(header("if-match", "\"old\""))
+            .and(header("authorization", format!("Bearer {KEY}").as_str()))
+            .and(body_bytes(b"bundle".to_vec()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(deploy_answer(true)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let out = Admin::new(&server.uri(), KEY)
+            .deploy_project(b"bundle".to_vec(), true, Some("old"))
+            .await
+            .unwrap();
+        assert!(out.dry_run);
+        assert_eq!(out.changes["lexicons"].added, ["com.example.hello"]);
+        assert_eq!(out.backfills, ["com.example.post"]);
+        assert_eq!(out.warnings[0].message, "[jetstream] is ignored");
+        assert!(!out.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_first_deploy_sends_no_if_match() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/admin/project"))
+            .and(query_param("dry_run", "false"))
+            .respond_with(move |req: &wiremock::Request| {
+                assert!(req.headers.get("if-match").is_none());
+                ResponseTemplate::new(200).set_body_json(deploy_answer(false))
+            })
+            .expect(1)
+            .mount(&server)
+            .await;
+        Admin::new(&server.uri(), KEY)
+            .deploy_project(b"bundle".to_vec(), false, None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_invalid_project_lists_its_problems_as_a_usage_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+                "error": "InvalidProject", "message": "the project has 2 problems",
+                "problems": [
+                    {"path": "src/lexicons/com/example/hello.json", "message": "id does not match the path"},
+                    {"path": "happyview.toml", "message": "unknown table [scirpts]"}
+                ]
+            })))
+            .mount(&server)
+            .await;
+        let err = Admin::new(&server.uri(), KEY)
+            .deploy_project(b"x".to_vec(), true, None)
+            .await
+            .unwrap_err();
+        assert!(err.is_usage(), "{err}");
+        let text = err.to_string();
+        assert!(
+            text.contains("src/lexicons/com/example/hello.json: id does not match the path"),
+            "{text}"
+        );
+        assert!(
+            text.contains("happyview.toml: unknown table [scirpts]"),
+            "{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn refusals_of_a_deploy_say_what_to_do() {
+        for (status, body, says) in [
+            (412, json!({"error": "PreconditionFailed"}), "changed since"),
+            (
+                409,
+                json!({"error": "ProjectFromFile"}),
+                "HAPPYVIEW_PROJECT",
+            ),
+            (413, json!({"error": "PayloadTooLarge"}), "too large"),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("PUT"))
+                .respond_with(ResponseTemplate::new(status).set_body_json(body))
+                .mount(&server)
+                .await;
+            let text = Admin::new(&server.uri(), KEY)
+                .deploy_project(b"x".to_vec(), false, Some("a"))
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(text.contains(says), "{status}: {text}");
+        }
     }
 
     #[tokio::test]

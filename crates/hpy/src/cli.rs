@@ -231,7 +231,7 @@ pub enum HappyviewCommand {
     Logout(InstanceArgs),
     /// Show the instances you are signed in to.
     Whoami,
-    /// Make an instance match the project: its plugins from happyview.lock.
+    /// Make an instance match the project: its plugins from happyview.lock, then its lexicons, scripts and modules.
     Deploy(DeployArgs),
 }
 

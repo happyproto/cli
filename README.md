@@ -199,7 +199,7 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 | `hpy happyview login --url <instance>` | Signs in to an instance's admin API with an API key made in its dashboard, asked for at a hidden prompt (or read from standard input with `--key-stdin`). Checks the key before saving it. |
 | `hpy happyview logout [--url <instance>]` | Forgets the instance's API key. Revoke the key itself in the dashboard. |
 | `hpy happyview whoami` | Lists the instances you're signed in to, and which key each uses. |
-| `hpy happyview deploy [--url <instance>]` | Makes the instance's plugins match `happyview.lock` (see [Deploying](#deploying)). `--dry-run` shows the changes without making them; `--yes` skips the confirmation. |
+| `hpy happyview deploy [--url <instance>]` | Makes the instance match the project: its plugins from `happyview.lock`, then its lexicons, scripts and modules (see [Deploying](#deploying)). `--dry-run` shows the changes without making them; `--yes` skips the confirmation. |
 | `hpy happyview types` | Writes editor types for the project into `.happyview/types/`, one directory per interpreter, so your editor's language server can check handlers against their lexicons, `ctx` and the installed libraries. Needs a HappyView that has `happyview types`. |
 
 ### Editor types
@@ -295,21 +295,40 @@ move only by being recreated, so use `--reset --subnet <CIDR>` for that.
 `hpy happyview deploy` makes an instance match the project. It talks to the
 instance's admin API with an API key: create one in the instance's dashboard
 and sign in with `hpy happyview login --url https://api.example.com`. The key
-needs the `plugins:read`, `plugins:create` and, for `--prune-plugins`,
-`plugins:delete` permissions.
+needs the `project:deploy`, `plugins:read` and `plugins:create` permissions,
+and `plugins:delete` for `--prune-plugins`.
 
-Today a deploy installs the plugins `happyview.lock` pins, each at exactly its
-locked version, after the plugins it depends on:
+A deploy shows everything it would change and asks before changing anything.
+Then, in this order:
 
-- a plugin the instance doesn't have is installed;
-- one at another version is moved to the locked one;
-- one installed under the same name from a URL or another publisher is
-  replaced;
-- one the lock doesn't list is kept, unless you pass `--prune-plugins`.
+1. **Plugins.** Each plugin `happyview.lock` pins is installed at exactly its
+   locked version, after the plugins it depends on. One the instance doesn't
+   have is installed, one at another version is moved to the locked one, and
+   one installed under the same name from a URL or another publisher is
+   replaced. One the lock doesn't list is kept, unless you pass
+   `--prune-plugins`.
+2. **The project.** `happyview.toml`, everything under `src/` and the builds of
+   its `[modules]` (built first, as `hpy happyview build` does) go to the
+   instance in one piece. The instance checks the project with the same rules
+   `hpy happyview check` uses and switches to it all at once, or refuses it and
+   keeps the one it had. Lexicons and scripts you add in the dashboard are
+   kept; where the project defines the same one, the project's is used.
 
 The lock must match `happyview.toml`, so a deploy installs what you tested;
 run `hpy happyview add` to bring it up to date. A deploy stops at the first
-change the instance refuses and says which changes it already made.
+change the instance refuses and says which changes it already made. If someone
+else deploys between your preview and your deploy, yours is refused rather
+than overwriting theirs; run it again.
+
+A record lexicon is backfilled from the whole network only when
+`happyview.toml` asks for it with `[lexicons."<nsid>"] backfill = true`, and
+only the first time it is deployed. The preview lists every backfill a deploy
+would start.
+
+On a hosted instance, a deploy applies `[lexicons]`, `[scripts]`, `[modules]`,
+`[network_lexicons]` and `[labels]` from `happyview.toml`. `[instance]`,
+`[dev]`, `[jetstream]` and the HappyView version stay as the instance has
+them; the preview warns when the project sets them.
 
 With `--url` you choose the instance when you're signed in to several. In CI,
 set `HPY_HV_URL` and `HPY_HV_API_KEY` (store the key as a secret) instead of

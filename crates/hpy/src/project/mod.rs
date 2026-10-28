@@ -2,6 +2,7 @@
 //! what it runs, and starting the binary.
 
 pub mod binary;
+pub mod bundle;
 pub mod cache;
 pub mod deploy;
 pub mod editor;

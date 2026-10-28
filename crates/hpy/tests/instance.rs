@@ -6,7 +6,7 @@ use hpy_project::config::PluginKind;
 use hpy_project::lock::{LockedHappyview, LockedPlugin, Lockfile};
 use predicates::prelude::*;
 use serde_json::{Value, json};
-use wiremock::matchers::{body_json, header, method, path};
+use wiremock::matchers::{body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const KEY: &str = "hv_0123456789abcdef0123456789abcdef";
@@ -167,6 +167,39 @@ fn project() -> tempfile::TempDir {
     dir
 }
 
+fn project_answer(dry_run: bool, lexicons_added: &[&str]) -> Value {
+    json!({
+        "sha256": "new", "dry_run": dry_run,
+        "deployed_at": if dry_run { Value::Null } else { json!("2026-10-28T20:00:00Z") },
+        "changes": {
+            "lexicons": {"added": lexicons_added, "changed": [], "removed": []},
+            "scripts": {"added": [], "changed": [], "removed": []}
+        },
+        "backfills": [],
+        "warnings": []
+    })
+}
+
+/// The project endpoints: nothing deployed yet, and a bundle that adds
+/// `lexicons_added`.
+async fn mount_project(server: &MockServer, lexicons_added: &[&str]) {
+    Mock::given(method("GET"))
+        .and(path("/admin/project"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({"error": "NoProject"})))
+        .mount(server)
+        .await;
+    for dry_run in [true, false] {
+        Mock::given(method("PUT"))
+            .and(path("/admin/project"))
+            .and(query_param("dry_run", dry_run.to_string()))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(project_answer(dry_run, lexicons_added)),
+            )
+            .mount(server)
+            .await;
+    }
+}
+
 async fn instance_with(list: &[Value]) -> MockServer {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -174,7 +207,20 @@ async fn instance_with(list: &[Value]) -> MockServer {
         .respond_with(ResponseTemplate::new(200).set_body_json(plugins(list)))
         .mount(&server)
         .await;
+    mount_project(&server, &["com.example.hello"]).await;
     server
+}
+
+/// The project requests the instance received, in order, as `PUT dry_run=…`.
+async fn project_puts(server: &MockServer) -> Vec<String> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "PUT")
+        .map(|r| format!("PUT {}", r.url.query().unwrap_or("")))
+        .collect()
 }
 
 #[tokio::test]
@@ -197,8 +243,10 @@ async fn a_dry_run_shows_the_plugin_changes_and_sends_none() {
             predicate::str::contains("install std 2.0.0")
                 .and(predicate::str::contains("move lua 1.0.0 → 1.1.0"))
                 .and(predicate::str::contains("old"))
-                .and(predicate::str::contains("--prune-plugins")),
+                .and(predicate::str::contains("--prune-plugins"))
+                .and(predicate::str::contains("+ lexicon com.example.hello")),
         );
+    assert_eq!(project_puts(&server).await, ["PUT dry_run=true"]);
 }
 
 #[tokio::test]
@@ -242,10 +290,26 @@ async fn deploy_installs_dependencies_first_then_moves() {
         .await
         .unwrap()
         .iter()
-        .filter(|r| r.method.as_str() == "POST")
-        .map(|r| r.url.path().to_string())
+        .filter(|r| r.method.as_str() != "GET")
+        .map(|r| format!("{} {}", r.method, r.url.path()))
         .collect();
-    assert_eq!(order, ["/admin/plugins", "/admin/plugins/lua/reload"]);
+    assert_eq!(
+        order,
+        [
+            "PUT /admin/project",
+            "POST /admin/plugins",
+            "POST /admin/plugins/lua/reload",
+            "PUT /admin/project"
+        ]
+    );
+    assert_eq!(
+        project_puts(&server).await,
+        ["PUT dry_run=true", "PUT dry_run=false"]
+    );
+    assert_eq!(
+        out["project"]["changes"]["lexicons"]["added"],
+        json!(["com.example.hello"])
+    );
 }
 
 #[tokio::test]
@@ -312,6 +376,7 @@ async fn ci_signs_in_from_the_environment() {
         ])))
         .mount(&server)
         .await;
+    mount_project(&server, &[]).await;
     hpy(config.path())
         .current_dir(project.path())
         .env("HPY_HV_URL", server.uri())
@@ -320,4 +385,235 @@ async fn ci_signs_in_from_the_environment() {
         .assert()
         .success()
         .stderr(predicate::str::contains("up to date"));
+}
+
+#[tokio::test]
+async fn deploy_sends_the_version_it_compared_against() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(plugins(&[
+            installed("lua", "1.1.0"),
+            installed("std", "2.0.0"),
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/admin/project"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "sha256": "deployed", "deployed_at": "2026-10-27T00:00:00Z", "deployed_by": "did:plc:me"
+        })))
+        .mount(&server)
+        .await;
+    for dry_run in [true, false] {
+        Mock::given(method("PUT"))
+            .and(path("/admin/project"))
+            .and(query_param("dry_run", dry_run.to_string()))
+            .and(header("if-match", "\"deployed\""))
+            .and(header("content-type", "application/gzip"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(project_answer(dry_run, &["com.example.hello"])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--yes"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deployed"));
+}
+
+#[tokio::test]
+async fn an_unchanged_project_is_up_to_date_and_not_sent_again() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let server = instance_with(&[installed("lua", "1.1.0"), installed("std", "2.0.0")]).await;
+    // Replace the default project mocks' answer: nothing to change.
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(plugins(&[
+            installed("lua", "1.1.0"),
+            installed("std", "2.0.0"),
+        ])))
+        .mount(&server)
+        .await;
+    // The instance already serves this bundle (the stand-in answers its
+    // sha256 as `new`).
+    Mock::given(method("GET"))
+        .and(path("/admin/project"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"sha256": "new"})))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/admin/project"))
+        .and(query_param("dry_run", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project_answer(true, &[])))
+        .mount(&server)
+        .await;
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("up to date"));
+    assert_eq!(project_puts(&server).await, ["PUT dry_run=true"]);
+}
+
+#[tokio::test]
+async fn an_invalid_project_changes_nothing() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(plugins(&[
+            installed("lua", "1.1.0"),
+            installed("std", "2.0.0"),
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/admin/project"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({"error": "NoProject"})))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "error": "InvalidProject",
+            "problems": [{"path": "src/lexicons/com/example/hello.json", "message": "id does not match the path"}]
+        })))
+        .mount(&server)
+        .await;
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--yes"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "src/lexicons/com/example/hello.json: id does not match the path",
+        ));
+    assert_eq!(project_puts(&server).await, ["PUT dry_run=true"]);
+}
+
+#[tokio::test]
+async fn a_project_the_instance_could_not_boot_is_shown() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(plugins(&[
+            installed("lua", "1.1.0"),
+            installed("std", "2.0.0"),
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/admin/project"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "sha256": "deployed",
+            "error": {"problems": [{"path": "src/x.ts", "message": "no interpreter claims .ts"}]}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(project_answer(true, &[])))
+        .mount(&server)
+        .await;
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--dry-run"])
+        .assert()
+        .success()
+        .stderr(
+            predicate::str::contains("serving no project").and(predicate::str::contains(
+                "src/x.ts: no interpreter claims .ts",
+            )),
+        );
+}
+
+#[tokio::test]
+async fn a_project_check_that_needs_pending_plugins_waits_for_them() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(plugins(&[installed("std", "2.0.0")])),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/admin/project"))
+        .respond_with(ResponseTemplate::new(404).set_body_json(json!({"error": "NoProject"})))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(query_param("dry_run", "true"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+            "error": "InvalidProject",
+            "problems": [{"path": "src/lexicons/com/example/hello.lua", "message": "no interpreter claims .lua"}]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(query_param("dry_run", "false"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(project_answer(false, &["com.example.hello"])),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(installed("lua", "1.1.0")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--yes"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("after the plugins"));
+}
+
+#[tokio::test]
+async fn a_first_deploy_with_nothing_to_show_is_still_sent() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(plugins(&[
+            installed("lua", "1.1.0"),
+            installed("std", "2.0.0"),
+        ])))
+        .mount(&server)
+        .await;
+    mount_project(&server, &[]).await;
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--yes"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Deployed"));
+    assert_eq!(
+        project_puts(&server).await,
+        ["PUT dry_run=true", "PUT dry_run=false"]
+    );
 }
