@@ -225,6 +225,46 @@ pub enum HappyviewCommand {
     Test(TestArgs),
     /// Write editor types for the project into .happyview/types/, and the tsconfig.json or .luarc.json that points editors at them.
     Types(RunArgs),
+    /// Sign in to a HappyView instance's admin API with an API key from its dashboard.
+    Login(InstanceLoginArgs),
+    /// Forget an instance's API key.
+    Logout(InstanceArgs),
+    /// Show the instances you are signed in to.
+    Whoami,
+    /// Make an instance match the project: its plugins from happyview.lock.
+    Deploy(DeployArgs),
+}
+
+#[derive(Args, Default)]
+pub struct InstanceArgs {
+    /// The instance, e.g. https://api.example.com (default: HPY_HV_URL, else the only one you are signed in to).
+    #[arg(long, value_name = "URL")]
+    pub url: Option<String>,
+}
+
+#[derive(Args)]
+pub struct InstanceLoginArgs {
+    /// The instance, e.g. https://api.example.com.
+    #[arg(long, value_name = "URL")]
+    pub url: Option<String>,
+    /// Read the API key from standard input instead of asking for it.
+    #[arg(long)]
+    pub key_stdin: bool,
+}
+
+#[derive(Args)]
+pub struct DeployArgs {
+    #[command(flatten)]
+    pub instance: InstanceArgs,
+    /// Show what would change on the instance without changing it.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Also uninstall interpreters and libraries that happyview.lock doesn't list.
+    #[arg(long)]
+    pub prune_plugins: bool,
+    /// Do not ask for confirmation.
+    #[arg(long, short)]
+    pub yes: bool,
 }
 
 #[derive(Args)]

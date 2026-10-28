@@ -194,6 +194,22 @@ impl Prompter {
         )))
     }
 
+    /// A secret typed at a hidden prompt; without a terminal, an error naming
+    /// `instead`, the way to give it otherwise.
+    pub fn secret(&self, instead: &str, label: &str) -> Result<String, Failure> {
+        if self.interactive {
+            return inquire::Password::new(label)
+                .without_confirmation()
+                .with_display_mode(inquire::PasswordDisplayMode::Hidden)
+                .prompt()
+                .map_err(prompt_err);
+        }
+        Err(Failure::usage(format!(
+            "{label} cannot be asked for ({}); use {instead}",
+            self.why_not
+        )))
+    }
+
     pub fn confirm(&self, label: &str, yes: bool) -> Result<bool, Failure> {
         if yes {
             return Ok(true);
