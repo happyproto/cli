@@ -1,3 +1,29 @@
+# [1.0.0-beta.2](https://github.com/happyproto/cli/compare/v1.0.0-beta.1...v1.0.0-beta.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* accept a resumed publish without a manifest and tidy what hpy sends ([aa32ce0](https://github.com/happyproto/cli/commit/aa32ce022cd5f1e73d83721bf91d887d3492a95b))
+* **deps:** update webpage and triage the advisory in crypto-bigint 0.5 ([1b8e77c](https://github.com/happyproto/cli/commit/1b8e77cbaf610fc425488597fdcfdae6d66dd983))
+* keep project details, icons and pins in step with the registry ([8a645c8](https://github.com/happyproto/cli/commit/8a645c8d34618e8fa8295d5bf4b6d23ac7adc9fa))
+* key software.release version and channel records with a dot ([67e3edb](https://github.com/happyproto/cli/commit/67e3edb8e324a74c5585ce9fec98c1bf745f957c))
+* only write back a project edit to the hpy.toml it belongs to ([02bd585](https://github.com/happyproto/cli/commit/02bd58540dd2fcb37568f1fa53bcb1cfc1026e5c))
+* parse --subnet where windows builds can see it ([ef6eedb](https://github.com/happyproto/cli/commit/ef6eedbc411da094f1eae3d9789397afb29fe452))
+* refuse publication names and changelog headings the registry would reject ([ab3c35c](https://github.com/happyproto/cli/commit/ab3c35c8af2848c4b0963ec1f826dca695f9dfe5))
+* take the zip and rustls releases that fix their advisories ([9518a57](https://github.com/happyproto/cli/commit/9518a57259803397fa612d37284688372a92e098))
+* update ctutils past RUSTSEC-2026-0385 ([8d8d683](https://github.com/happyproto/cli/commit/8d8d6831a08d836eeebe7a7b3d780af2ebedac3c))
+
+
+### Features
+
+* describe plugins as software.release projects and artifacts ([aadffe2](https://github.com/happyproto/cli/commit/aadffe2c633ed20aaa30d5ae7b28385a52cbf3ed))
+* let a project choose its local network's subnet ([340c759](https://github.com/happyproto/cli/commit/340c7599515910ab62bdef495ef47afce87c28f7))
+* lock and install plugins from the software.release registry ([87ea2a5](https://github.com/happyproto/cli/commit/87ea2a5fad19be7c9278c8d1b14bca193759e8d8))
+* pass --json through to happyview check ([58ae52e](https://github.com/happyproto/cli/commit/58ae52e58329fb69a41c65d7a1fc4ae47ca9e232))
+* point editors at the types happyview writes ([650e39b](https://github.com/happyproto/cli/commit/650e39ba737dcd44502d8e043db7589b8eb822f9))
+* publish plugins through the software.release registry ([4b2727c](https://github.com/happyproto/cli/commit/4b2727c0d9a401fc25abfd765b9c86b0f164fa18))
+* speak the software.release registry api ([9efc899](https://github.com/happyproto/cli/commit/9efc89924cc1ee7fda8c1e9c2fb2722ab4b3b4ba))
+
 # [1.0.0-alpha.17](https://github.com/happyproto/cli/compare/v1.0.0-alpha.16...v1.0.0-alpha.17) (2026-10-27)
 
 
