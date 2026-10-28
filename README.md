@@ -300,7 +300,9 @@ hpy happyview login --url https://api.example.com
 ```
 
 Your account must be one of the instance's admins; on HappyProto, the account
-that created the instance is. A deploy can install plugins and replace the
+that created the instance is. The sign-in asks your PDS for HappyView's
+instance-management permissions (`include:dev.happyview.adminFull`), so your
+PDS must support atproto permission sets. A deploy can install plugins and replace the
 project, and nothing else in the instance's dashboard.
 
 A deploy shows everything it would change and asks before changing anything.
