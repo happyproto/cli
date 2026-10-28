@@ -2390,6 +2390,10 @@ fn a_checkout_installed_from_another_archive_is_installed_again_frozen() {
     // What an earlier hpy wrote: a version, which a re-tagged archive keeps.
     let marker = net.checkout.join(".hpy-installed");
     std::fs::write(&marker, "v0.7.1").unwrap();
+    // A checkout with `state/` is kept rather than downloaded again, so the
+    // test never reaches the real archive; the unit tests in atmosbox.rs
+    // cover the download.
+    std::fs::create_dir_all(net.checkout.join("state")).unwrap();
     net.hpy().assert().code(0);
     let calls = net.calls();
     let install = "deno install --frozen --entrypoint bin/sandbox.ts runtime/accounts.mjs\n";
