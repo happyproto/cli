@@ -15,3 +15,20 @@ Homepage: https://happyproto.at
 Description: The HappyProto command line.
  Publishes and manages HappyView plugins in the HappyProto registry.
 
+Package: hpy
+Architecture: arm64
+Version: 1.0.0~beta.2
+Priority: optional
+Section: devel
+Maintainer: HappyProto <packages@happyproto.at>
+Installed-Size: 22318
+Filename: pool/beta/h/hpy/hpy_1.0.0~beta.2_arm64.deb
+Size: 8872576
+MD5sum: 3b3930cac5ba30174888cd50e3750412
+SHA1: 43b900f9973c74f61a43d11123ef390d38ea241b
+SHA256: d004436d85c91ad44fcc03ffeaa98627596e981e84121bdf1ea585dc95ce76a4
+SHA512: fe41502b9be7db7434a9868ad4c6f8aa13e1410a906e03f1ceb6adda60042f1ca0778bb54b51af690431c8b74060c6d94a793429a994be66e82db2d593b21d83
+Homepage: https://happyproto.at
+Description: The HappyProto command line.
+ Publishes and manages HappyView plugins in the HappyProto registry.
+
