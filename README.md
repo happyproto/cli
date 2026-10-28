@@ -196,9 +196,9 @@ configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 | `hpy happyview add <plugin>` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. Each follows a channel (`--channel`, default `latest`) or is pinned to `--version`; `--project <at-uri>` picks between projects that answer to one name. Adding a plugin again moves it to its channel's current version. With no plugin (or as `install`), brings the lock up to date and downloads it. |
 | `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
 | `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
-| `hpy happyview login --url <instance>` | Signs in to an instance's admin API with an API key made in its dashboard, asked for at a hidden prompt (or read from standard input with `--key-stdin`). Checks the key before saving it. |
-| `hpy happyview logout [--url <instance>]` | Forgets the instance's API key. Revoke the key itself in the dashboard. |
-| `hpy happyview whoami` | Lists the instances you're signed in to, and which key each uses. |
+| `hpy happyview login --url <instance> [handle]` | Signs in to an instance through your browser, as you do for the registry, so you can deploy to it. The handle defaults to the account `hpy registry login` holds; `--no-browser` prints the URL instead of opening it. For CI, `--key-stdin` signs in with an API key instead (see [Deploying from CI](#deploying-from-ci)). |
+| `hpy happyview logout [--url <instance>]` | Signs out of the instance. |
+| `hpy happyview whoami` | Lists the instances you're signed in to, and as whom. |
 | `hpy happyview deploy [--url <instance>]` | Makes the instance match the project: its plugins from `happyview.lock`, then its lexicons, scripts and modules (see [Deploying](#deploying)). `--dry-run` shows the changes without making them; `--yes` skips the confirmation. |
 | `hpy happyview types` | Writes editor types for the project into `.happyview/types/`, one directory per interpreter, so your editor's language server can check handlers against their lexicons, `ctx` and the installed libraries. Needs a HappyView that has `happyview types`. |
 
@@ -292,11 +292,16 @@ move only by being recreated, so use `--reset --subnet <CIDR>` for that.
 
 ### Deploying
 
-`hpy happyview deploy` makes an instance match the project. It talks to the
-instance's admin API with an API key: create one in the instance's dashboard
-and sign in with `hpy happyview login --url https://api.example.com`. The key
-needs the `project:deploy`, `plugins:read` and `plugins:create` permissions,
-and `plugins:delete` for `--prune-plugins`.
+`hpy happyview deploy` makes an instance match the project. Sign in to the
+instance first, through your browser:
+
+```sh
+hpy happyview login --url https://api.example.com
+```
+
+Your account must be one of the instance's admins; on HappyProto, the account
+that created the instance is. A deploy can install plugins and replace the
+project, and nothing else in the instance's dashboard.
 
 A deploy shows everything it would change and asks before changing anything.
 Then, in this order:
@@ -330,13 +335,21 @@ On a hosted instance, a deploy applies `[lexicons]`, `[scripts]`, `[modules]`,
 `[dev]`, `[jetstream]` and the HappyView version stay as the instance has
 them; the preview warns when the project sets them.
 
-With `--url` you choose the instance when you're signed in to several. In CI,
-set `HPY_HV_URL` and `HPY_HV_API_KEY` (store the key as a secret) instead of
-signing in.
+With `--url` you choose the instance when you're signed in to several.
 
-Your keys are kept like your registry login: each in the OS keychain, under
-the service `hpy`, and the list of instances in `instances.json` in the
-config directory, readable only by you.
+Your sign-ins are kept like your registry login: each one's key in the OS
+keychain, under the service `hpy`, and the rest in `instances.json` in the
+config directory, readable only by you. The instance keeps the session alive;
+after about two weeks without one it asks you to sign in again.
+
+#### Deploying from CI
+
+CI has no browser, so it uses an API key. Create one in the instance's
+dashboard with the `project:deploy`, `plugins:read` and `plugins:create`
+permissions (and `plugins:delete` for `--prune-plugins`), store it as a
+secret, and set `HPY_HV_URL` and `HPY_HV_API_KEY` for the deploy. To keep a
+key on a machine instead, pipe it to `hpy happyview login --url <instance>
+--key-stdin`.
 
 ## `hpy.toml`
 

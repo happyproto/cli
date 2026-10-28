@@ -102,13 +102,25 @@ async fn a_refused_key_is_not_saved() {
 }
 
 #[test]
-fn login_never_takes_the_key_as_an_argument() {
+fn login_without_a_terminal_needs_a_handle_or_a_key() {
     let config = tempfile::tempdir().unwrap();
     hpy(config.path())
         .args(["hv", "login", "--url", "https://api.example.com"])
         .assert()
         .code(2)
-        .stderr(predicate::str::contains("--key-stdin"));
+        .stderr(predicate::str::contains("<IDENTIFIER>"));
+    // An API key is never taken as an argument.
+    hpy(config.path())
+        .args([
+            "hv",
+            "login",
+            "--url",
+            "https://api.example.com",
+            "--key",
+            KEY,
+        ])
+        .assert()
+        .code(2);
 }
 
 #[tokio::test]

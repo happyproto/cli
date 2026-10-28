@@ -225,9 +225,9 @@ pub enum HappyviewCommand {
     Test(TestArgs),
     /// Write editor types for the project into .happyview/types/, and the tsconfig.json or .luarc.json that points editors at them.
     Types(RunArgs),
-    /// Sign in to a HappyView instance's admin API with an API key from its dashboard.
+    /// Sign in to a HappyView instance through your browser, to deploy to it.
     Login(InstanceLoginArgs),
-    /// Forget an instance's API key.
+    /// Sign out of an instance.
     Logout(InstanceArgs),
     /// Show the instances you are signed in to.
     Whoami,
@@ -244,11 +244,16 @@ pub struct InstanceArgs {
 
 #[derive(Args)]
 pub struct InstanceLoginArgs {
+    /// Your handle or DID (default: the account `hpy registry login` holds).
+    pub identifier: Option<String>,
     /// The instance, e.g. https://api.example.com.
     #[arg(long, value_name = "URL")]
     pub url: Option<String>,
-    /// Read the API key from standard input instead of asking for it.
+    /// Print the authorization URL instead of opening a browser.
     #[arg(long)]
+    pub no_browser: bool,
+    /// For CI: sign in with an API key from the instance's dashboard, read from standard input, instead of through the browser.
+    #[arg(long, conflicts_with_all = ["identifier", "no_browser"])]
     pub key_stdin: bool,
 }
 

@@ -1,36 +1,76 @@
-//! Sign-ins to HappyView instances' admin APIs: one `hv_` API key per
-//! instance URL, made in that instance's dashboard.
+//! Sign-ins to HappyView instances' admin APIs, one per instance URL.
 //!
-//! The key goes in the OS keychain, under `hv-api-key/<host>`, and the list
-//! of instances in `instances.json` (0600). Without a usable keychain the key
-//! is stored in the same file instead, as `credentials.json` does.
-//! `HPY_HV_API_KEY` (with `HPY_HV_URL` or `--url`) takes precedence, for CI.
+//! A person signs in through the browser: `hpy happyview login` registers an
+//! OAuth session with the instance as HappyView's built-in `hpy` client, and
+//! keeps its DPoP key, as `hpy registry login` does for the registry. CI
+//! uses an `hv_` API key made in the instance's dashboard instead.
+//!
+//! The secret (the DPoP key, or the API key) goes in the OS keychain, under
+//! `hv-session/<host>` or `hv-api-key/<host>`, and everything else in
+//! `instances.json` (0600). Without a usable keychain the secret is stored in
+//! the same file instead, as `credentials.json` does. `HPY_HV_API_KEY` (with
+//! `HPY_HV_URL` or `--url`) takes precedence over both.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::credential::{Saved, write_file};
+use crate::credential::{Credential, Saved, write_file};
+use crate::dpop::DpopKey;
 use crate::keystore::{KeyStore, KeyStoreError};
-use crate::settings::{Settings, StoreChoice};
+use crate::settings::{ClientAuth, Redirect, Settings, StoreChoice};
 use crate::{Error, Result};
 
 pub const KEY_VAR: &str = "HPY_HV_API_KEY";
 pub const URL_VAR: &str = "HPY_HV_URL";
 const FILE: &str = "instances.json";
 
-/// An instance and the key that signs in to it.
+/// The OAuth client every instance knows `hpy` as: public and native, so
+/// no instance holds a key for it.
+pub const OAUTH_CLIENT_ID: &str = "https://happyproto.at/oauth/hpy-cli/client-metadata.json";
+/// The built-in API client's key, when an instance's `/config` doesn't say.
+pub const DEFAULT_CLIENT_KEY: &str = "hvc_hpy";
+
+/// The settings `hpy registry login` signs in with, turned toward an
+/// instance: its HappyView and its `hpy` client, as a public client with a
+/// loopback redirect, asking the PDS for nothing beyond who the user is.
+pub fn login_settings(base: &Settings, url: &str, client_key: &str) -> Settings {
+    let mut s = base.clone();
+    s.registry_url = url.to_string();
+    s.client_key = client_key.to_string();
+    s.oauth_client_id = std::env::var("HPY_HV_OAUTH_CLIENT_ID")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| OAUTH_CLIENT_ID.into());
+    s.oauth_scope = "atproto".into();
+    s.oauth_redirect = Redirect::Loopback;
+    s.oauth_client_auth = ClientAuth::None;
+    s
+}
+
+/// How a sign-in proves itself to the instance.
+#[derive(Clone, PartialEq)]
+pub enum Auth {
+    ApiKey(String),
+    Session(Credential),
+}
+
+/// An instance and how to sign in to it.
 #[derive(Clone, PartialEq)]
 pub struct Login {
     pub url: String,
-    pub key: String,
+    pub auth: Auth,
 }
 
 impl std::fmt::Debug for Login {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // The key is a secret; never print it.
+        // Secrets never print: a key shows its prefix, a session its account.
+        let auth = match &self.auth {
+            Auth::ApiKey(key) => format!("api key {}", prefix(key)),
+            Auth::Session(c) => format!("session for {}", c.did),
+        };
         f.debug_struct("Login")
             .field("url", &self.url)
-            .field("key", &prefix(&self.key))
+            .field("auth", &auth)
             .finish()
     }
 }
@@ -39,9 +79,11 @@ impl std::fmt::Debug for Login {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Info {
     pub url: String,
-    /// Enough of the key to find it in the dashboard's list.
-    #[serde(rename = "keyPrefix")]
-    pub key_prefix: String,
+    /// `session` or `apiKey`.
+    pub kind: &'static str,
+    /// Who: the handle (or DID) signed in, or enough of the API key to find
+    /// it in the dashboard's list.
+    pub account: String,
     /// `keychain`, `file`, or `environment`.
     pub storage: &'static str,
 }
@@ -55,26 +97,95 @@ struct Stored {
 #[derive(Serialize, Deserialize, Clone)]
 struct StoredInstance {
     url: String,
-    key_prefix: String,
-    /// `{"keychain": true}`, or the key itself.
-    key: Value,
+    #[serde(flatten)]
+    sign_in: SignIn,
+    /// `{"keychain": true}`, or the secret itself: the API key, or the
+    /// session's private JWK.
+    secret: Value,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum SignIn {
+    ApiKey {
+        key_prefix: String,
+    },
+    Session {
+        client_key: String,
+        did: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handle: Option<String>,
+        pds: String,
+        scopes: String,
+        access_token: String,
+    },
 }
 
 impl StoredInstance {
     fn in_keychain(&self) -> bool {
-        self.key.get("keychain").and_then(Value::as_bool) == Some(true)
+        self.secret.get("keychain").and_then(Value::as_bool) == Some(true)
+    }
+
+    fn account(&self) -> String {
+        account(&self.url, matches!(self.sign_in, SignIn::Session { .. }))
     }
 
     fn info(&self) -> Info {
+        let (kind, account) = match &self.sign_in {
+            SignIn::ApiKey { key_prefix } => ("apiKey", format!("API key {key_prefix}")),
+            SignIn::Session { did, handle, .. } => (
+                "session",
+                handle
+                    .as_ref()
+                    .map(|h| format!("@{h}"))
+                    .unwrap_or_else(|| did.clone()),
+            ),
+        };
         Info {
             url: self.url.clone(),
-            key_prefix: self.key_prefix.clone(),
+            kind,
+            account,
             storage: if self.in_keychain() {
                 "keychain"
             } else {
                 "file"
             },
         }
+    }
+
+    fn login(&self, secret: Value) -> Result<Login> {
+        let unreadable = || {
+            Error::LoginRequired(format!(
+                "the saved sign-in for {} is unreadable; run `hpy hv login --url {}`",
+                self.url, self.url
+            ))
+        };
+        let auth = match &self.sign_in {
+            SignIn::ApiKey { .. } => {
+                Auth::ApiKey(secret.as_str().ok_or_else(unreadable)?.to_string())
+            }
+            SignIn::Session {
+                client_key,
+                did,
+                handle,
+                pds,
+                scopes,
+                access_token,
+            } => Auth::Session(Credential {
+                registry: self.url.clone(),
+                client_key: client_key.clone(),
+                did: did.clone(),
+                handle: handle.clone(),
+                pds: pds.clone(),
+                scopes: scopes.clone(),
+                access_token: access_token.clone(),
+                dpop_key: DpopKey::from_jwk(&secret).map_err(|_| unreadable())?,
+            }),
+        };
+        Ok(Login {
+            url: self.url.clone(),
+            auth,
+        })
     }
 }
 
@@ -84,10 +195,11 @@ pub fn prefix(key: &str) -> String {
     format!("{shown}…")
 }
 
-/// The keychain account for an instance's key.
-pub fn account(url: &str) -> String {
+/// The keychain account for an instance's session key or API key.
+pub fn account(url: &str, session: bool) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
-    format!("hv-api-key/{rest}")
+    let kind = if session { "hv-session" } else { "hv-api-key" };
+    format!("{kind}/{rest}")
 }
 
 /// An instance URL as it is stored and compared: https (or http to this
@@ -147,18 +259,36 @@ fn write(settings: &Settings, stored: &Stored) -> Result<()> {
     write_file(&path(settings), stored)
 }
 
-/// Saves the key for `url`, replacing any key saved for it before.
-pub fn save(settings: &Settings, url: &str, key: &str, store: &dyn KeyStore) -> Result<Saved> {
-    let url = normalize_url(url)?;
-    let key = key.trim();
-    check_key(key).map_err(Error::LoginRequired)?;
+/// Saves a sign-in, replacing whatever was saved for its instance: the
+/// secret in the keychain when it can, else inline.
+fn save(
+    settings: &Settings,
+    url: String,
+    sign_in: SignIn,
+    secret: Value,
+    store: &dyn KeyStore,
+) -> Result<Saved> {
     let mut stored = read(settings)?;
     stored.v = 1;
+    if let Some(old) = stored.instances.iter().find(|i| i.url == url)
+        && old.in_keychain()
+    {
+        let _ = store.delete(&old.account());
+    }
     stored.instances.retain(|i| i.url != url);
+    let mut entry = StoredInstance {
+        url,
+        sign_in,
+        secret: json!({ "keychain": true }),
+    };
+    let text = match &secret {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
     let saved = if settings.credential_store == StoreChoice::File {
         Saved::File { reason: None }
     } else {
-        match store.set(&account(&url), key) {
+        match store.set(&entry.account(), &text) {
             Ok(()) => Saved::Keychain,
             Err(KeyStoreError::Unavailable(reason))
                 if settings.credential_store == StoreChoice::Auto =>
@@ -169,22 +299,43 @@ pub fn save(settings: &Settings, url: &str, key: &str, store: &dyn KeyStore) -> 
             }
             Err(e) => {
                 return Err(Error::Other(format!(
-                    "could not store the API key in the OS keychain ({e}); set HPY_CREDENTIAL_STORE=file \
+                    "could not store your sign-in in the OS keychain ({e}); set HPY_CREDENTIAL_STORE=file \
                      to keep it in a 0600 file instead"
                 )));
             }
         }
     };
-    stored.instances.push(StoredInstance {
-        url: url.clone(),
-        key_prefix: prefix(key),
-        key: match saved {
-            Saved::Keychain => json!({ "keychain": true }),
-            Saved::File { .. } => json!(key),
-        },
-    });
+    if !matches!(saved, Saved::Keychain) {
+        entry.secret = secret;
+    }
+    stored.instances.push(entry);
     write(settings, &stored)?;
     Ok(saved)
+}
+
+/// Saves the API key for `url`.
+pub fn save_key(settings: &Settings, url: &str, key: &str, store: &dyn KeyStore) -> Result<Saved> {
+    let url = normalize_url(url)?;
+    let key = key.trim();
+    check_key(key).map_err(Error::LoginRequired)?;
+    let sign_in = SignIn::ApiKey {
+        key_prefix: prefix(key),
+    };
+    save(settings, url, sign_in, json!(key), store)
+}
+
+/// Saves the session `hpy happyview login` registered with `c.registry`.
+pub fn save_session(settings: &Settings, c: &Credential, store: &dyn KeyStore) -> Result<Saved> {
+    let url = normalize_url(&c.registry)?;
+    let sign_in = SignIn::Session {
+        client_key: c.client_key.clone(),
+        did: c.did.clone(),
+        handle: c.handle.clone(),
+        pds: c.pds.clone(),
+        scopes: c.scopes.clone(),
+        access_token: c.access_token.clone(),
+    };
+    save(settings, url, sign_in, c.dpop_key.to_jwk(), store)
 }
 
 /// Every stored sign-in, without touching the keychain.
@@ -198,7 +349,7 @@ pub fn list(settings: &Settings) -> Result<Vec<Info>> {
 
 fn not_signed_in(url: Option<&str>) -> Error {
     Error::LoginRequired(format!(
-        "not signed in to {}; create an API key in its dashboard and run `hpy hv login --url {}`",
+        "not signed in to {}; run `hpy hv login --url {}`",
         url.unwrap_or("a HappyView instance"),
         url.unwrap_or("<instance>")
     ))
@@ -226,8 +377,8 @@ fn choose<'a>(stored: &'a Stored, url: Option<&str>) -> Result<&'a StoredInstanc
     }
 }
 
-/// The instance to act on and its key: `HPY_HV_API_KEY` with `url` or
-/// `HPY_HV_URL` when set, else a stored sign-in.
+/// The instance to act on and how to sign in to it: `HPY_HV_API_KEY` with
+/// `url` or `HPY_HV_URL` when set, else a stored sign-in.
 pub fn current(
     settings: &Settings,
     store: &dyn KeyStore,
@@ -247,35 +398,33 @@ pub fn current(
         check_key(&key).map_err(|e| Error::LoginRequired(format!("{KEY_VAR}: {e}")))?;
         return Ok(Login {
             url,
-            key: key.trim().to_string(),
+            auth: Auth::ApiKey(key.trim().to_string()),
         });
     }
     let stored = read(settings)?;
     let chosen = choose(&stored, url.as_deref())?;
-    let key = if chosen.in_keychain() {
+    let secret = if chosen.in_keychain() {
         let again = |why: String| {
             Error::LoginRequired(format!("{why}; run `hpy hv login --url {}`", chosen.url))
         };
-        match store.get(&account(&chosen.url)) {
-            Ok(Some(key)) => key,
-            Ok(None) => return Err(again("the API key is missing from the OS keychain".into())),
+        let text = match store.get(&chosen.account()) {
+            Ok(Some(text)) => text,
+            Ok(None) => return Err(again("your sign-in is missing from the OS keychain".into())),
             Err(e) => {
                 return Err(again(format!(
-                    "could not read the API key from the OS keychain ({e})"
+                    "could not read your sign-in from the OS keychain ({e})"
                 )));
             }
+        };
+        match chosen.sign_in {
+            SignIn::ApiKey { .. } => Value::String(text),
+            SignIn::Session { .. } => serde_json::from_str(&text)
+                .map_err(|_| again("the key in your OS keychain is unreadable".into()))?,
         }
     } else {
-        chosen
-            .key
-            .as_str()
-            .map(str::to_string)
-            .ok_or_else(|| not_signed_in(Some(&chosen.url)))?
+        chosen.secret.clone()
     };
-    Ok(Login {
-        url: chosen.url.clone(),
-        key,
-    })
+    chosen.login(secret)
 }
 
 /// Forgets the sign-in `url` names (or the only one): its keychain item and
@@ -293,7 +442,7 @@ pub fn remove(
         Err(e) => return Err(e),
     };
     if chosen.in_keychain() {
-        let _ = store.delete(&account(&chosen.url));
+        let _ = store.delete(&chosen.account());
     }
     stored.instances.retain(|i| i.url != chosen.url);
     write(settings, &stored)?;
@@ -316,6 +465,26 @@ mod tests {
 
     fn no_env(_: &str) -> Option<String> {
         None
+    }
+
+    fn key(login: &Login) -> &str {
+        match &login.auth {
+            Auth::ApiKey(key) => key,
+            Auth::Session(_) => panic!("a session, not an API key"),
+        }
+    }
+
+    fn session(url: &str) -> Credential {
+        Credential {
+            registry: url.into(),
+            client_key: "hvc_hpy".into(),
+            did: "did:plc:me".into(),
+            handle: Some("me.test".into()),
+            pds: "https://pds.test".into(),
+            scopes: "atproto".into(),
+            access_token: "token".into(),
+            dpop_key: DpopKey::generate(),
+        }
     }
 
     struct Unavailable;
@@ -369,7 +538,7 @@ mod tests {
         let s = settings(dir.path(), StoreChoice::Auto);
         let store = MemoryStore::default();
         assert_eq!(
-            save(&s, "https://api.example.com/", KEY, &store).unwrap(),
+            save_key(&s, "https://api.example.com/", KEY, &store).unwrap(),
             Saved::Keychain
         );
         let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
@@ -389,12 +558,13 @@ mod tests {
         }
         let login = current(&s, &store, &no_env, None).unwrap();
         assert_eq!(login.url, "https://api.example.com");
-        assert_eq!(login.key, KEY);
+        assert_eq!(key(&login), KEY);
         assert_eq!(
             list(&s).unwrap(),
             vec![Info {
                 url: "https://api.example.com".into(),
-                key_prefix: "hv_01234…".into(),
+                kind: "apiKey",
+                account: "API key hv_01234…".into(),
                 storage: "keychain",
             }]
         );
@@ -405,10 +575,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = settings(dir.path(), StoreChoice::Auto);
         assert!(matches!(
-            save(&s, "https://api.example.com", KEY, &Unavailable).unwrap(),
+            save_key(&s, "https://api.example.com", KEY, &Unavailable).unwrap(),
             Saved::File { reason: Some(_) }
         ));
-        assert_eq!(current(&s, &Unavailable, &no_env, None).unwrap().key, KEY);
+        assert_eq!(key(&current(&s, &Unavailable, &no_env, None).unwrap()), KEY);
         assert_eq!(list(&s).unwrap()[0].storage, "file");
     }
 
@@ -417,10 +587,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = settings(dir.path(), StoreChoice::File);
         let store = MemoryStore::default();
-        save(&s, "https://api.example.com", KEY, &store).unwrap();
-        save(&s, "https://api.example.com/", OTHER, &store).unwrap();
+        save_key(&s, "https://api.example.com", KEY, &store).unwrap();
+        save_key(&s, "https://api.example.com/", OTHER, &store).unwrap();
         assert_eq!(list(&s).unwrap().len(), 1);
-        assert_eq!(current(&s, &store, &no_env, None).unwrap().key, OTHER);
+        assert_eq!(key(&current(&s, &store, &no_env, None).unwrap()), OTHER);
     }
 
     #[test]
@@ -428,13 +598,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = settings(dir.path(), StoreChoice::Auto);
         let store = MemoryStore::default();
-        save(&s, "https://a.example.com", KEY, &store).unwrap();
-        save(&s, "https://b.example.com", OTHER, &store).unwrap();
+        save_key(&s, "https://a.example.com", KEY, &store).unwrap();
+        save_key(&s, "https://b.example.com", OTHER, &store).unwrap();
         let err = current(&s, &store, &no_env, None).unwrap_err().to_string();
         assert!(err.contains("--url"), "{err}");
         assert!(err.contains("https://a.example.com"), "{err}");
         let login = current(&s, &store, &no_env, Some("https://b.example.com/")).unwrap();
-        assert_eq!(login.key, OTHER);
+        assert_eq!(key(&login), OTHER);
         let err = current(&s, &store, &no_env, Some("https://c.example.com")).unwrap_err();
         assert!(err.is_auth());
         assert!(
@@ -463,7 +633,7 @@ mod tests {
         };
         let login = current(&s, &Unavailable, &env, None).unwrap();
         assert_eq!(login.url, "https://ci.example.com");
-        assert_eq!(login.key, OTHER);
+        assert_eq!(key(&login), OTHER);
         // --url wins over HPY_HV_URL.
         let login = current(&s, &Unavailable, &env, Some("https://other.example.com")).unwrap();
         assert_eq!(login.url, "https://other.example.com");
@@ -479,8 +649,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let s = settings(dir.path(), StoreChoice::Auto);
         let store = MemoryStore::default();
-        save(&s, "https://a.example.com", KEY, &store).unwrap();
-        save(&s, "https://b.example.com", OTHER, &store).unwrap();
+        save_key(&s, "https://a.example.com", KEY, &store).unwrap();
+        save_key(&s, "https://b.example.com", OTHER, &store).unwrap();
         let gone = remove(&s, &store, Some("https://a.example.com"))
             .unwrap()
             .unwrap();
@@ -501,8 +671,98 @@ mod tests {
     fn debug_never_shows_the_key() {
         let login = Login {
             url: "https://api.example.com".into(),
-            key: KEY.into(),
+            auth: Auth::ApiKey(KEY.into()),
         };
         assert!(!format!("{login:?}").contains(KEY));
+        let c = session("https://api.example.com");
+        let login = Login {
+            url: "https://api.example.com".into(),
+            auth: Auth::Session(c.clone()),
+        };
+        let shown = format!("{login:?}");
+        assert!(!shown.contains("token"), "{shown}");
+        assert!(
+            !shown.contains(&c.dpop_key.to_jwk()["d"].to_string()),
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn a_session_keeps_its_key_in_the_keychain_and_the_rest_in_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = settings(dir.path(), StoreChoice::Auto);
+        let store = MemoryStore::default();
+        let c = session("https://api.example.com/");
+        assert_eq!(save_session(&s, &c, &store).unwrap(), Saved::Keychain);
+        let text = std::fs::read_to_string(dir.path().join(FILE)).unwrap();
+        assert!(!text.contains("\"d\""), "{text}");
+        assert!(
+            store
+                .get("hv-session/api.example.com")
+                .unwrap()
+                .unwrap()
+                .contains("\"d\"")
+        );
+        let login = current(&s, &store, &no_env, None).unwrap();
+        assert_eq!(login.url, "https://api.example.com");
+        let Auth::Session(back) = login.auth else {
+            panic!("an API key, not a session")
+        };
+        assert_eq!(back.registry, "https://api.example.com");
+        assert_eq!(back.dpop_key.thumbprint(), c.dpop_key.thumbprint());
+        assert_eq!(back.access_token, "token");
+        assert_eq!(
+            list(&s).unwrap(),
+            vec![Info {
+                url: "https://api.example.com".into(),
+                kind: "session",
+                account: "@me.test".into(),
+                storage: "keychain",
+            }]
+        );
+    }
+
+    #[test]
+    fn a_session_falls_back_to_the_file_without_a_keychain() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = settings(dir.path(), StoreChoice::Auto);
+        let c = session("https://api.example.com");
+        assert!(matches!(
+            save_session(&s, &c, &Unavailable).unwrap(),
+            Saved::File { reason: Some(_) }
+        ));
+        let Auth::Session(back) = current(&s, &Unavailable, &no_env, None).unwrap().auth else {
+            panic!()
+        };
+        assert_eq!(back.dpop_key.thumbprint(), c.dpop_key.thumbprint());
+    }
+
+    #[test]
+    fn signing_in_again_replaces_a_key_with_a_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = settings(dir.path(), StoreChoice::Auto);
+        let store = MemoryStore::default();
+        save_key(&s, "https://api.example.com", KEY, &store).unwrap();
+        save_session(&s, &session("https://api.example.com"), &store).unwrap();
+        assert_eq!(store.get("hv-api-key/api.example.com").unwrap(), None);
+        assert_eq!(list(&s).unwrap().len(), 1);
+        assert!(matches!(
+            current(&s, &store, &no_env, None).unwrap().auth,
+            Auth::Session(_)
+        ));
+        remove(&s, &store, None).unwrap().unwrap();
+        assert_eq!(store.get("hv-session/api.example.com").unwrap(), None);
+    }
+
+    #[test]
+    fn instance_logins_use_the_public_hpy_client() {
+        let base = Settings::from_sources(None, &|_| None, "/c".into()).unwrap();
+        let s = login_settings(&base, "https://api.example.com", "hvc_hpy");
+        assert_eq!(s.registry_url, "https://api.example.com");
+        assert_eq!(s.client_key, "hvc_hpy");
+        assert_eq!(s.oauth_scope, "atproto");
+        assert_eq!(s.oauth_redirect, Redirect::Loopback);
+        assert!(matches!(s.oauth_client_auth, ClientAuth::None));
+        assert_eq!(s.config_dir, base.config_dir);
     }
 }

@@ -6,12 +6,20 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::credential::Credential;
 use crate::{Error, Result};
 
 pub struct Admin {
     base: String,
-    key: String,
+    auth: Auth,
     http: reqwest::Client,
+}
+
+/// How a request proves who sends it: an `hv_` API key (for CI), or the
+/// session `hpy happyview login` registered with the instance.
+enum Auth {
+    ApiKey(String),
+    Session(Credential),
 }
 
 impl std::fmt::Debug for Admin {
@@ -154,16 +162,31 @@ enum Body<'a> {
     Gzip(Vec<u8>),
 }
 
+fn http() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(concat!("hpy/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .expect("http client")
+}
+
 impl Admin {
+    /// Signed in with an API key.
     pub fn new(base: &str, key: &str) -> Admin {
         Admin {
             base: base.trim_end_matches('/').into(),
-            key: key.into(),
-            http: reqwest::Client::builder()
-                .user_agent(concat!("hpy/", env!("CARGO_PKG_VERSION")))
-                .timeout(Duration::from_secs(120))
-                .build()
-                .expect("http client"),
+            auth: Auth::ApiKey(key.into()),
+            http: http(),
+        }
+    }
+
+    /// Signed in as the user whose session `cred` holds, on the instance it
+    /// was registered with.
+    pub fn with_session(cred: Credential) -> Admin {
+        Admin {
+            base: cred.registry.trim_end_matches('/').into(),
+            auth: Auth::Session(cred),
+            http: http(),
         }
     }
 
@@ -182,7 +205,19 @@ impl Admin {
         if_match: Option<&str>,
     ) -> Result<(reqwest::StatusCode, Vec<u8>)> {
         let url = format!("{}/admin{path}", self.base);
-        let mut req = self.http.request(method, &url).bearer_auth(&self.key);
+        let mut req = match &self.auth {
+            Auth::ApiKey(key) => self.http.request(method, &url).bearer_auth(key),
+            Auth::Session(cred) => {
+                let proof =
+                    cred.dpop_key
+                        .proof(method.as_str(), &url, Some(&cred.access_token), None);
+                self.http
+                    .request(method, &url)
+                    .header("authorization", format!("DPoP {}", cred.access_token))
+                    .header("dpop", proof)
+                    .header("x-client-key", &cred.client_key)
+            }
+        };
         req = match body {
             Body::None => req,
             Body::Json(body) => req.json(body),
@@ -285,10 +320,18 @@ impl Admin {
     fn refused(&self, what: &str, status: reqwest::StatusCode, r: Refusal) -> Error {
         use reqwest::StatusCode;
         match status {
-            StatusCode::UNAUTHORIZED => Error::LoginRequired(format!(
-                "{} refused the API key; create a new one in its dashboard and run `hpy hv login --url {}`",
-                self.base, self.base
-            )),
+            StatusCode::UNAUTHORIZED => match self.auth {
+                Auth::Session(_) => Error::LoginRequired(format!(
+                    "your sign-in to {} has expired or was revoked; run `hpy hv login --url {}`",
+                    self.base, self.base
+                )),
+                Auth::ApiKey(_) => Error::LoginRequired(format!(
+                    "{} refused the API key; create a new one in its dashboard and set {} (or pipe it to `hpy hv login --url {} --key-stdin`)",
+                    self.base,
+                    crate::instance::KEY_VAR,
+                    self.base
+                )),
+            },
             _ if r.error.as_deref() == Some("InvalidProject") => {
                 let mut message = format!("{} refused the project", self.base);
                 if let Some(m) = &r.message {
@@ -316,6 +359,28 @@ impl Admin {
                 "the project is too large for {} to accept; it takes bundles up to 50 MB compressed",
                 self.base
             )),
+            StatusCode::FORBIDDEN
+                if r.error
+                    .iter()
+                    .chain(&r.message)
+                    .any(|m| m.contains("not a user")) =>
+            {
+                Error::Other(format!(
+                    "your account isn't an admin of {}; ask its owner to add you in its dashboard",
+                    self.base
+                ))
+            }
+            StatusCode::FORBIDDEN
+                if r.error
+                    .iter()
+                    .chain(&r.message)
+                    .any(|m| m.contains("API client's session")) =>
+            {
+                Error::LoginRequired(format!(
+                    "{} doesn't accept this sign-in for deploying; run `hpy hv login --url {}`",
+                    self.base, self.base
+                ))
+            }
             StatusCode::FORBIDDEN => Error::Other(format!(
                 "{} refused {what}: {}. Give the API key that permission in the dashboard, or create one that has it",
                 self.base,
@@ -462,6 +527,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_expired_session_says_to_sign_in_again() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_json(json!({"error": "Unauthorized"})),
+            )
+            .mount(&server)
+            .await;
+        let cred = crate::credential::Credential {
+            registry: server.uri(),
+            client_key: "hvc_hpy".into(),
+            did: "did:plc:me".into(),
+            handle: None,
+            pds: "https://pds.test".into(),
+            scopes: "atproto".into(),
+            access_token: "t".into(),
+            dpop_key: crate::dpop::DpopKey::generate(),
+        };
+        let err = Admin::with_session(cred).project().await.unwrap_err();
+        assert!(err.is_auth(), "{err}");
+        let text = err.to_string();
+        assert!(text.contains("expired"), "{text}");
+        assert!(
+            text.contains(&format!("hpy hv login --url {}", server.uri())),
+            "{text}"
+        );
+        assert!(!text.contains("API key"), "{text}");
+    }
+
+    #[tokio::test]
     async fn a_missing_permission_is_named() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -477,6 +572,32 @@ mod tests {
             .to_string();
         assert!(text.contains("plugins:read"), "{text}");
         assert!(text.contains("API key"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn an_account_that_is_not_an_admin_is_told_so() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({"error": "not a user"})))
+            .mount(&server)
+            .await;
+        let err = Admin::new(&server.uri(), KEY).project().await.unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("isn't an admin"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_session_of_another_client_says_to_sign_in_again() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": "Forbidden", "message": "an API client's session cannot use the admin API"
+            })))
+            .mount(&server)
+            .await;
+        let err = Admin::new(&server.uri(), KEY).project().await.unwrap_err();
+        assert!(err.is_auth(), "{err}");
+        assert!(err.to_string().contains("hpy hv login --url"), "{err}");
     }
 
     #[tokio::test]
@@ -700,6 +821,48 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(text.contains("127.0.0.1:9"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_signed_in_session_sends_a_dpop_proof_for_each_request() {
+        use base64::Engine;
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/admin/project"))
+            .and(header("authorization", "DPoP session-token"))
+            .and(header("x-client-key", "hvc_hpy"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(deploy_answer(true)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let cred = crate::credential::Credential {
+            registry: server.uri(),
+            client_key: "hvc_hpy".into(),
+            did: "did:plc:me".into(),
+            handle: None,
+            pds: "https://pds.test".into(),
+            scopes: "atproto".into(),
+            access_token: "session-token".into(),
+            dpop_key: crate::dpop::DpopKey::generate(),
+        };
+        let admin = Admin::with_session(cred);
+        admin
+            .deploy_project(b"x".to_vec(), true, None)
+            .await
+            .unwrap();
+        let req = &server.received_requests().await.unwrap()[0];
+        let proof = req.headers.get("dpop").unwrap().to_str().unwrap();
+        let claims = proof.split('.').nth(1).unwrap();
+        let claims: serde_json::Value = serde_json::from_slice(
+            &base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(claims)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(claims["htm"], "PUT");
+        // HappyView checks htu against the path, without the query.
+        assert_eq!(claims["htu"], format!("{}/admin/project", server.uri()));
+        assert!(claims["ath"].is_string());
     }
 
     #[test]
