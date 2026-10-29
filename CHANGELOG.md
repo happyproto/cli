@@ -1,3 +1,10 @@
+# [1.0.0-alpha.19](https://github.com/happyproto/cli/compare/v1.0.0-alpha.18...v1.0.0-alpha.19) (2026-10-29)
+
+
+### Bug Fixes
+
+* sign in to an instance through the redirect relay ([decfcca](https://github.com/happyproto/cli/commit/decfcca9e5a99f5186d207288d3c06175e5a6d13))
+
 # [1.0.0-alpha.18](https://github.com/happyproto/cli/compare/v1.0.0-alpha.17...v1.0.0-alpha.18) (2026-10-29)
 
 
