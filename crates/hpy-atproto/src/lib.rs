@@ -1,9 +1,11 @@
 //! atproto for `hpy`: sessions, the user's repo, and the registry's queries.
 
+pub mod admin;
 pub mod credential;
 pub mod dpop;
 pub mod error;
 pub mod happyview;
+pub mod instance;
 pub mod keystore;
 pub mod login;
 pub mod oauth;

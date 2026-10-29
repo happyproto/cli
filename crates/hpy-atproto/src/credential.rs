@@ -143,8 +143,9 @@ fn login_again(why: &str) -> Error {
     Error::LoginRequired(format!("{why}; run `hpy registry login`"))
 }
 
-/// Writes `credentials.json` owner-only, atomically.
-fn write_file(path: &Path, stored: &Stored) -> Result<()> {
+/// Writes a file of secrets (`credentials.json`, `instances.json`)
+/// owner-only, atomically.
+pub(crate) fn write_file(path: &Path, stored: &impl Serialize) -> Result<()> {
     let dir = path
         .parent()
         .ok_or_else(|| Error::Other("credentials path has no directory".into()))?;
