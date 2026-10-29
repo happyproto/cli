@@ -1,5 +1,6 @@
-//! A HappyView instance's admin API, as `hpy` talks to it: an `hv_` API key
-//! sent as a bearer token, and the calls a deploy makes.
+//! A HappyView instance's admin API, as `hpy` talks to it: signed in with the
+//! session `hpy happyview login` registered, or with an `hv_` API key (for
+//! CI) sent as a bearer token, and the calls a deploy makes.
 
 use std::time::Duration;
 
@@ -394,13 +395,21 @@ impl Admin {
                     self.base, self.base
                 ))
             }
-            StatusCode::FORBIDDEN => Error::Other(format!(
-                "{} refused {what}: {}. Give the API key that permission in the dashboard, or create one that has it",
-                self.base,
-                r.message
-                    .or(r.error)
-                    .unwrap_or_else(|| "the API key's user is not allowed to".into())
-            )),
+            StatusCode::FORBIDDEN => {
+                let why = r.message.or(r.error);
+                match self.auth {
+                    Auth::Session(_) => Error::Other(format!(
+                        "{} refused {what}: {}. Ask its owner to give your account that permission in its dashboard",
+                        self.base,
+                        why.unwrap_or_else(|| "your account is not allowed to".into())
+                    )),
+                    Auth::ApiKey(_) => Error::Other(format!(
+                        "{} refused {what}: {}. Give the API key that permission in the dashboard, or create one that has it",
+                        self.base,
+                        why.unwrap_or_else(|| "the API key's user is not allowed to".into())
+                    )),
+                }
+            }
             _ => {
                 let mut detail = match (r.error, r.message) {
                     (Some(e), Some(m)) => format!("{e}: {m}"),
@@ -585,6 +594,35 @@ mod tests {
             .to_string();
         assert!(text.contains("plugins:read"), "{text}");
         assert!(text.contains("API key"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_session_missing_a_permission_is_told_to_ask_the_owner() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": "InsufficientPermissions", "message": "Missing permission: plugins:read"
+            })))
+            .mount(&server)
+            .await;
+        let cred = crate::credential::Credential {
+            registry: server.uri(),
+            client_key: "hvc_hpy".into(),
+            did: "did:plc:me".into(),
+            handle: None,
+            pds: "https://pds.test".into(),
+            scopes: "atproto".into(),
+            access_token: "t".into(),
+            dpop_key: crate::dpop::DpopKey::generate(),
+        };
+        let text = Admin::with_session(cred)
+            .plugins()
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(text.contains("plugins:read"), "{text}");
+        assert!(text.contains("owner"), "{text}");
+        assert!(!text.contains("API key"), "{text}");
     }
 
     #[tokio::test]

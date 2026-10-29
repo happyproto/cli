@@ -34,23 +34,36 @@ pub const DEFAULT_CLIENT_KEY: &str = "hvc_hpy";
 /// permission set for managing an instance, which every instance accepts.
 pub const SCOPE: &str = "atproto include:dev.happyview.adminFull";
 
-/// The permission the set grants, as a PDS spells it out in the token's
-/// scope once it has expanded the `include:`.
-const ADMIN_RPC: &str = "rpc:dev.happyview.admin.manage";
+/// The method the set grants, as a PDS spells it out in the token's scope
+/// once it has expanded the `include:`.
+const ADMIN_LXM: &str = "dev.happyview.admin.manage";
 
-/// Whether a granted scope lets the session manage an instance: the admin
-/// permission for any audience. A PDS that doesn't know permission sets
-/// grants only `atproto`, and a sign-in through it can't deploy.
+/// Whether a granted scope lets the session manage an instance: an `rpc`
+/// permission naming the admin method, for any audience, written either as
+/// `rpc:<method>?aud=*` or `rpc?lxm=<method>&lxm=…&aud=*`. A PDS that
+/// doesn't know permission sets grants only `atproto`, and a sign-in through
+/// it can't deploy.
 pub fn grants_admin(scopes: &str) -> bool {
     scopes.split_whitespace().any(|scope| {
-        scope
-            .strip_prefix(ADMIN_RPC)
-            .and_then(|rest| rest.strip_prefix('?'))
-            .is_some_and(|params| {
-                params
-                    .split('&')
-                    .any(|p| p == "aud=*" || p.eq_ignore_ascii_case("aud=%2A"))
-            })
+        let Some(rest) = scope.strip_prefix("rpc") else {
+            return false;
+        };
+        let (method, params) = match rest.strip_prefix(':') {
+            Some(rest) => rest.split_once('?').unwrap_or((rest, "")),
+            None => match rest.strip_prefix('?') {
+                Some(params) => ("", params),
+                None => return false,
+            },
+        };
+        let params: Vec<&str> = params.split('&').collect();
+        let any_audience = params
+            .iter()
+            .any(|p| *p == "aud=*" || p.eq_ignore_ascii_case("aud=%2A"));
+        let admin = method == ADMIN_LXM
+            || params
+                .iter()
+                .any(|p| p.strip_prefix("lxm=") == Some(ADMIN_LXM));
+        any_audience && admin
     })
 }
 
@@ -401,24 +414,25 @@ fn choose<'a>(stored: &'a Stored, url: Option<&str>) -> Result<&'a StoredInstanc
     }
 }
 
-/// The instance to act on and how to sign in to it: `HPY_HV_API_KEY` with
-/// `url` or `HPY_HV_URL` when set, else a stored sign-in.
+/// The instance to act on, `url` or else `HPY_HV_URL`, and how to sign in
+/// to it: `HPY_HV_API_KEY` when set, else a stored sign-in.
 pub fn current(
     settings: &Settings,
     store: &dyn KeyStore,
     env: &dyn Fn(&str) -> Option<String>,
     url: Option<&str>,
 ) -> Result<Login> {
-    let url = url.map(normalize_url).transpose()?;
+    let url = url
+        .map(str::to_string)
+        .or_else(|| env(URL_VAR))
+        .map(|u| normalize_url(&u))
+        .transpose()?;
     if let Some(key) = env(KEY_VAR) {
-        let url = match url {
-            Some(url) => url,
-            None => normalize_url(&env(URL_VAR).ok_or_else(|| {
-                Error::LoginRequired(format!(
-                    "{KEY_VAR} is set, so set {URL_VAR} or pass --url too"
-                ))
-            })?)?,
-        };
+        let url = url.ok_or_else(|| {
+            Error::LoginRequired(format!(
+                "{KEY_VAR} is set, so set {URL_VAR} or pass --url too"
+            ))
+        })?;
         check_key(&key).map_err(|e| Error::LoginRequired(format!("{KEY_VAR}: {e}")))?;
         return Ok(Login {
             url,
@@ -638,6 +652,20 @@ mod tests {
     }
 
     #[test]
+    fn hpy_hv_url_chooses_a_saved_sign_in_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = settings(dir.path(), StoreChoice::Auto);
+        let store = MemoryStore::default();
+        save_key(&s, "https://a.example.com", KEY, &store).unwrap();
+        save_key(&s, "https://b.example.com", OTHER, &store).unwrap();
+        let env = |k: &str| (k == URL_VAR).then(|| "https://b.example.com/".to_string());
+        assert_eq!(key(&current(&s, &store, &env, None).unwrap()), OTHER);
+        // --url wins over it.
+        let login = current(&s, &store, &env, Some("https://a.example.com")).unwrap();
+        assert_eq!(key(&login), KEY);
+    }
+
+    #[test]
     fn nothing_saved_says_how_to_sign_in() {
         let dir = tempfile::tempdir().unwrap();
         let s = settings(dir.path(), StoreChoice::Auto);
@@ -785,11 +813,18 @@ mod tests {
         assert!(grants_admin(
             "rpc:dev.happyview.admin.manage?aud=%2A atproto"
         ));
+        // Or name several methods in one permission.
+        assert!(grants_admin(
+            "atproto rpc?lxm=dev.happyview.admin.manage&lxm=com.example.other&aud=*"
+        ));
         for no in [
             "atproto",
             "atproto include:dev.happyview.adminFull",
             "atproto rpc:dev.happyview.admin.manage?aud=did:web:other#hv",
             "atproto rpc:dev.happyview.admin.manageX?aud=*",
+            "atproto rpc:*?aud=*",
+            "atproto rpc?lxm=com.example.other&aud=*",
+            "atproto rpc?lxm=dev.happyview.admin.manage&aud=did:web:other%23hv",
         ] {
             assert!(!grants_admin(no), "{no}");
         }
