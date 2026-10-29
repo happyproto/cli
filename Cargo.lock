@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "hpy-atproto"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1950,7 +1950,7 @@ dependencies = [
 
 [[package]]
 name = "hpy-cli"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "assert_cmd",
  "async-trait",
@@ -1981,7 +1981,7 @@ dependencies = [
 
 [[package]]
 name = "hpy-plugin"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "data-encoding",
  "imagesize",
@@ -1997,7 +1997,7 @@ dependencies = [
 
 [[package]]
 name = "hpy-project"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "hpy-plugin",
  "semver",
