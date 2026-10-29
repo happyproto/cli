@@ -225,6 +225,51 @@ pub enum HappyviewCommand {
     Test(TestArgs),
     /// Write editor types for the project into .happyview/types/, and the tsconfig.json or .luarc.json that points editors at them.
     Types(RunArgs),
+    /// Sign in to a HappyView instance through your browser, to deploy to it.
+    Login(InstanceLoginArgs),
+    /// Sign out of an instance.
+    Logout(InstanceArgs),
+    /// Show the instances you are signed in to.
+    Whoami,
+    /// Make an instance match the project: its plugins from happyview.lock, then its lexicons, scripts and modules.
+    Deploy(DeployArgs),
+}
+
+#[derive(Args, Default)]
+pub struct InstanceArgs {
+    /// The instance, e.g. https://api.example.com (default: HPY_HV_URL, else the only one you are signed in to).
+    #[arg(long, value_name = "URL")]
+    pub url: Option<String>,
+}
+
+#[derive(Args)]
+pub struct InstanceLoginArgs {
+    /// Your handle or DID (default: the account `hpy registry login` holds).
+    pub identifier: Option<String>,
+    /// The instance, e.g. https://api.example.com.
+    #[arg(long, value_name = "URL")]
+    pub url: Option<String>,
+    /// Print the authorization URL instead of opening a browser.
+    #[arg(long)]
+    pub no_browser: bool,
+    /// For CI: sign in with an API key from the instance's dashboard, read from standard input, instead of through the browser.
+    #[arg(long, conflicts_with_all = ["identifier", "no_browser"])]
+    pub key_stdin: bool,
+}
+
+#[derive(Args)]
+pub struct DeployArgs {
+    #[command(flatten)]
+    pub instance: InstanceArgs,
+    /// Show what would change on the instance without changing it.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Also uninstall interpreters and libraries that happyview.lock doesn't list.
+    #[arg(long)]
+    pub prune_plugins: bool,
+    /// Do not ask for confirmation.
+    #[arg(long, short)]
+    pub yes: bool,
 }
 
 #[derive(Args)]
