@@ -512,6 +512,12 @@ listening on `127.0.0.1`, at the port carried in the OAuth `state`. The page
 never sees anything usable on its own: the code needs the PKCE verifier and
 signing key that only the waiting `hpy` holds.
 
+`hpy happyview login` signs in to an instance as a public client
+(`https://happyproto.at/oauth/hpy-cli/client-metadata.json`), and comes back
+through the same page. It could use a loopback redirect, but some PDSes accept
+one only on the port it was registered with, and `hpy` listens on a different
+port each time.
+
 To run against an OAuth client of your own that is registered as a public
 native app instead, set `HPY_OAUTH_REDIRECT=loopback` and
 `HPY_OAUTH_CLIENT_AUTH=none`.
