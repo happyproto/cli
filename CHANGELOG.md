@@ -1,3 +1,20 @@
+# [1.0.0-alpha.18](https://github.com/happyproto/cli/compare/v1.0.0-alpha.17...v1.0.0-alpha.18) (2026-10-29)
+
+
+### Bug Fixes
+
+* read the admin grant as happyview does, and word refusals for the sign-in used ([3a52706](https://github.com/happyproto/cli/commit/3a527061f77e204caa37ef807d7f630f756b73ac))
+
+
+### Features
+
+* ask for happyview's admin permission set when signing in to an instance ([e578aaa](https://github.com/happyproto/cli/commit/e578aaa0ce8a581a2ae0b764874d92f946721996))
+* deploy the project's lexicons, scripts and modules to an instance ([d0c91e9](https://github.com/happyproto/cli/commit/d0c91e93081020705030ade9dc5c45b5c7c5b358))
+* say to sign in again when an instance sign-in lacks the admin grant ([e44b93c](https://github.com/happyproto/cli/commit/e44b93c4aead41def8e4a16315ae41fc912850f1))
+* show where in a file the instance found each project problem ([388c97a](https://github.com/happyproto/cli/commit/388c97af64f2c8b4151f7ba8c7b688aafcd0e2c2))
+* sign in to a happyview instance and deploy its plugins ([5ae331d](https://github.com/happyproto/cli/commit/5ae331d1876fe242e4c2bfd3bb49034f9e32242a))
+* sign in to an instance through the browser and keep api keys for ci ([2d6120f](https://github.com/happyproto/cli/commit/2d6120f41fc1a8c6ddd267f5a96ae2c30107d4f3))
+
 # [1.0.0-alpha.17](https://github.com/happyproto/cli/compare/v1.0.0-alpha.16...v1.0.0-alpha.17) (2026-10-27)
 
 
