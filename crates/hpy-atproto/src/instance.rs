@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use crate::credential::{Credential, Saved, write_file};
 use crate::dpop::DpopKey;
 use crate::keystore::{KeyStore, KeyStoreError};
-use crate::settings::{ClientAuth, Redirect, Settings, StoreChoice};
+use crate::settings::{ClientAuth, DEFAULT_OAUTH_RELAY, Redirect, Settings, StoreChoice};
 use crate::{Error, Result};
 
 pub const KEY_VAR: &str = "HPY_HV_API_KEY";
@@ -68,8 +68,11 @@ pub fn grants_admin(scopes: &str) -> bool {
 }
 
 /// The settings `hpy registry login` signs in with, turned toward an
-/// instance: its HappyView and its `hpy` client, as a public client with a
-/// loopback redirect, asking for HappyView's instance-management permissions.
+/// instance: its HappyView and its `hpy` client, as a public client asking
+/// for HappyView's instance-management permissions. The browser comes back
+/// through the relay page, as for the registry: some PDSes take a loopback
+/// redirect URI only on the port it was registered with, and hpy's port
+/// changes every time.
 pub fn login_settings(base: &Settings, url: &str, client_key: &str) -> Settings {
     let mut s = base.clone();
     s.registry_url = url.to_string();
@@ -79,7 +82,7 @@ pub fn login_settings(base: &Settings, url: &str, client_key: &str) -> Settings 
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| OAUTH_CLIENT_ID.into());
     s.oauth_scope = SCOPE.into();
-    s.oauth_redirect = Redirect::Loopback;
+    s.oauth_redirect = Redirect::Relay(DEFAULT_OAUTH_RELAY.into());
     s.oauth_client_auth = ClientAuth::None;
     s
 }
@@ -837,7 +840,12 @@ mod tests {
         assert_eq!(s.registry_url, "https://api.example.com");
         assert_eq!(s.client_key, "hvc_hpy");
         assert_eq!(s.oauth_scope, "atproto include:dev.happyview.adminFull");
-        assert_eq!(s.oauth_redirect, Redirect::Loopback);
+        // Through the relay, not loopback: some PDSes refuse a loopback
+        // redirect URI on any port but the registered one.
+        assert_eq!(
+            s.oauth_redirect,
+            Redirect::Relay(crate::settings::DEFAULT_OAUTH_RELAY.into())
+        );
         assert!(matches!(s.oauth_client_auth, ClientAuth::None));
         assert_eq!(s.config_dir, base.config_dir);
     }
