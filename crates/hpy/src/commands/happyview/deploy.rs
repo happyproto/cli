@@ -10,7 +10,7 @@ use hpy_atproto::admin::ProjectDeploy;
 
 use crate::commands::happyview::build::build_modules;
 use crate::project::bundle::{Bundle, bundle};
-use crate::project::deploy::{PluginPlan, PluginStep, plan_plugins};
+use crate::project::deploy::{PluginPlan, PluginStep, Target, plan_plugins};
 use crate::project::prepare::project_root;
 
 /// The lock as committed. A deploy installs exactly what it pins, so one
@@ -33,6 +33,62 @@ fn committed_lock(ctx: &Ctx) -> Result<Lockfile, Failure> {
     Ok(lock)
 }
 
+/// The target a step acts on, for the steps that grant capabilities.
+fn target(step: &PluginStep) -> Option<&Target> {
+    match step {
+        PluginStep::Install(t)
+        | PluginStep::Move { target: t, .. }
+        | PluginStep::Replace { target: t, .. } => Some(t),
+        PluginStep::Remove { .. } => None,
+    }
+}
+
+/// What a step grants, under it, so the capabilities are on screen before the
+/// prompt that accepts them.
+///
+/// A move or a replace also names the ones the installed version did not
+/// declare: that difference is what an operator who already agreed to the old
+/// version is being asked to agree to now. A fresh install names none of them
+/// separately, since every capability it grants is new.
+fn capability_lines(step: &PluginStep) -> Vec<String> {
+    let Some(t) = target(step) else {
+        return Vec::new();
+    };
+    let declared = t.capabilities.as_deref().unwrap_or_default();
+    let mut lines = vec![if declared.is_empty() {
+        "      capabilities: none".to_string()
+    } else {
+        format!("      capabilities: {}", declared.join(", "))
+    }];
+    if !matches!(step, PluginStep::Install(_)) && !t.new_capabilities.is_empty() {
+        lines.push(format!("      new: {}", t.new_capabilities.join(", ")));
+    }
+    lines
+}
+
+/// A deploy accepts each plugin's capabilities on the operator's behalf, so a
+/// lock that does not record them cannot be deployed: the set would have to
+/// come from whatever the registry serves now, and holding it still is what
+/// the lock is for.
+fn capabilities_recorded(plan: &PluginPlan) -> Result<(), Failure> {
+    let missing: Vec<&str> = plan
+        .steps
+        .iter()
+        .filter_map(target)
+        .filter(|t| t.capabilities.is_none())
+        .map(|t| t.id.as_str())
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(Failure::usage(format!(
+        "{LOCK_FILE} does not record the capabilities these plugins declare, so this deploy \
+         cannot accept them for you: {}. It was written by an older hpy; run `hpy hv check` to \
+         rewrite it, and commit it",
+        missing.join(", ")
+    )))
+}
+
 fn show(ctx: &Ctx, plan: &PluginPlan) {
     if plan.steps.is_empty() {
         ctx.out.status(&format!(
@@ -40,7 +96,11 @@ fn show(ctx: &Ctx, plan: &PluginPlan) {
             plan.unchanged.len()
         ));
     } else {
-        let steps: Vec<String> = plan.steps.iter().map(|s| format!("  • {s}")).collect();
+        let mut steps = Vec::new();
+        for step in &plan.steps {
+            steps.push(format!("  • {step}"));
+            steps.extend(capability_lines(step));
+        }
         ctx.out.status(&format!("Plugins:\n{}", steps.join("\n")));
     }
     if !plan.kept.is_empty() {
@@ -136,6 +196,7 @@ pub async fn run(ctx: &Ctx, args: DeployArgs) -> Result<(), Failure> {
     let url = admin.base().to_string();
     let installed = admin.plugins().await?;
     let plan = plan_plugins(&lock.plugins, &installed, args.prune_plugins);
+    capabilities_recorded(&plan)?;
     let deployed = admin.project().await?;
     let seen = deployed.as_ref().map(|d| d.sha256.clone());
 
@@ -223,10 +284,24 @@ pub async fn run(ctx: &Ctx, args: DeployArgs) -> Result<(), Failure> {
     };
     for step in &plan.steps {
         let result = match step {
-            PluginStep::Install(t) | PluginStep::Replace { target: t, .. } => {
-                admin.install(&t.did, &t.name, &t.version).await.map(drop)
+            PluginStep::Install(t) | PluginStep::Replace { target: t, .. } => admin
+                .install(
+                    &t.did,
+                    &t.name,
+                    &t.version,
+                    t.capabilities.as_deref().unwrap_or_default(),
+                )
+                .await
+                .map(drop),
+            PluginStep::Move { target, .. } => {
+                admin
+                    .reload(
+                        &target.id,
+                        &target.version,
+                        target.capabilities.as_deref().unwrap_or_default(),
+                    )
+                    .await
             }
-            PluginStep::Move { target, .. } => admin.reload(&target.id, &target.version).await,
             PluginStep::Remove { id } => admin.remove(id).await,
         };
         if let Err(e) = result {
@@ -259,4 +334,106 @@ pub async fn run(ctx: &Ctx, args: DeployArgs) -> Result<(), Failure> {
         }),
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(id: &str, capabilities: Option<&[&str]>, new: &[&str]) -> Target {
+        Target {
+            id: id.into(),
+            did: "did:plc:pub".into(),
+            name: id.into(),
+            version: "1.0.0".into(),
+            capabilities: capabilities.map(|c| c.iter().map(|c| c.to_string()).collect::<Vec<_>>()),
+            new_capabilities: new.iter().map(|c| c.to_string()).collect(),
+        }
+    }
+
+    fn plan(steps: Vec<PluginStep>) -> PluginPlan {
+        PluginPlan {
+            steps,
+            ..PluginPlan::default()
+        }
+    }
+
+    #[test]
+    fn a_lock_recording_every_plugins_capabilities_is_accepted() {
+        let p = plan(vec![
+            PluginStep::Install(target("lua", Some(&["kv:read"]), &[])),
+            PluginStep::Remove { id: "old".into() },
+        ]);
+        assert!(capabilities_recorded(&p).is_ok());
+    }
+
+    /// Named, because the operator has to know which plugins to re-resolve,
+    /// and told what to run rather than only what is wrong.
+    #[test]
+    fn a_lock_missing_them_is_refused_and_names_the_plugins() {
+        let p = plan(vec![
+            PluginStep::Install(target("lua", None, &[])),
+            PluginStep::Move {
+                target: target("std", None, &[]),
+                from: "1.0.0".into(),
+            },
+            PluginStep::Install(target("http", Some(&["kv:read"]), &[])),
+        ]);
+        let err = capabilities_recorded(&p).unwrap_err();
+        assert_eq!(err.code, 2);
+        let text = err.report.to_string();
+        assert!(text.contains("lua"), "{text}");
+        assert!(text.contains("std"), "{text}");
+        assert!(!text.contains("http"), "{text}");
+        assert!(text.contains("hpy hv check"), "{text}");
+    }
+
+    /// A removal grants nothing, so an unrecorded entry cannot block one.
+    #[test]
+    fn a_removal_needs_no_capabilities() {
+        let p = plan(vec![PluginStep::Remove { id: "old".into() }]);
+        assert!(capabilities_recorded(&p).is_ok());
+    }
+
+    #[test]
+    fn an_install_lists_what_it_grants() {
+        let lines = capability_lines(&PluginStep::Install(target(
+            "lua",
+            Some(&["kv:read", "database:write"]),
+            &[],
+        )));
+        assert_eq!(lines, ["      capabilities: kv:read, database:write"]);
+    }
+
+    /// Said rather than left blank: a plugin that asks for nothing is worth
+    /// seeing, and a missing line reads as a missing answer.
+    #[test]
+    fn a_plugin_granting_nothing_says_so() {
+        let lines = capability_lines(&PluginStep::Install(target("plain", Some(&[]), &[])));
+        assert_eq!(lines, ["      capabilities: none"]);
+    }
+
+    #[test]
+    fn a_move_lists_the_new_ones_separately() {
+        let lines = capability_lines(&PluginStep::Move {
+            target: target(
+                "lua",
+                Some(&["kv:read", "database:write"]),
+                &["database:write"],
+            ),
+            from: "1.0.0".into(),
+        });
+        assert_eq!(
+            lines,
+            [
+                "      capabilities: kv:read, database:write",
+                "      new: database:write"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_removal_lists_nothing() {
+        assert!(capability_lines(&PluginStep::Remove { id: "old".into() }).is_empty());
+    }
 }

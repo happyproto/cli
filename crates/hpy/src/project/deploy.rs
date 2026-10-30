@@ -28,6 +28,14 @@ pub struct Target {
     pub did: String,
     pub name: String,
     pub version: String,
+    /// The capabilities the lock pins this version as declaring, which the
+    /// deploy accepts. `None` in a lock written before hpy recorded them;
+    /// `run` refuses such a lock rather than accept a set it is guessing.
+    pub capabilities: Option<Vec<String>>,
+    /// Of those, the ones the installed version did not declare. Empty for a
+    /// fresh install, where nothing was granted before and the whole set is
+    /// shown instead.
+    pub new_capabilities: Vec<String>,
 }
 
 impl std::fmt::Display for PluginStep {
@@ -104,16 +112,30 @@ pub fn plan_plugins(
     for p in dependency_order(lock) {
         // The lock's own validation guarantees the URI parses.
         let (did, name) = parse_project_uri(&p.project).unwrap_or_default();
-        let target = Target {
+        let mut target = Target {
             id: p.id.clone(),
             did: did.clone(),
             name: name.clone(),
             version: p.version.clone(),
+            capabilities: p.capabilities.clone(),
+            new_capabilities: Vec::new(),
         };
         let Some(current) = on.get(p.id.as_str()) else {
             plan.steps.push(PluginStep::Install(target));
             continue;
         };
+        // What this change would newly grant. Read from the installed
+        // version's own declaration rather than from the lock's previous
+        // entry, because the instance is what holds the grant in force and
+        // may be running something the lock never pinned.
+        let had = current.declared_capabilities();
+        target.new_capabilities = target
+            .capabilities
+            .iter()
+            .flatten()
+            .filter(|c| !had.contains(&c.as_str()))
+            .cloned()
+            .collect();
         let from = current.registry.as_ref().filter(|r| {
             r.did.as_deref() == Some(did.as_str()) && r.name.as_deref() == Some(name.as_str())
         });
@@ -152,7 +174,9 @@ pub fn plan_plugins(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hpy_atproto::admin::{InstalledFrom, InstalledPlugin};
+    use hpy_atproto::admin::{
+        DeclaredCapability, InstalledCapabilities, InstalledFrom, InstalledPlugin,
+    };
     use hpy_project::config::PluginKind;
     use hpy_project::lock::LockedPlugin;
 
@@ -171,6 +195,7 @@ mod tests {
             package_cid: "bafypackage".into(),
             manifest_blob_cid: "bafyblob".into(),
             dependencies: deps.iter().map(|d| d.to_string()).collect(),
+            capabilities: Some(vec!["kv:read".into()]),
         }
     }
 
@@ -188,6 +213,7 @@ mod tests {
                 name: Some(id.into()),
                 version_uri: Some(hpy_plugin::validate::version_uri(did, id, version)),
             }),
+            capabilities: InstalledCapabilities::default(),
         }
     }
 
@@ -235,6 +261,71 @@ mod tests {
             false,
         );
         assert_eq!(ids(&plan), ["move lua 1.0.0 → 1.1.0"]);
+    }
+
+    /// Every capability a fresh install grants is new, so the plan carries the
+    /// locked set and leaves the difference empty rather than repeating it.
+    #[test]
+    fn a_fresh_install_carries_the_locked_capabilities() {
+        let plan = plan_plugins(&[locked("lua", "1.0.0", &[])], &[], false);
+        let PluginStep::Install(t) = &plan.steps[0] else {
+            panic!("{:?}", plan.steps);
+        };
+        assert_eq!(
+            t.capabilities.as_deref(),
+            Some(&["kv:read".to_string()][..])
+        );
+        assert!(t.new_capabilities.is_empty());
+    }
+
+    /// A move names only what the installed version did not declare: the
+    /// operator already agreed to the rest.
+    #[test]
+    fn a_move_names_only_the_capabilities_the_installed_version_lacked() {
+        let mut lock = locked("lua", "1.1.0", &[]);
+        lock.capabilities = Some(vec!["kv:read".into(), "database:write".into()]);
+        let mut on = installed("lua", Some((PUB, "1.0.0")));
+        on.capabilities = InstalledCapabilities {
+            declared: vec![DeclaredCapability {
+                name: "kv:read".into(),
+            }],
+        };
+        let plan = plan_plugins(&[lock], &[on], false);
+        let PluginStep::Move { target, .. } = &plan.steps[0] else {
+            panic!("{:?}", plan.steps);
+        };
+        assert_eq!(target.new_capabilities, ["database:write"]);
+    }
+
+    /// The difference is read from the instance, not from the lock's previous
+    /// entry: the instance holds the grant, and may be running something the
+    /// lock never pinned.
+    #[test]
+    fn a_move_to_a_version_granting_no_more_has_nothing_new() {
+        let mut on = installed("lua", Some((PUB, "1.0.0")));
+        on.capabilities = InstalledCapabilities {
+            declared: vec![DeclaredCapability {
+                name: "kv:read".into(),
+            }],
+        };
+        let plan = plan_plugins(&[locked("lua", "1.1.0", &[])], &[on], false);
+        let PluginStep::Move { target, .. } = &plan.steps[0] else {
+            panic!("{:?}", plan.steps);
+        };
+        assert!(target.new_capabilities.is_empty());
+    }
+
+    /// A lock written before hpy recorded capabilities says so, so the deploy
+    /// command can refuse rather than accept a set it would be inventing.
+    #[test]
+    fn an_unrecorded_lock_reaches_the_plan_as_unrecorded() {
+        let mut lock = locked("lua", "1.0.0", &[]);
+        lock.capabilities = None;
+        let plan = plan_plugins(&[lock], &[], false);
+        let PluginStep::Install(t) = &plan.steps[0] else {
+            panic!("{:?}", plan.steps);
+        };
+        assert!(t.capabilities.is_none());
     }
 
     #[test]

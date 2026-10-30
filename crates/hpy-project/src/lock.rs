@@ -57,6 +57,16 @@ pub struct LockedPlugin {
     pub manifest_blob_cid: String,
     #[serde(default)]
     pub dependencies: Vec<String>,
+    /// The capabilities this exact version's manifest declares, recorded so a
+    /// deploy accepts what was resolved and committed rather than whatever the
+    /// registry serves when it runs. The manifest is pinned by `manifest_cid`,
+    /// so this is the set a reviewer of the lock saw.
+    ///
+    /// `None` in a lock written before hpy recorded them. A deploy refuses one
+    /// rather than guess: an empty list is a plugin that asks for nothing,
+    /// which is exactly the claim that must not be made on its behalf.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Vec<String>>,
 }
 
 /// Enough of a CID's shape to catch a hand edit or a checksum from an older
@@ -289,6 +299,7 @@ mod tests {
             package_cid: "bafkreipackage".into(),
             manifest_blob_cid: "bafkreimanifestblob".into(),
             dependencies: vec![],
+            capabilities: Some(vec![]),
         }
     }
 
@@ -324,6 +335,38 @@ mod tests {
             "1.4.2"
         );
         assert!(back.find_key(PluginKind::Library, "lua").is_none());
+    }
+
+    /// A lock written by an hpy that did not record capabilities parses, and
+    /// says so by absence rather than by an empty set: a deploy has to tell
+    /// "declares nothing" from "nobody wrote it down".
+    #[test]
+    fn a_lock_without_recorded_capabilities_parses_as_unrecorded() {
+        let text: String = lock()
+            .render()
+            .lines()
+            .filter(|l| !l.starts_with("capabilities"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert!(!text.contains("capabilities"), "{text}");
+        let back = Lockfile::parse(&text).unwrap();
+        assert!(back.plugins.iter().all(|p| p.capabilities.is_none()));
+    }
+
+    #[test]
+    fn recorded_capabilities_round_trip() {
+        let mut l = lock();
+        l.plugins[0].capabilities = Some(vec!["database:write".into(), "kv:read".into()]);
+        let back = Lockfile::parse(&l.render()).unwrap();
+        let p = back
+            .plugins
+            .iter()
+            .find(|p| p.id == l.plugins[0].id)
+            .unwrap();
+        assert_eq!(
+            p.capabilities.as_deref(),
+            Some(&["database:write".to_string(), "kv:read".to_string()][..])
+        );
     }
 
     #[test]
@@ -443,6 +486,7 @@ manifest_cid = \"bafyreimanifest\"
 package_cid = \"bafkreipackage\"
 manifest_blob_cid = \"bafkreimanifestblob\"
 dependencies = []
+capabilities = []
 
 [[plugin]]
 id = \"happyview-lua\"
@@ -456,6 +500,7 @@ manifest_cid = \"bafyreimanifest\"
 package_cid = \"bafkreipackage\"
 manifest_blob_cid = \"bafkreimanifestblob\"
 dependencies = [\"happyview-http\"]
+capabilities = []
 ";
         assert_eq!(l.render(), expected);
     }
