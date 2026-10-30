@@ -58,8 +58,11 @@ That installs the newest **stable** release, of which there is none until
 **Windows**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/happyproto/cli/releases/latest/download/hpy-cli-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://happyproto.github.io/cli/install-beta.ps1 | iex"
 ```
+
+That installs the newest **beta** release. Once `1.0.0` is cut,
+`install.ps1` in its place installs the newest stable one.
 
 **From source**
 
@@ -86,6 +89,13 @@ These install the stable channel. For the `beta` or `alpha` channel (see
 
   ```sh
   curl -fsSL https://happyproto.github.io/cli/install-beta.sh | sh
+  ```
+
+- Windows: `install-beta.ps1` or `install-alpha.ps1` in place of
+  `install.ps1`:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -c "irm https://happyproto.github.io/cli/install-beta.ps1 | iex"
   ```
 
 After installing, `hpy update` keeps you on the channel you installed from, and

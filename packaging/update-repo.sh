@@ -17,6 +17,7 @@
 #   gpg.key                                  public signing key
 #   hpy.repo, hpy-beta.repo, hpy-alpha.repo  yum/dnf repository definitions
 #   install.sh                               the shell installer, for curl | sh
+#   install.ps1                              the PowerShell installer, for irm | iex
 #   deb/dists/<channel>/...                  apt metadata, InRelease + Release.gpg
 #   deb/pool/<channel>/h/hpy/*.deb
 #   rpm/<channel>/<x86_64|aarch64>/*.rpm     each with signed repodata/
@@ -143,6 +144,34 @@ curl --proto '=https' --tlsv1.2 -fsSL \
 EOF
 done
 
+# The same per channel for Windows, which has the same problem: a
+# `releases/latest` PowerShell command 404s while every release is a
+# prerelease.
+cat > "$site/install.ps1" <<'EOF'
+# Installs the newest stable hpy release for this machine.
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-RestMethod https://github.com/happyproto/cli/releases/latest/download/hpy-cli-installer.ps1 | Invoke-Expression
+EOF
+
+for c in beta alpha; do
+  sed "s/@CHANNEL@/$c/g" > "$site/install-$c.ps1" <<'EOF'
+# Installs the newest hpy @CHANNEL@ release for this machine.
+#
+# GitHub's `releases/latest` is the newest stable release and never a
+# prerelease, so this reads the releases list, which the API answers newest
+# first, and takes the first tag on this channel.
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$repo = 'happyproto/cli'
+$tag = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=100" |
+  Where-Object { $_.tag_name -match '-@CHANNEL@(\.|$)' } |
+  Select-Object -First 1).tag_name
+if (-not $tag) { throw 'no hpy release on the @CHANNEL@ channel' }
+Invoke-RestMethod "https://github.com/$repo/releases/download/$tag/hpy-cli-installer.ps1" | Invoke-Expression
+EOF
+done
+
 cat > "$site/index.html" <<EOF
 <!doctype html>
 <html lang="en">
@@ -171,8 +200,12 @@ sudo dnf install hpy</pre>
 <p>For a prerelease channel, the same command with
 <code>install-beta.sh</code> or <code>install-alpha.sh</code>.
 <code>hpy update</code> then keeps you on the channel you installed from.</p>
+<h2>Windows</h2>
+<pre>powershell -ExecutionPolicy Bypass -c "irm $base_url/install.ps1 | iex"</pre>
+<p>Or <code>install-beta.ps1</code> or <code>install-alpha.ps1</code> for a
+prerelease channel.</p>
 <h2>Prereleases</h2>
-<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>; for the shell installer, <code>install-beta.sh</code> or <code>install-alpha.sh</code> in place of <code>install.sh</code>. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
+<p>The <code>beta</code> and <code>alpha</code> channels hold only their own releases. For apt, put the channel in place of <code>stable</code> in <code>hpy.list</code>; for dnf, download <code>hpy-beta.repo</code> or <code>hpy-alpha.repo</code> in place of <code>hpy.repo</code>; for the shell installer, <code>install-beta.sh</code> or <code>install-alpha.sh</code> in place of <code>install.sh</code>, and likewise <code>install-beta.ps1</code> or <code>install-alpha.ps1</code> for PowerShell. <code>hpy channel</code> prints the commands for switching an installed <code>hpy</code>.</p>
 </body>
 </html>
 EOF
