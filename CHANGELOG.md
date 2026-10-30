@@ -1,3 +1,10 @@
+# [1.0.0-alpha.20](https://github.com/happyproto/cli/compare/v1.0.0-alpha.19...v1.0.0-alpha.20) (2026-10-30)
+
+
+### Bug Fixes
+
+* refuse to run HappyView locally on Windows, which it no longer ships for ([287b0db](https://github.com/happyproto/cli/commit/287b0db8e6672571ad997e936f96c0b06ab144f1))
+
 # [1.0.0-alpha.19](https://github.com/happyproto/cli/compare/v1.0.0-alpha.18...v1.0.0-alpha.19) (2026-10-29)
 
 
