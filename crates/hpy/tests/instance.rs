@@ -407,7 +407,7 @@ async fn deploy_refuses_a_lock_that_records_no_capabilities() {
         .stderr(
             predicate::str::contains("lua")
                 .and(predicate::str::contains("std"))
-                .and(predicate::str::contains("hpy hv check")),
+                .and(predicate::str::contains("hpy happyview check")),
         );
 }
 

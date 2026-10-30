@@ -224,6 +224,20 @@ impl Lockfile {
     /// Why this lock no longer describes `cfg`, one sentence each; empty when
     /// it still does. A channel pin is satisfied by whatever it resolved to
     /// when locked: moving to the channel's new head is an explicit update.
+    /// The plugins this lock records no capabilities for, which is every one
+    /// of them in a lock written before hpy recorded them.
+    ///
+    /// A deploy accepts the capabilities the lock records, so it cannot use
+    /// such a lock at all; `prepare` rewrites one for that reason even when it
+    /// matches `happyview.toml`.
+    pub fn unrecorded_capabilities(&self) -> Vec<&str> {
+        self.plugins
+            .iter()
+            .filter(|p| p.capabilities.is_none())
+            .map(|p| p.id.as_str())
+            .collect()
+    }
+
     pub fn drift(&self, cfg: &ProjectToml) -> Vec<String> {
         let mut out = Vec::new();
         if let Some(wanted) = cfg.happyview.version.as_deref()
@@ -366,6 +380,23 @@ mod tests {
         assert_eq!(
             p.capabilities.as_deref(),
             Some(&["database:write".to_string(), "kv:read".to_string()][..])
+        );
+    }
+
+    #[test]
+    fn a_lock_recording_capabilities_has_none_unrecorded() {
+        assert!(lock().unrecorded_capabilities().is_empty());
+    }
+
+    #[test]
+    fn unrecorded_capabilities_names_only_the_plugins_missing_them() {
+        let mut l = lock();
+        l.plugins[0].capabilities = None;
+        assert_eq!(
+            l.unrecorded_capabilities(),
+            [l.plugins[0].id.as_str()],
+            "{:?}",
+            l.plugins.iter().map(|p| &p.id).collect::<Vec<_>>()
         );
     }
 

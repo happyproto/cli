@@ -70,6 +70,25 @@ pub fn project_root(ctx: &Ctx) -> Result<PathBuf, Failure> {
     })
 }
 
+/// Why `--locked` cannot go on. Not always a mismatch: a lock from before hpy
+/// recorded plugin capabilities has to be rewritten too, and telling a reader
+/// it does not match `happyview.toml` would send them to a file that is fine.
+fn locked_refusal(drift: Option<&[String]>, unrecorded: &[String]) -> String {
+    match drift {
+        None => "there is no happyview.lock".into(),
+        Some(d) if !d.is_empty() => format!(
+            "happyview.lock does not match happyview.toml, and --locked forbids updating it:\n  {}",
+            d.join("\n  ")
+        ),
+        Some(_) => format!(
+            "happyview.lock records no capabilities for {}, and --locked forbids updating it. It \
+             was written by an hpy from before a deploy accepted them: run `hpy happyview check` \
+             once without --locked, then commit the rewritten happyview.lock",
+            unrecorded.join(", ")
+        ),
+    }
+}
+
 pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failure> {
     let root = project_root(ctx)?;
     if std::env::var_os("PLUGIN_DIR").is_some() {
@@ -81,15 +100,26 @@ pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failu
     let previous = Lockfile::load(&root)?;
     let registry = ctx.registry();
     let drift = previous.as_ref().map(|l| l.drift(&config));
+    // A lock recording no capabilities for a plugin is rewritten as well,
+    // though it matches happyview.toml: a deploy accepts the capabilities the
+    // lock records and cannot accept a set that is not there. Re-resolving
+    // passes the previous lock, so the versions it pins do not move.
+    let unrecorded: Vec<String> = previous
+        .as_ref()
+        .map(|l| {
+            l.unrecorded_capabilities()
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
     let lock = match (previous, drift) {
-        (Some(lock), Some(drift)) if drift.is_empty() => lock,
+        (Some(lock), Some(drift)) if drift.is_empty() && unrecorded.is_empty() => lock,
         (previous, drift) => {
             if opts.locked {
-                let why = drift
-                    .map(|d| d.join("\n  "))
-                    .unwrap_or_else(|| "there is no happyview.lock".into());
-                return Err(Failure::usage(format!(
-                    "happyview.lock does not match happyview.toml, and --locked forbids updating it:\n  {why}"
+                return Err(Failure::usage(locked_refusal(
+                    drift.as_deref(),
+                    &unrecorded,
                 )));
             }
             let warn = |m: &str| ctx.out.status(&format!("warning: {m}"));
@@ -128,4 +158,35 @@ pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failu
         .collect();
     place_plugins(&root, &placements, opts.place).map_err(Failure::runtime)?;
     Ok(Prepared { root, binary })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_lock_at_all_says_so() {
+        assert_eq!(locked_refusal(None, &[]), "there is no happyview.lock");
+    }
+
+    #[test]
+    fn a_mismatch_is_reported_as_one() {
+        let text = locked_refusal(Some(&["lua is not in the lock".to_string()]), &[]);
+        assert!(text.contains("does not match happyview.toml"), "{text}");
+        assert!(text.contains("lua is not in the lock"), "{text}");
+    }
+
+    /// A lock that matches happyview.toml but records no capabilities is not a
+    /// mismatch, and must not be reported as one: the reader would go looking
+    /// at a file that is correct.
+    #[test]
+    fn an_unrecorded_lock_is_not_reported_as_a_mismatch() {
+        let text = locked_refusal(Some(&[]), &["lua".to_string(), "std".to_string()]);
+        assert!(!text.contains("does not match"), "{text}");
+        assert!(
+            text.contains("records no capabilities for lua, std"),
+            "{text}"
+        );
+        assert!(text.contains("hpy happyview check"), "{text}");
+    }
 }

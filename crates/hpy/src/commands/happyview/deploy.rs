@@ -82,9 +82,11 @@ fn capabilities_recorded(plan: &PluginPlan) -> Result<(), Failure> {
         return Ok(());
     }
     Err(Failure::usage(format!(
-        "{LOCK_FILE} does not record the capabilities these plugins declare, so this deploy \
-         cannot accept them for you: {}. It was written by an older hpy; run `hpy hv check` to \
-         rewrite it, and commit it",
+        "{LOCK_FILE} records no capabilities for {}, so this deploy cannot accept them for you. \
+         It was written by an hpy from before a deploy accepted them. To fix it, run:\n\
+         \n    hpy happyview check\n\n\
+         That rewrites {LOCK_FILE} without moving any version it pins; commit the change and \
+         deploy again",
         missing.join(", ")
     )))
 }
@@ -385,7 +387,10 @@ mod tests {
         assert!(text.contains("lua"), "{text}");
         assert!(text.contains("std"), "{text}");
         assert!(!text.contains("http"), "{text}");
-        assert!(text.contains("hpy hv check"), "{text}");
+        // On its own indented line, so a tester can see what to run without
+        // picking it out of a sentence.
+        assert!(text.contains("\n\n    hpy happyview check\n\n"), "{text:?}");
+        assert!(text.contains("commit the change"), "{text}");
     }
 
     /// A removal grants nothing, so an unrecorded entry cannot block one.

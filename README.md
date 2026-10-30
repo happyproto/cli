@@ -327,8 +327,10 @@ Then, in this order:
    those came from, so what you review in the lock is what is accepted, and a
    version whose manifest gained a capability after the lock was written is
    refused by the instance rather than installed quietly. A lock written by an
-   hpy old enough not to record them is refused with the plugins named; run
-   `hpy happyview check` to rewrite it, and commit it.
+   hpy from before a deploy accepted them is refused with the plugins named;
+   `hpy happyview check` rewrites it, without moving any version it pins, and
+   `--locked` says the same rather than reporting a mismatch against
+   `happyview.toml` that isn't there.
 2. **The project.** `happyview.toml`, everything under `src/` and the builds of
    its `[modules]` (built first, as `hpy happyview build` does) go to the
    instance in one piece. The instance checks the project with the same rules
