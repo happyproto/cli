@@ -189,6 +189,10 @@ error, `3` not logged in.
 A HappyView app can be a directory: lexicons and scripts under `src/`,
 configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 
+HappyView has no Windows build, so on Windows `dev`, `check`, `test` and
+`types`, which run HappyView itself, refuse to start; run them under WSL. The
+other commands, `deploy` among them, work on Windows.
+
 | Command | Does |
 | --- | --- |
 | `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--project <at-uri>` picks between projects that answer to one name. Each plugin follows its project's `latest` channel, or the only channel it has. Writes the lock but downloads nothing. |
