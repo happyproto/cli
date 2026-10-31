@@ -1,3 +1,15 @@
+# [1.0.0-alpha.21](https://github.com/happyproto/cli/compare/v1.0.0-alpha.20...v1.0.0-alpha.21) (2026-10-31)
+
+
+### Bug Fixes
+
+* rewrite a lock that records no plugin capabilities ([a092e0e](https://github.com/happyproto/cli/commit/a092e0e4426c37754ac889f443481af2c56d4765))
+
+
+### Features
+
+* accept each plugin's locked capabilities when deploying ([c80f5c2](https://github.com/happyproto/cli/commit/c80f5c2e5661c8775c3c83c93dc924db55b9e16f))
+
 # [1.0.0-alpha.20](https://github.com/happyproto/cli/compare/v1.0.0-alpha.19...v1.0.0-alpha.20) (2026-10-30)
 
 
