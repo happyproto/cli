@@ -251,12 +251,14 @@ fn lock_entry(name: &str, key: &str, version: &serde_json::Value) -> String {
         "[[plugin]]\nid = \"{name}\"\nkind = \"interpreter\"\nkeys = [\"{key}\"]\n\
          project = \"at://{HV_DID}/software.release.project/{name}\"\nversion = \"{}\"\n\
          channel = \"latest\"\nversion_uri = \"{}\"\nmanifest_cid = \"{}\"\npackage_cid = \"{}\"\n\
-         manifest_blob_cid = \"{}\"\ndependencies = []\n",
+         manifest_blob_cid = \"{}\"\ndependencies = []\ncapabilities = {}\n",
         version["version"].as_str().unwrap(),
         version["uri"].as_str().unwrap(),
         version["manifest"]["cid"].as_str().unwrap(),
         artifact["package"]["ref"]["$link"].as_str().unwrap(),
         artifact["manifest"]["ref"]["$link"].as_str().unwrap(),
+        // What the published artifact declares, as a deploy would accept it.
+        artifact["capabilities"],
     )
 }
 
@@ -295,6 +297,39 @@ fn check_passes_json_through() {
         .assert()
         .success();
     assert_eq!(stack.log().trim(), "check . --json");
+}
+
+/// A lock from before capabilities were recorded is rewritten by `check`,
+/// which is what a deploy's refusal tells the operator to run. Without this
+/// that instruction would be a loop: such a lock still matches
+/// `happyview.toml`, so nothing would otherwise make hpy write it again.
+#[cfg(unix)]
+#[test]
+fn check_rewrites_a_lock_that_records_no_capabilities() {
+    let stack = Stack::new();
+    lua_project(&stack);
+    let path = stack.project.path().join("happyview.lock");
+    let before = read(&path);
+    let stripped: String = before
+        .lines()
+        .filter(|l| !l.starts_with("capabilities"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(&path, &stripped).unwrap();
+    stack.hpy().args(["hv", "check"]).assert().success();
+    let after = read(&path);
+    assert!(
+        after.contains("capabilities = [\"script:host\"]"),
+        "{after}"
+    );
+    // Re-resolving passes the previous lock, so the version it pins stays put.
+    let version_of = |text: &str| {
+        text.lines()
+            .find(|l| l.starts_with("version_uri"))
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(version_of(&after), version_of(&before));
 }
 
 #[cfg(unix)]
