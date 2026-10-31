@@ -1,3 +1,11 @@
+# [1.0.0-alpha.22](https://github.com/happyproto/cli/compare/v1.0.0-alpha.21...v1.0.0-alpha.22) (2026-10-31)
+
+
+### Bug Fixes
+
+* let Windows PowerShell 5.1 filter the releases one at a time ([cf0ebfe](https://github.com/happyproto/cli/commit/cf0ebfefe1a5102fe08a01391bec6a61b1db0d6c))
+* publish a PowerShell installer per release channel ([ea7441b](https://github.com/happyproto/cli/commit/ea7441b87995383f6e683d4bf68fc7222fbe60e0))
+
 # [1.0.0-alpha.21](https://github.com/happyproto/cli/compare/v1.0.0-alpha.20...v1.0.0-alpha.21) (2026-10-31)
 
 
