@@ -42,6 +42,35 @@ pub struct InstalledPlugin {
     /// install.
     #[serde(default)]
     pub registry: Option<InstalledFrom>,
+    /// What the installed version declares, so a move can say which
+    /// capabilities are new rather than only which version it moves to.
+    #[serde(default)]
+    pub capabilities: InstalledCapabilities,
+}
+
+impl InstalledPlugin {
+    /// The names the installed version declares.
+    pub fn declared_capabilities(&self) -> Vec<&str> {
+        self.capabilities
+            .declared
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect()
+    }
+}
+
+/// The capability report `GET /admin/plugins` gives for a plugin. Only the
+/// declared names are read: the risk and the description are the dashboard's,
+/// and the imports-derived set is not what a grant is judged against.
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+pub struct InstalledCapabilities {
+    #[serde(default)]
+    pub declared: Vec<DeclaredCapability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct DeclaredCapability {
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -435,9 +464,25 @@ impl Admin {
         Ok(list.plugins)
     }
 
-    /// Installs one exact version of a registry project.
-    pub async fn install(&self, did: &str, name: &str, version: &str) -> Result<InstalledPlugin> {
-        let body = json!({ "registry": { "did": did, "name": name, "version": version } });
+    /// Installs one exact version of a registry project, accepting
+    /// `capabilities` on the operator's behalf.
+    ///
+    /// The accepted set is sent even when empty, because HappyView reads an
+    /// absent `accepted_capabilities` as accepting nothing and refuses an
+    /// install that would grant more than was accepted. Sending the locked set
+    /// is also what makes a manifest that gained a capability since the lock
+    /// was written fail here rather than install silently.
+    pub async fn install(
+        &self,
+        did: &str,
+        name: &str,
+        version: &str,
+        capabilities: &[String],
+    ) -> Result<InstalledPlugin> {
+        let body = json!({
+            "registry": { "did": did, "name": name, "version": version },
+            "accepted_capabilities": capabilities,
+        });
         let out = self
             .send(
                 &format!("installing {name} {version}"),
@@ -454,9 +499,16 @@ impl Admin {
         })
     }
 
-    /// Moves an installed registry plugin to one exact version.
-    pub async fn reload(&self, id: &str, version: &str) -> Result<()> {
-        let body = json!({ "registry": { "version": version } });
+    /// Moves an installed registry plugin to one exact version, accepting
+    /// `capabilities` for the version it moves to.
+    ///
+    /// A reload needs the set as much as an install does: the version it moves
+    /// to may declare a capability the installed one never did.
+    pub async fn reload(&self, id: &str, version: &str, capabilities: &[String]) -> Result<()> {
+        let body = json!({
+            "registry": { "version": version },
+            "accepted_capabilities": capabilities,
+        });
         self.send(
             &format!("moving {id} to {version}"),
             reqwest::Method::POST,
@@ -674,17 +726,45 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/admin/plugins"))
             .and(body_json(json!({
-                "registry": {"did": "did:plc:pub", "name": "lua", "version": "1.2.0"}
+                "registry": {"did": "did:plc:pub", "name": "lua", "version": "1.2.0"},
+                "accepted_capabilities": ["library:call", "wasi:clock"]
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(plugin("lua", Some("at://x"))))
             .expect(1)
             .mount(&server)
             .await;
         let installed = Admin::new(&server.uri(), KEY)
-            .install("did:plc:pub", "lua", "1.2.0")
+            .install(
+                "did:plc:pub",
+                "lua",
+                "1.2.0",
+                &["library:call".to_string(), "wasi:clock".to_string()],
+            )
             .await
             .unwrap();
         assert_eq!(installed.id, "lua");
+    }
+
+    /// A plugin that declares nothing still sends the field: HappyView reads
+    /// its absence as accepting nothing, which is not the same as a caller
+    /// that accepted the empty set.
+    #[tokio::test]
+    async fn installs_a_version_that_declares_no_capabilities() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/admin/plugins"))
+            .and(body_json(json!({
+                "registry": {"did": "did:plc:pub", "name": "plain", "version": "1.0.0"},
+                "accepted_capabilities": []
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(plugin("plain", Some("at://x"))))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Admin::new(&server.uri(), KEY)
+            .install("did:plc:pub", "plain", "1.0.0", &[])
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -692,13 +772,16 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/admin/plugins/lua/reload"))
-            .and(body_json(json!({"registry": {"version": "1.3.0"}})))
+            .and(body_json(json!({
+                "registry": {"version": "1.3.0"},
+                "accepted_capabilities": ["kv:read"]
+            })))
             .respond_with(ResponseTemplate::new(200).set_body_json(plugin("lua", Some("at://x"))))
             .expect(1)
             .mount(&server)
             .await;
         Admin::new(&server.uri(), KEY)
-            .reload("lua", "1.3.0")
+            .reload("lua", "1.3.0", &["kv:read".to_string()])
             .await
             .unwrap();
     }

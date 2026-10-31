@@ -328,6 +328,19 @@ Then, in this order:
    one installed under the same name from a URL or another publisher is
    replaced. One the lock doesn't list is kept, unless you pass
    `--prune-plugins`.
+
+   The plan lists the capabilities each plugin would be granted, and for one
+   being moved or replaced which of them the installed version did not have.
+   Confirming the deploy accepts them: HappyView grants a plugin only the
+   capabilities an install explicitly accepts, so `hpy` sends the set
+   `happyview.lock` records for that exact version. The lock pins the manifest
+   those came from, so what you review in the lock is what is accepted, and a
+   version whose manifest gained a capability after the lock was written is
+   refused by the instance rather than installed quietly. A lock written by an
+   hpy from before a deploy accepted them is refused with the plugins named;
+   `hpy happyview check` rewrites it, without moving any version it pins, and
+   `--locked` says the same rather than reporting a mismatch against
+   `happyview.toml` that isn't there.
 2. **The project.** `happyview.toml`, everything under `src/` and the builds of
    its `[modules]` (built first, as `hpy happyview build` does) go to the
    instance in one piece. The instance checks the project with the same rules
