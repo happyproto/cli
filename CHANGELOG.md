@@ -1,3 +1,10 @@
+# [1.0.0-alpha.23](https://github.com/happyproto/cli/compare/v1.0.0-alpha.22...v1.0.0-alpha.23) (2026-11-01)
+
+
+### Bug Fixes
+
+* treat a lexicon refusal as the publisher's to fix ([9d75fa1](https://github.com/happyproto/cli/commit/9d75fa137cb670e43de16a77b5b5c0f6804a18a8))
+
 # [1.0.0-alpha.22](https://github.com/happyproto/cli/compare/v1.0.0-alpha.21...v1.0.0-alpha.22) (2026-10-31)
 
 
