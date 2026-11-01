@@ -77,6 +77,22 @@ impl From<Problem> for Failure {
 mod tests {
     use super::*;
 
+    /// A lexicon refusal is the publisher's to fix, like the registry's own
+    /// refusals, so it exits 2 and prints the message the gateway wrote
+    /// rather than wrapping it in a transport error.
+    #[test]
+    fn a_lexicon_refusal_is_a_usage_failure() {
+        let f = Failure::from(hpy_atproto::Error::Registry {
+            name: "InvalidRequest".into(),
+            message: "Input/project/security must not have fewer than 1 elements".into(),
+        });
+        assert_eq!(f.code, 2);
+        assert_eq!(
+            f.report.to_string(),
+            "Input/project/security must not have fewer than 1 elements"
+        );
+    }
+
     #[test]
     fn exit_failures_are_quiet_and_others_are_not() {
         let f = Failure::exit(7);
