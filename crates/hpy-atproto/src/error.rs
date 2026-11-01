@@ -14,7 +14,8 @@ pub enum Error {
         message: Option<String>,
     },
     /// A refusal from the registry's own procedures (`InvalidRecord`,
-    /// `VersionExists`, `ProjectMissing`, …); its message is written for the
+    /// `VersionExists`, `ProjectMissing`, …), or from HappyView's lexicon
+    /// check ahead of them (`InvalidRequest`); its message is written for the
     /// publisher.
     #[error("{message}")]
     Registry { name: String, message: String },
@@ -23,9 +24,10 @@ pub enum Error {
 }
 
 /// Registry refusals the publisher fixes by changing what they ran or wrote.
-const USAGE_ERRORS: [&str; 6] = [
+const USAGE_ERRORS: [&str; 7] = [
     "InvalidProject",
     "InvalidRecord",
+    "InvalidRequest",
     "VersionExists",
     "ProjectMissing",
     "NotInstallable",
