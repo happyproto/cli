@@ -1,3 +1,16 @@
+# [1.0.0-alpha.27](https://github.com/happyproto/cli/compare/v1.0.0-alpha.26...v1.0.0-alpha.27) (2026-11-02)
+
+
+### Bug Fixes
+
+* **scaffold:** import Params whenever the lexicon has a parameters block, as HappyView exports it ([3f44ad3](https://github.com/happyproto/cli/commit/3f44ad309c4dd2aaa9669b2c34d1b1cee5594be0))
+* **scaffold:** show project paths with / on every platform ([59e4d72](https://github.com/happyproto/cli/commit/59e4d724c6766a3160798b3a430084a7805d61b2))
+
+
+### Features
+
+* add hpy happyview scaffold, and have check point at it ([f3fce2b](https://github.com/happyproto/cli/commit/f3fce2b69771b5ec95d9eb01a31b4a45aa2f44eb))
+
 # [1.0.0-alpha.26](https://github.com/happyproto/cli/compare/v1.0.0-alpha.25...v1.0.0-alpha.26) (2026-11-02)
 
 
