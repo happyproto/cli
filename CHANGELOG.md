@@ -1,3 +1,10 @@
+# [1.0.0-alpha.24](https://github.com/happyproto/cli/compare/v1.0.0-alpha.23...v1.0.0-alpha.24) (2026-11-02)
+
+
+### Bug Fixes
+
+* show the superadmin's handle beside its DID in hv create ([53a959e](https://github.com/happyproto/cli/commit/53a959e254ea73383cb2eb28b9656059a9b8dd45))
+
 # [1.0.0-alpha.23](https://github.com/happyproto/cli/compare/v1.0.0-alpha.22...v1.0.0-alpha.23) (2026-11-01)
 
 
