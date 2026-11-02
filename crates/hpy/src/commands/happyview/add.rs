@@ -8,6 +8,7 @@ use hpy_project::config::{
     CONFIG_FILE, Pin, PluginEntry, PluginKind, ProjectToml, find_root, set_plugin, write_if_changed,
 };
 use hpy_project::lock::Lockfile;
+use hpy_project::place::{Placement, place_plugins, placed_mode};
 use serde_json::{Value, json};
 
 use crate::cli::AddArgs;
@@ -270,11 +271,25 @@ pub async fn add_in(
     // Everything that can fail on the network happens before either file is
     // written, so a refusal or a failed download leaves the project as it was.
     // A plugin cached for a run that then fails is reused by the next one.
+    let mut cached = Vec::new();
     for p in &lock.plugins {
-        plugins::ensure_plugin(registry, cache_root, p).await?;
+        cached.push((
+            p.id.clone(),
+            plugins::ensure_plugin(registry, cache_root, p).await?,
+        ));
     }
     write_if_changed(&path, &text).map_err(Failure::runtime)?;
     lock.write(root).map_err(Failure::runtime)?;
+    // Where `dev` has placed plugins, place the new lock's too, so a running
+    // `dev` can load them without a restart. A project `dev` hasn't run in
+    // has nothing placed, and its first run places them.
+    if let Some(mode) = placed_mode(root).map_err(Failure::runtime)? {
+        let placements: Vec<Placement<'_>> = cached
+            .iter()
+            .map(|(id, dir)| Placement { id, source: dir })
+            .collect();
+        place_plugins(root, &placements, mode).map_err(Failure::runtime)?;
+    }
     Ok((additions, lock))
 }
 

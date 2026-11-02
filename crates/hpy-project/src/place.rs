@@ -53,10 +53,33 @@ pub fn place_plugins(
         }
         match mode {
             PlaceMode::Link => link(source, &dest)?,
-            PlaceMode::Copy => copy_dir(source, &dest)?,
+            PlaceMode::Copy => copy_into_place(source, &dest)?,
         }
     }
     Ok(())
+}
+
+/// How the plugins already in `.happyview/plugins/` were placed, so a later
+/// placement can keep to it; `None` when nothing has placed any yet. A
+/// container's network places copies, and a directory with no links in it is
+/// taken as one of those. An empty directory gets the default, links.
+pub fn placed_mode(root: &Path) -> std::io::Result<Option<PlaceMode>> {
+    let dir = root.join(PLUGINS_DIR);
+    if !require_real_dir(&dir)? {
+        return Ok(None);
+    }
+    let mut any = false;
+    for entry in std::fs::read_dir(&dir)? {
+        if entry?.path().symlink_metadata()?.file_type().is_symlink() {
+            return Ok(Some(PlaceMode::Link));
+        }
+        any = true;
+    }
+    Ok(Some(if any {
+        PlaceMode::Copy
+    } else {
+        PlaceMode::Link
+    }))
 }
 
 /// Makes `.happyview` owner-only when this call creates it, so a command that
@@ -132,7 +155,23 @@ fn link(source: &Path, dest: &Path) -> std::io::Result<()> {
 
 #[cfg(not(unix))]
 fn link(source: &Path, dest: &Path) -> std::io::Result<()> {
-    copy_dir(source, dest)
+    copy_into_place(source, dest)
+}
+
+/// Copies beside the plugins directory, then renames into it, so a running
+/// `dev` watching it never sees a plugin with its manifest but not its module.
+fn copy_into_place(source: &Path, dest: &Path) -> std::io::Result<()> {
+    let (Some(plugins), Some(name)) = (dest.parent(), dest.file_name()) else {
+        return copy_dir(source, dest);
+    };
+    let staging = plugins.with_file_name(".plugins-staging");
+    std::fs::create_dir_all(&staging)?;
+    let tmp = staging.join(name);
+    if tmp.symlink_metadata().is_ok() {
+        remove(&tmp)?;
+    }
+    copy_dir(source, &tmp)?;
+    std::fs::rename(&tmp, dest)
 }
 
 fn copy_dir(source: &Path, dest: &Path) -> std::io::Result<()> {
@@ -239,6 +278,44 @@ mod tests {
                 .exists()
         );
         assert!(lua.join("happyview-lua.wasm").is_file());
+    }
+
+    #[test]
+    fn a_copy_is_renamed_into_place_and_leaves_no_staging_copy() {
+        let cache = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let lua = cached(cache.path(), "happyview-lua", "1.4.2");
+        let plugins = [Placement {
+            id: "happyview-lua",
+            source: &lua,
+        }];
+        place_plugins(project.path(), &plugins, PlaceMode::Copy).unwrap();
+        let placed = project.path().join(PLUGINS_DIR).join("happyview-lua");
+        assert!(placed.join("manifest.json").is_file());
+        assert!(placed.join("happyview-lua.wasm").is_file());
+        let staging = project.path().join(".happyview/.plugins-staging");
+        assert_eq!(std::fs::read_dir(staging).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn placed_mode_keeps_to_what_is_there() {
+        let cache = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        assert_eq!(placed_mode(project.path()).unwrap(), None);
+        std::fs::create_dir_all(project.path().join(PLUGINS_DIR)).unwrap();
+        assert_eq!(placed_mode(project.path()).unwrap(), Some(PlaceMode::Link));
+        let lua = cached(cache.path(), "happyview-lua", "1.4.2");
+        let plugins = [Placement {
+            id: "happyview-lua",
+            source: &lua,
+        }];
+        place_plugins(project.path(), &plugins, PlaceMode::Copy).unwrap();
+        assert_eq!(placed_mode(project.path()).unwrap(), Some(PlaceMode::Copy));
+        #[cfg(unix)]
+        {
+            place_plugins(project.path(), &plugins, PlaceMode::Link).unwrap();
+            assert_eq!(placed_mode(project.path()).unwrap(), Some(PlaceMode::Link));
+        }
     }
 
     #[test]
