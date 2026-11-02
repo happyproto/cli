@@ -17,6 +17,15 @@ use crate::failure::Failure;
 use crate::project::cache;
 use crate::project::prepare::{choose_with_prompter, project_root};
 
+/// A project-relative path as messages and `--json` show it: with `/` on
+/// every platform, as the lexicon paths in docs and NSIDs read.
+fn shown(path: &Path) -> String {
+    path.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// The command that writes a handler for `nsid`, for messages that point
 /// at it.
 pub fn hint(nsid: &str) -> String {
@@ -40,7 +49,7 @@ fn targets<'a>(lexicons: &'a [Lexicon], nsids: &[String]) -> Result<Vec<&'a Lexi
             return Err(Failure::usage(format!(
                 "`{nsid}` is a {} lexicon ({}); only queries and procedures have handlers",
                 lexicon.kind.label(),
-                lexicon.path.display()
+                shown(&lexicon.path)
             )));
         }
         if !out.iter().any(|l| l.nsid == lexicon.nsid) {
@@ -156,7 +165,7 @@ pub async fn run(ctx: &Ctx, args: ScaffoldArgs) -> Result<(), Failure> {
         if collection.is_none() {
             ctx.out.status(&format!(
                 "warning: {} names no collection yet; replace COLLECTION in it with the NSID it {}",
-                path.display(),
+                shown(&path),
                 lexicon.kind.verb()
             ));
         }
@@ -221,10 +230,10 @@ pub async fn run(ctx: &Ctx, args: ScaffoldArgs) -> Result<(), Failure> {
             Some(c) => format!("{} {c}", w.kind.verb()),
             None => "collection still to name".into(),
         };
-        lines.push(format!("wrote {} ({names})", w.path.display()));
+        lines.push(format!("wrote {} ({names})", shown(&w.path)));
     }
     for (nsid, path) in &skipped {
-        lines.push(format!("skipped {nsid}: {} is its handler", path.display()));
+        lines.push(format!("skipped {nsid}: {} is its handler", shown(path)));
     }
     for a in &added {
         lines.push(added_line(a, true));
@@ -240,10 +249,10 @@ pub async fn run(ctx: &Ctx, args: ScaffoldArgs) -> Result<(), Failure> {
         "language": language,
         "written": written.iter().map(|w| json!({
             "nsid": w.nsid,
-            "path": w.path,
+            "path": shown(&w.path),
             "collection": w.collection,
         })).collect::<Vec<_>>(),
-        "skipped": skipped.iter().map(|(nsid, path)| json!({ "nsid": nsid, "handler": path })).collect::<Vec<_>>(),
+        "skipped": skipped.iter().map(|(nsid, path)| json!({ "nsid": nsid, "handler": shown(path) })).collect::<Vec<_>>(),
         "added": added.iter().map(|a| a.to_json()).collect::<Vec<_>>(),
         "missing_libraries": missing,
     });
@@ -270,7 +279,7 @@ pub fn missing_handler_warnings(root: &Path) -> Vec<String> {
                 "warning: {} {} has no handler beside {}, so {answer}; {}",
                 l.kind.label(),
                 l.nsid,
-                l.path.display(),
+                shown(&l.path),
                 hint(&l.nsid)
             )
         })
