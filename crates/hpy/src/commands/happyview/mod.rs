@@ -7,6 +7,7 @@ pub mod dev;
 pub mod instance;
 #[cfg(unix)]
 pub mod network;
+pub mod scaffold;
 
 use crate::cli::HappyviewCommand;
 use crate::ctx::Ctx;
@@ -17,6 +18,7 @@ pub async fn run(ctx: &Ctx, command: HappyviewCommand) -> Result<(), Failure> {
         HappyviewCommand::Create(a) => create::run(ctx, a).await,
         HappyviewCommand::Dev(a) => dev::run(ctx, a).await,
         HappyviewCommand::Add(a) => add::run(ctx, a).await,
+        HappyviewCommand::Scaffold(a) => scaffold::run(ctx, a).await,
         HappyviewCommand::Build => build::run(ctx).await,
         HappyviewCommand::Check(a) => check::check(ctx, a).await,
         HappyviewCommand::Test(a) => check::test(ctx, a).await,

@@ -286,6 +286,49 @@ fn lua_project(stack: &Stack) -> serde_json::Value {
     version
 }
 
+#[cfg(unix)]
+#[test]
+fn check_warns_of_a_query_or_procedure_without_a_handler() {
+    let stack = Stack::new();
+    let lex = stack.project.path().join("src/lexicons/com/example");
+    std::fs::create_dir_all(&lex).unwrap();
+    for (name, ty) in [
+        ("listNotes", "query"),
+        ("saveNote", "procedure"),
+        ("hello", "query"),
+        ("note", "record"),
+    ] {
+        std::fs::write(
+            lex.join(format!("{name}.json")),
+            serde_json::json!({ "lexicon": 1, "id": format!("com.example.{name}"),
+                "defs": { "main": { "type": ty } } })
+            .to_string(),
+        )
+        .unwrap();
+    }
+    std::fs::write(lex.join("hello.lua"), "function handle() end").unwrap();
+    let out = stack
+        .hpy()
+        .args(["hv", "check"])
+        .env("HV_EXIT", "0")
+        .assert()
+        // A warning, so the exit code is still HappyView's.
+        .success()
+        .stderr(says(
+            "warning: query com.example.listNotes has no handler beside src/lexicons/com/example/listNotes.json, so HappyView answers it only for ?uri=; run `hpy hv scaffold com.example.listNotes`",
+        ))
+        .stderr(says("run `hpy hv scaffold com.example.saveNote`"))
+        .get_output()
+        .stderr
+        .clone();
+    let err = String::from_utf8_lossy(&out);
+    assert!(
+        !err.contains("com.example.hello") && !err.contains("com.example.note "),
+        "{err}"
+    );
+    assert_eq!(stack.log().trim(), "check .");
+}
+
 /// An editor reads HappyView's own report, so `--json` reaches it.
 #[cfg(unix)]
 #[test]
@@ -1345,6 +1388,217 @@ fn add_places_nothing_before_dev_has_run() {
     mount_lua(&stack);
     stack.hpy().args(["hv", "add", "lua"]).assert().success();
     assert!(!stack.project.path().join(".happyview/plugins").exists());
+}
+
+/// A project with `interpreter` first in `[interpreters]`, a record lexicon,
+/// and a query and a procedure lexicon with no handlers.
+fn scaffold_project(stack: &Stack, interpreter: &str) -> PathBuf {
+    let root = stack.project.path();
+    // A second interpreter after the first, so only order can decide.
+    let second = if interpreter == "lua" { "" } else { LUA_ENTRY };
+    std::fs::write(
+        root.join("happyview.toml"),
+        format!(
+            "[happyview]\nversion = \"{VERSION}\"\n\n[interpreters]\n\
+             {interpreter} = {{ did = \"{HV_DID}\", name = \"happyview-{interpreter}\", channel = \"latest\" }}\n\
+             {second}\n"
+        ),
+    )
+    .unwrap();
+    let lex = root.join("src/lexicons/com/example");
+    std::fs::create_dir_all(&lex).unwrap();
+    let write = |name: &str, body: serde_json::Value| {
+        std::fs::write(lex.join(name), body.to_string()).unwrap();
+    };
+    write(
+        "note.json",
+        serde_json::json!({ "lexicon": 1, "id": "com.example.note", "defs": { "main": {
+            "type": "record", "key": "tid",
+            "record": { "type": "object", "properties": { "text": { "type": "string" } } }
+        } } }),
+    );
+    write(
+        "listNotes.json",
+        serde_json::json!({ "lexicon": 1, "id": "com.example.listNotes", "defs": { "main": {
+            "type": "query",
+            "parameters": { "type": "params", "properties": { "limit": { "type": "integer" } } }
+        } } }),
+    );
+    write(
+        "saveNote.json",
+        serde_json::json!({ "lexicon": 1, "id": "com.example.saveNote", "defs": { "main": {
+            "type": "procedure",
+            "input": { "encoding": "application/json", "schema": { "type": "object" } }
+        } } }),
+    );
+    lex
+}
+
+#[test]
+fn scaffold_writes_lua_handlers_naming_the_collection() {
+    let stack = Stack::new();
+    let lex = scaffold_project(&stack, "lua");
+    stack
+        .hpy()
+        .args(["hv", "scaffold", "--collection", "com.example.note"])
+        .assert()
+        .success()
+        .stdout(says(
+            "wrote src/lexicons/com/example/listNotes.lua (reads com.example.note)",
+        ))
+        .stdout(says(
+            "wrote src/lexicons/com/example/saveNote.lua (writes com.example.note)",
+        ))
+        // Without a terminal hpy says how to add the libraries, and adds none.
+        .stderr(says("`hpy hv add happyview.db happyview.record`"));
+    let query = read(&lex.join("listNotes.lua"));
+    assert!(
+        query.starts_with(
+            "local log = require(\"internal.logging\")\nlocal db = require(\"happyview.db\")\n"
+        ),
+        "{query}"
+    );
+    assert!(
+        query.contains("    local entry = db.get(input.uri)\n"),
+        "{query}"
+    );
+    assert!(query.contains("  return db.records(\"com.example.note\")\n    :did(input.did)\n    :limit(tonumber(input.limit))\n    :cursor(input.cursor)\n    :run()\n"), "{query}");
+    assert!(
+        !query.contains("COLLECTION") && !query.contains("TODO"),
+        "{query}"
+    );
+    let procedure = read(&lex.join("saveNote.lua"));
+    assert!(
+        procedure.contains("local record = require(\"happyview.record\")\n"),
+        "{procedure}"
+    );
+    assert!(
+        procedure.contains("  local ref = record.create(\"com.example.note\", input)\n"),
+        "{procedure}"
+    );
+    assert!(
+        procedure.contains("  return { uri = ref.uri, cid = ref.cid }\n"),
+        "{procedure}"
+    );
+    assert!(
+        !lex.join("note.lua").exists(),
+        "a record lexicon got a handler"
+    );
+    let toml = read(&stack.project.path().join("happyview.toml"));
+    assert!(!toml.contains("happyview.db"), "{toml}");
+}
+
+#[test]
+fn scaffold_never_replaces_a_handler_in_any_language() {
+    let stack = Stack::new();
+    let lex = scaffold_project(&stack, "lua");
+    std::fs::write(lex.join("listNotes.ts"), "mine").unwrap();
+    stack
+        .hpy()
+        .args([
+            "hv",
+            "scaffold",
+            "com.example.listNotes",
+            "--collection",
+            "com.example.note",
+        ])
+        .assert()
+        .success()
+        .stdout(says(
+            "skipped com.example.listNotes: src/lexicons/com/example/listNotes.ts is its handler",
+        ));
+    assert_eq!(read(&lex.join("listNotes.ts")), "mine");
+    assert!(!lex.join("listNotes.lua").exists());
+    // Only the named lexicon was considered.
+    assert!(!lex.join("saveNote.lua").exists());
+}
+
+#[test]
+fn scaffold_without_a_terminal_or_collection_leaves_a_marked_placeholder() {
+    let stack = Stack::new();
+    let lex = scaffold_project(&stack, "lua");
+    stack
+        .hpy()
+        .args(["hv", "scaffold", "com.example.listNotes", "--json"])
+        .assert()
+        .success()
+        .stderr(says(
+            "warning: src/lexicons/com/example/listNotes.lua names no collection yet",
+        ))
+        .stdout(says("\"collection\": null"));
+    let query = read(&lex.join("listNotes.lua"));
+    assert!(
+        query.contains(
+            "  -- TODO: name the collection this reads\n  return db.records(\"COLLECTION\")\n"
+        ),
+        "{query}"
+    );
+}
+
+#[test]
+fn scaffold_refuses_a_lexicon_that_is_not_a_query_or_procedure() {
+    let stack = Stack::new();
+    let lex = scaffold_project(&stack, "lua");
+    stack
+        .hpy()
+        .args(["hv", "scaffold", "com.example.note"])
+        .assert()
+        .code(2)
+        .stderr(says("`com.example.note` is a record lexicon"));
+    stack
+        .hpy()
+        .args(["hv", "scaffold", "com.example.nowhere"])
+        .assert()
+        .code(2)
+        .stderr(says("not a lexicon under src/"));
+    stack
+        .hpy()
+        .args(["hv", "scaffold", "--collection", "notes"])
+        .assert()
+        .code(2)
+        .stderr(says("--collection: `notes` is not an NSID"));
+    assert!(!lex.join("listNotes.lua").exists());
+}
+
+#[test]
+fn scaffold_writes_typescript_when_it_is_the_first_interpreter() {
+    let stack = Stack::new();
+    let lex = scaffold_project(&stack, "typescript");
+    stack
+        .hpy()
+        .args(["hv", "scaffold", "--collection", "com.example.note"])
+        .assert()
+        .success();
+    let query = read(&lex.join("listNotes.ts"));
+    assert!(
+        query.starts_with(
+            "import db from \"happyview.db\";\n\
+         import type { Params } from \"happyview:lexicons/com.example.listNotes\";\n\
+         import type { QueryCtx } from \"happyview:ctx\";\n"
+        ),
+        "{query}"
+    );
+    assert!(
+        query.contains(
+            "export default async function handle(input: Params & Query, ctx: QueryCtx) {\n"
+        ),
+        "{query}"
+    );
+    assert!(
+        query.contains("  return db.records(\"com.example.note\")\n"),
+        "{query}"
+    );
+    let procedure = read(&lex.join("saveNote.ts"));
+    assert!(
+        procedure
+            .contains("import type { Input } from \"happyview:lexicons/com.example.saveNote\";\n"),
+        "{procedure}"
+    );
+    assert!(
+        procedure.contains("  const ref = await record.create(\"com.example.note\", input);\n"),
+        "{procedure}"
+    );
+    assert!(!lex.join("listNotes.lua").exists());
 }
 
 #[test]

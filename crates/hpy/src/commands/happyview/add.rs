@@ -303,7 +303,7 @@ pub fn report(additions: &[Addition], lock: &Lockfile) -> Value {
 
 /// What `add` says of one plugin it added; `defaulted` is whether hpy chose
 /// the pin rather than the user.
-fn added_line(a: &Addition, defaulted: bool) -> String {
+pub fn added_line(a: &Addition, defaulted: bool) -> String {
     let mut line = format!(
         "added {} `{}`: {} {} ({})",
         a.kind.plugin_type(),

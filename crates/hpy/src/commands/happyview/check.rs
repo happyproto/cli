@@ -2,6 +2,7 @@ use std::ffi::OsString;
 
 use crate::cli::{RunArgs, TestArgs};
 use crate::commands::happyview::build::build_modules;
+use crate::commands::happyview::scaffold::missing_handler_warnings;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 use crate::project::editor::{languages, write_editor_config};
@@ -21,9 +22,15 @@ pub fn point_editors_at_types(ctx: &Ctx, root: &std::path::Path) -> Result<(), F
 // `happyview check` reads a `.env` from its working directory, which is the
 // project root here.
 pub async fn check(ctx: &Ctx, args: RunArgs) -> Result<(), Failure> {
+    let root = project_root(ctx)?;
+    // Before the binary, which replaces hpy on unix. Warnings only: the exit
+    // code is HappyView's.
+    for line in missing_handler_warnings(&root) {
+        ctx.out.status(&line);
+    }
     // HappyView reads the modules from their build files, so they are built
     // first; one that does not compile fails before anything is fetched.
-    build_modules(project_root(ctx)?).await?;
+    build_modules(root).await?;
     let p = prepare(ctx, &PrepareOptions::native(args.locked)).await?;
     // HappyView's report is the result, so under --json it is the JSON.
     let mut argv: Vec<OsString> = vec!["check".into(), ".".into()];
