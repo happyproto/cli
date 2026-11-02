@@ -1,3 +1,10 @@
+# [1.0.0-alpha.28](https://github.com/happyproto/cli/compare/v1.0.0-alpha.27...v1.0.0-alpha.28) (2026-11-02)
+
+
+### Features
+
+* say an instance's limit in its host's words ([b377aa6](https://github.com/happyproto/cli/commit/b377aa67488ac0f79d7c93a839ce44ab85eae2ad))
+
 # [1.0.0-alpha.27](https://github.com/happyproto/cli/compare/v1.0.0-alpha.26...v1.0.0-alpha.27) (2026-11-02)
 
 
