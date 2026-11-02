@@ -1,3 +1,15 @@
+# [1.0.0-alpha.26](https://github.com/happyproto/cli/compare/v1.0.0-alpha.25...v1.0.0-alpha.26) (2026-11-02)
+
+
+### Bug Fixes
+
+* rename a copied plugin into place, so a running dev never sees half of one ([f45a07e](https://github.com/happyproto/cli/commit/f45a07e01921814fcb82a98c60c0d3fcf7dc0afe))
+
+
+### Features
+
+* place added plugins where dev already has, so it can load them live ([c562503](https://github.com/happyproto/cli/commit/c56250322d5cc2df5e99cf4904ee3d8d09d5de8d))
+
 # [1.0.0-alpha.25](https://github.com/happyproto/cli/compare/v1.0.0-alpha.24...v1.0.0-alpha.25) (2026-11-02)
 
 
