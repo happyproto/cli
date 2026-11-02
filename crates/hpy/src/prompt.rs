@@ -44,6 +44,19 @@ impl Prompter {
         default: Option<String>,
         check: fn(&str) -> Result<(), String>,
     ) -> Result<String, Failure> {
+        self.required_with_help(flag, label, given, default, None, check)
+    }
+
+    /// `required`, with a line under the prompt saying what the default is.
+    pub fn required_with_help(
+        &self,
+        flag: &str,
+        label: &str,
+        given: Option<String>,
+        default: Option<String>,
+        help: Option<&str>,
+        check: fn(&str) -> Result<(), String>,
+    ) -> Result<String, Failure> {
         if let Some(v) = given {
             check(&v).map_err(|e| Failure::usage(format!("{flag}: {e}")))?;
             return Ok(v);
@@ -57,6 +70,9 @@ impl Prompter {
             });
             if let Some(d) = &default {
                 p = p.with_default(d);
+            }
+            if let Some(h) = help {
+                p = p.with_help_message(h);
             }
             return p.prompt().map_err(prompt_err);
         }
