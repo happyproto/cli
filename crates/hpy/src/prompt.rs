@@ -210,6 +210,19 @@ impl Prompter {
         )))
     }
 
+    /// A yes-or-no offer, answered yes by default; `None` without a terminal,
+    /// so the caller can say how to do it instead.
+    pub fn offer(&self, label: &str) -> Result<Option<bool>, Failure> {
+        if !self.interactive {
+            return Ok(None);
+        }
+        inquire::Confirm::new(label)
+            .with_default(true)
+            .prompt()
+            .map(Some)
+            .map_err(prompt_err)
+    }
+
     pub fn confirm(&self, label: &str, yes: bool) -> Result<bool, Failure> {
         if yes {
             return Ok(true);
@@ -308,6 +321,11 @@ mod tests {
             msg.contains("--interpreter: `python`") && msg.contains("lua, javascript"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn an_offer_without_a_terminal_is_left_to_the_caller() {
+        assert_eq!(Prompter::new(true).offer("Add it?").unwrap(), None);
     }
 
     #[test]
