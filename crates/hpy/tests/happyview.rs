@@ -1345,7 +1345,10 @@ fn create_writes_a_project_and_its_lock_without_downloading_anything() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("hpy happyview dev"));
+        .stdout(
+            predicate::str::contains("hpy happyview dev")
+                .and(predicate::str::contains("superadmin: did:plc:me\n")),
+        );
     let app = parent.path().join("my-app");
     let toml = read(&app.join("happyview.toml"));
     assert!(
@@ -1427,6 +1430,44 @@ fn create_writes_nothing_when_resolution_refuses_the_release() {
         .code(2)
         .stderr(says("declares no file extensions"));
     assert!(!parent.path().join("my-app").exists());
+}
+
+#[test]
+fn create_names_the_signed_in_superadmin_by_handle_and_did() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let parent = tempfile::tempdir().unwrap();
+    let credential = hpy_atproto::credential::export(&hpy_atproto::credential::Credential {
+        registry: "https://api.happyproto.at".into(),
+        client_key: "hvc_test".into(),
+        did: "did:plc:alice".into(),
+        handle: Some("alice.test".into()),
+        pds: "https://pds.test".into(),
+        scopes: "atproto".into(),
+        access_token: "tok".into(),
+        dpop_key: hpy_atproto::dpop::DpopKey::generate(),
+    });
+    stack
+        .hpy()
+        .current_dir(parent.path())
+        .env("HPY_CREDENTIAL", credential)
+        .args([
+            "hv",
+            "create",
+            "--name",
+            "my-app",
+            "--no-input",
+            "--happyview-version",
+            VERSION,
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "superadmin: @alice.test (did:plc:alice)",
+        ));
+    // happyview.toml holds the DID, which is what HappyView checks at boot.
+    let toml = read(&parent.path().join("my-app/happyview.toml"));
+    assert!(toml.contains("superadmin = \"did:plc:alice\""), "{toml}");
 }
 
 #[test]
