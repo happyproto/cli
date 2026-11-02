@@ -86,11 +86,11 @@ impl Lexicon {
         let nsid = doc.get("id")?.as_str()?.to_string();
         let main = doc.get("defs")?.get("main")?;
         let kind = LexiconKind::of(main.get("type")?.as_str()?);
-        let has_params = main
-            .get("parameters")
-            .and_then(|p| p.get("properties"))
-            .and_then(|p| p.as_object())
-            .is_some_and(|p| !p.is_empty());
+        // As HappyView decides (src/project/declarations/lexicon.rs): a
+        // `parameters` block, even an empty one, exports `Params`. `Input` is
+        // imported only for a schema, though any `input` exports one, since
+        // only a schema's types fit a record.
+        let has_params = main.get("parameters").is_some();
         let has_input = main.get("input").and_then(|i| i.get("schema")).is_some();
         Some(Lexicon {
             nsid,
