@@ -59,6 +59,29 @@ pub fn place_plugins(
     Ok(())
 }
 
+/// How the plugins already in `.happyview/plugins/` were placed, so a later
+/// placement can keep to it; `None` when nothing has placed any yet. A
+/// container's network places copies, and a directory with no links in it is
+/// taken as one of those. An empty directory gets the default, links.
+pub fn placed_mode(root: &Path) -> std::io::Result<Option<PlaceMode>> {
+    let dir = root.join(PLUGINS_DIR);
+    if !require_real_dir(&dir)? {
+        return Ok(None);
+    }
+    let mut any = false;
+    for entry in std::fs::read_dir(&dir)? {
+        if entry?.path().symlink_metadata()?.file_type().is_symlink() {
+            return Ok(Some(PlaceMode::Link));
+        }
+        any = true;
+    }
+    Ok(Some(if any {
+        PlaceMode::Copy
+    } else {
+        PlaceMode::Link
+    }))
+}
+
 /// Makes `.happyview` owner-only when this call creates it, so a command that
 /// never tightens permissions afterwards does not leave it world-readable.
 fn create_private_parent(dir: &Path) -> std::io::Result<()> {
@@ -239,6 +262,27 @@ mod tests {
                 .exists()
         );
         assert!(lua.join("happyview-lua.wasm").is_file());
+    }
+
+    #[test]
+    fn placed_mode_keeps_to_what_is_there() {
+        let cache = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        assert_eq!(placed_mode(project.path()).unwrap(), None);
+        std::fs::create_dir_all(project.path().join(PLUGINS_DIR)).unwrap();
+        assert_eq!(placed_mode(project.path()).unwrap(), Some(PlaceMode::Link));
+        let lua = cached(cache.path(), "happyview-lua", "1.4.2");
+        let plugins = [Placement {
+            id: "happyview-lua",
+            source: &lua,
+        }];
+        place_plugins(project.path(), &plugins, PlaceMode::Copy).unwrap();
+        assert_eq!(placed_mode(project.path()).unwrap(), Some(PlaceMode::Copy));
+        #[cfg(unix)]
+        {
+            place_plugins(project.path(), &plugins, PlaceMode::Link).unwrap();
+            assert_eq!(placed_mode(project.path()).unwrap(), Some(PlaceMode::Link));
+        }
     }
 
     #[test]

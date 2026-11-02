@@ -1325,6 +1325,29 @@ fn add_writes_the_entry_and_the_lock_and_downloads() {
 }
 
 #[test]
+fn add_places_the_plugins_where_dev_already_has() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    let plugins = stack.project.path().join(".happyview/plugins");
+    // A plugin dev placed before, and no longer locked.
+    std::fs::create_dir_all(plugins.join("happyview-gone")).unwrap();
+    stack.hpy().args(["hv", "add", "lua"]).assert().success();
+    let placed = plugins.join("happyview-lua");
+    assert!(placed.join("happyview-lua.wasm").is_file());
+    // The directory held a copy, not a link, so add keeps to copies.
+    assert!(!placed.symlink_metadata().unwrap().file_type().is_symlink());
+    assert!(!plugins.join("happyview-gone").exists());
+}
+
+#[test]
+fn add_places_nothing_before_dev_has_run() {
+    let stack = Stack::new();
+    mount_lua(&stack);
+    stack.hpy().args(["hv", "add", "lua"]).assert().success();
+    assert!(!stack.project.path().join(".happyview/plugins").exists());
+}
+
+#[test]
 fn create_writes_a_project_and_its_lock_without_downloading_anything() {
     let stack = Stack::new();
     mount_lua(&stack);
