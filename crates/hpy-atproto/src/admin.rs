@@ -92,6 +92,11 @@ struct PluginList {
 struct Refusal {
     error: Option<String>,
     message: Option<String>,
+    /// A `LimitReached` refusal's action, set by whoever hosts the instance.
+    #[serde(rename = "actionUrl")]
+    action_url: Option<String>,
+    #[serde(rename = "actionLabel")]
+    action_label: Option<String>,
     #[serde(default)]
     dependents: Vec<String>,
     #[serde(default)]
@@ -364,6 +369,24 @@ impl Admin {
                     self.base
                 )),
             },
+            // Before the 403 arms: a limit isn't a missing permission, and
+            // asking the owner for one won't help.
+            _ if r.error.as_deref() == Some("LimitReached") => {
+                let why = r
+                    .message
+                    .filter(|m| !m.trim().is_empty())
+                    .unwrap_or_else(|| "the instance's limits don't allow it".into());
+                let mut message = format!("{} refused {what}: {}", self.base, why.trim());
+                if let (Some(label), Some(url)) = (r.action_label, r.action_url) {
+                    let (label, url) = (label.trim(), url.trim());
+                    if !label.is_empty()
+                        && (url.starts_with("https://") || url.starts_with("http://"))
+                    {
+                        message.push_str(&format!("\n  {label}: {url}"));
+                    }
+                }
+                Error::Other(message)
+            }
             _ if r.error.as_deref() == Some("InvalidProject") => {
                 let mut message = format!("{} refused the project", self.base);
                 if let Some(m) = &r.message {
@@ -628,6 +651,56 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("API key"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_reached_limit_says_the_hosts_words_and_its_action() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": "LimitReached", "limit": "seats", "max": 1, "current": 1,
+                "message": "Your plan includes 1 seat.",
+                "actionUrl": "https://host.example/billing", "actionLabel": "Add a seat"
+            })))
+            .mount(&server)
+            .await;
+        let text = Admin::new(&server.uri(), KEY)
+            .install("did:plc:x", "happyview-example", "1.0.0", &[])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(text.contains("Your plan includes 1 seat."), "{text}");
+        assert!(
+            text.contains("Add a seat: https://host.example/billing"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("permission"),
+            "a limit is not a missing permission: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reached_limit_without_wording_or_with_a_bad_action_still_reads() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": "LimitReached", "limit": "api_clients",
+                "actionUrl": "javascript:alert(1)", "actionLabel": "Upgrade"
+            })))
+            .mount(&server)
+            .await;
+        let text = Admin::new(&server.uri(), KEY)
+            .plugins()
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            text.contains("the instance's limits don't allow it"),
+            "{text}"
+        );
+        assert!(!text.contains("javascript"), "{text}");
+        assert!(!text.contains("permission"), "{text}");
     }
 
     #[tokio::test]
