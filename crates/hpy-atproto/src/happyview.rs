@@ -14,8 +14,14 @@ use crate::{Error, Result};
 /// Refusals the gateway's procedures make on purpose; each message is written
 /// for the publisher, so they keep their name instead of becoming a bare
 /// transport error.
-const NAMED_REGISTRY_ERRORS: [&str; 8] = [
+///
+/// `InvalidRequest` is HappyView's own, raised when the input breaks the
+/// method's lexicon before the procedure runs at all. It belongs here because
+/// the publisher reads it the same way: the message names the field, and what
+/// a lexicon refuses is what a procedure would have refused a moment later.
+const NAMED_REGISTRY_ERRORS: [&str; 9] = [
     "InvalidRecord",
+    "InvalidRequest",
     "VersionExists",
     "ProjectMissing",
     "InvalidSwap",
@@ -578,6 +584,7 @@ mod tests {
     async fn every_named_registry_refusal_keeps_its_name() {
         for name in [
             "InvalidRecord",
+            "InvalidRequest",
             "VersionExists",
             "ProjectMissing",
             "InvalidSwap",

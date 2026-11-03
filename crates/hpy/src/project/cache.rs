@@ -40,7 +40,7 @@ pub fn binary_path(root: &Path, version: &str, target: &str) -> PathBuf {
     } else {
         dir.join(target)
     };
-    dir.join(crate::project::binary::binary_name(target))
+    dir.join(crate::project::binary::BINARY_NAME)
 }
 
 /// Creates `path` and any missing parents, 0700 on unix, so nothing another

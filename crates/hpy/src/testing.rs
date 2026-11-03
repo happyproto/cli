@@ -650,17 +650,6 @@ pub fn tar_xz(files: &[(&str, &[u8], u32)]) -> Vec<u8> {
     builder.into_inner().unwrap().finish().unwrap()
 }
 
-pub fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
-    use std::io::Write;
-    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    for (path, bytes) in files {
-        w.start_file(*path, zip::write::SimpleFileOptions::default())
-            .unwrap();
-        w.write_all(bytes).unwrap();
-    }
-    w.finish().unwrap().into_inner()
-}
-
 /// A temporary directory only this user can reach, as a cache root must be.
 pub fn private_tempdir() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();

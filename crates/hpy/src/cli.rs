@@ -217,6 +217,13 @@ pub enum HappyviewCommand {
     /// Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to date and download it.
     #[command(alias = "install")]
     Add(AddArgs),
+    /// Write a starter handler beside each query or procedure lexicon under src/ that has none.
+    ///
+    /// The handler is in the language of the first [interpreters] entry and names its
+    /// collection: --collection's, else one chosen at a prompt, else the placeholder
+    /// COLLECTION under a TODO comment. An existing handler, in any language, is never
+    /// replaced.
+    Scaffold(ScaffoldArgs),
     /// Build every compiled script module in happyview.toml into .happyview/build/.
     Build,
     /// Build the project's snapshot without serving it; exits non-zero on any error.
@@ -385,6 +392,16 @@ pub struct AddArgs {
     /// The registry project to use, when several answer to one name.
     #[arg(long, value_name = "AT-URI", requires = "plugins")]
     pub project: Option<String>,
+}
+
+#[derive(Args)]
+pub struct ScaffoldArgs {
+    /// Only these query or procedure lexicons (default: every one without a handler).
+    #[arg(value_name = "NSID")]
+    pub nsids: Vec<String>,
+    /// The collection every handler written reads or writes (default: asked for each, else the placeholder COLLECTION).
+    #[arg(long, value_name = "NSID")]
+    pub collection: Option<String>,
 }
 
 #[derive(Args)]

@@ -446,6 +446,7 @@ pub async fn resolve_lock(
             package_cid: blob_cid(&chosen.artifact.package),
             manifest_blob_cid: blob_cid(&chosen.artifact.manifest),
             dependencies,
+            capabilities: Some(chosen.artifact.capabilities.clone()),
         });
     }
     Ok(Lockfile {
@@ -745,6 +746,12 @@ mod tests {
             lua.manifest_blob_cid,
             view.artifact["manifest"]["ref"]["$link"].as_str().unwrap()
         );
+        // What the published artifact declares, recorded so a deploy accepts
+        // the set that was resolved rather than the one served later.
+        assert_eq!(
+            lua.capabilities.as_deref(),
+            Some(&["script:host".to_string()][..])
+        );
         let record = lock
             .find_key(PluginKind::Library, "happyview.record")
             .unwrap();
@@ -756,6 +763,9 @@ mod tests {
             .unwrap();
         assert!(db.keys.is_empty());
         assert_eq!(db.version, "0.1.0");
+        // Recorded as declaring none, which a deploy can accept; distinct
+        // from a lock that never recorded them, which it refuses.
+        assert_eq!(db.capabilities.as_deref(), Some(&[][..]));
         // The lock it writes reads back.
         Lockfile::parse(&lock.render()).unwrap();
     }

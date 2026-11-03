@@ -49,30 +49,33 @@ pub fn http_client() -> reqwest::Client {
         .expect("http client")
 }
 
+pub const BINARY_NAME: &str = "happyview";
+
+/// HappyView ships no Windows build, so a Windows host can't run it.
+fn runs_locally(target: &str) -> bool {
+    !target.contains("windows")
+}
+
+/// The refusal for a host HappyView has no build for, given before anything
+/// is looked up or downloaded.
+fn require_local_build(target: &str) -> Result<(), Failure> {
+    if runs_locally(target) {
+        Ok(())
+    } else {
+        Err(Failure::usage(
+            "running HappyView locally isn't supported on Windows; use WSL",
+        ))
+    }
+}
+
 pub fn asset_name(target: &str) -> String {
-    if target.contains("windows") {
-        format!("happyview-{target}.zip")
-    } else {
-        format!("happyview-{target}.tar.xz")
-    }
+    format!("happyview-{target}.tar.xz")
 }
 
-pub fn binary_name(target: &str) -> &'static str {
-    if target.contains("windows") {
-        "happyview.exe"
-    } else {
-        "happyview"
-    }
-}
-
-/// Where the binary sits inside the release archive. cargo-dist nests a
-/// tarball's contents under `happyview-<triple>/` and leaves a zip flat.
+/// Where the binary sits inside the release archive: cargo-dist nests a
+/// tarball's contents under `happyview-<triple>/`.
 fn archive_entry(target: &str) -> String {
-    if target.contains("windows") {
-        binary_name(target).to_string()
-    } else {
-        format!("happyview-{target}/{}", binary_name(target))
-    }
+    format!("happyview-{target}/{BINARY_NAME}")
 }
 
 /// The digest in a `.sha256` file, which leads with the hex digest and may
@@ -87,7 +90,7 @@ pub fn parse_sha256(text: &str) -> Option<[u8; 32]> {
 
 /// A name that climbs out of, or starts above, wherever the archive would be
 /// unpacked. Judged on the text with both separators, so a Windows-shaped
-/// name is caught on every host.
+/// name is caught too.
 fn escapes(name: &str) -> bool {
     let bytes = name.as_bytes();
     let drive = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
@@ -136,33 +139,17 @@ pub fn extract_binary(archive: &[u8], target: &str) -> Result<Vec<u8>, Failure> 
         *found = Some(bytes);
         Ok(())
     };
-    if target.contains("windows") {
-        let mut zip =
-            zip::ZipArchive::new(std::io::Cursor::new(archive)).map_err(Failure::runtime)?;
-        for i in 0..zip.len() {
-            let mut file = zip.by_index(i).map_err(Failure::runtime)?;
-            let entry = Entry {
-                name: file.name().map_err(Failure::runtime)?.into_owned(),
-                link: file.is_symlink(),
-                file: file.is_file(),
-            };
-            if check_entry(&entry, &want)? {
-                take(&mut found, &mut file)?;
-            }
-        }
-    } else {
-        let mut tar = tar::Archive::new(xz2::read::XzDecoder::new(archive));
-        for entry in tar.entries().map_err(Failure::runtime)? {
-            let mut entry = entry.map_err(Failure::runtime)?;
-            let kind = entry.header().entry_type();
-            let described = Entry {
-                name: String::from_utf8_lossy(&entry.path_bytes()).into_owned(),
-                link: kind.is_symlink() || kind.is_hard_link(),
-                file: kind.is_file(),
-            };
-            if check_entry(&described, &want)? {
-                take(&mut found, &mut entry)?;
-            }
+    let mut tar = tar::Archive::new(xz2::read::XzDecoder::new(archive));
+    for entry in tar.entries().map_err(Failure::runtime)? {
+        let mut entry = entry.map_err(Failure::runtime)?;
+        let kind = entry.header().entry_type();
+        let described = Entry {
+            name: String::from_utf8_lossy(&entry.path_bytes()).into_owned(),
+            link: kind.is_symlink() || kind.is_hard_link(),
+            file: kind.is_file(),
+        };
+        if check_entry(&described, &want)? {
+            take(&mut found, &mut entry)?;
         }
     }
     found.ok_or_else(|| Failure::runtime(format!("the release archive holds no `{want}`")))
@@ -200,13 +187,20 @@ fn next_page(link: &str) -> Option<String> {
 
 /// The newest stable release carrying a binary for `target`, or the newest
 /// prerelease when no stable one does. Releases from before HappyView shipped
-/// native binaries carry none, so they never qualify. Every page is read,
-/// because a stable release can sit behind a long run of prereleases.
+/// native binaries carry none, so they never qualify. A host HappyView has no
+/// build for still pins a version for a project it only deploys, so its
+/// releases are judged by the Linux build. Every page is read, because a
+/// stable release can sit behind a long run of prereleases.
 pub async fn latest_version(
     http: &reqwest::Client,
     src: &ReleaseSource,
     target: &str,
 ) -> Result<String, Failure> {
+    let target = if runs_locally(target) {
+        target
+    } else {
+        "x86_64-unknown-linux-musl"
+    };
     let asset = asset_name(target);
     let mut shipped: Vec<semver::Version> = Vec::new();
     let mut url = Some(format!(
@@ -280,6 +274,7 @@ pub async fn ensure_binary(
     target: &str,
     status: &dyn Fn(&str),
 ) -> Result<PathBuf, Failure> {
+    require_local_build(target)?;
     // The version names a cache directory, so anything but a version could
     // point it somewhere else.
     if semver::Version::parse(version).is_err() {
@@ -319,7 +314,7 @@ pub async fn ensure_binary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::{tar_xz, zip};
+    use crate::testing::tar_xz;
     use sha2::{Digest, Sha256};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -370,8 +365,10 @@ mod tests {
             asset_name(LINUX),
             "happyview-x86_64-unknown-linux-musl.tar.xz"
         );
-        assert_eq!(asset_name(WINDOWS), "happyview-x86_64-pc-windows-msvc.zip");
-        assert_eq!(binary_name(WINDOWS), "happyview.exe");
+        assert_eq!(
+            asset_name("aarch64-apple-darwin"),
+            "happyview-aarch64-apple-darwin.tar.xz"
+        );
     }
 
     #[test]
@@ -405,8 +402,6 @@ mod tests {
             (LINUX_ENTRY, b"ELF", 0o755),
         ]);
         assert_eq!(extract_binary(&tar, LINUX).unwrap(), b"ELF");
-        let z = zip(&[("migrate-space-cids.exe", b"no"), ("happyview.exe", b"MZ")]);
-        assert_eq!(extract_binary(&z, WINDOWS).unwrap(), b"MZ");
         let misplaced = tar_xz(&[("README.md", b"r", 0o644), ("happyview", b"ELF", 0o755)]);
         assert!(
             error_text(extract_binary(&misplaced, LINUX).unwrap_err())
@@ -432,6 +427,20 @@ mod tests {
                 ],
                 "outside",
             ),
+            (
+                vec![
+                    ("..\\happyview", Regular, &b"x"[..]),
+                    (LINUX_ENTRY, Regular, b"ELF"),
+                ],
+                "outside",
+            ),
+            (
+                vec![
+                    ("C:\\happyview", Regular, &b"x"[..]),
+                    (LINUX_ENTRY, Regular, b"ELF"),
+                ],
+                "outside",
+            ),
             (vec![(LINUX_ENTRY, Symlink, &b""[..])], "link"),
         ] {
             let err = extract_binary(&raw_tar_xz(&entries), LINUX).unwrap_err();
@@ -442,11 +451,6 @@ mod tests {
             (LINUX_ENTRY, Regular, b"two"),
         ]);
         assert!(error_text(extract_binary(&twice, LINUX).unwrap_err()).contains("more than once"));
-        for name in ["..\\happyview.exe", "C:\\happyview.exe", "/happyview.exe"] {
-            let z = zip(&[(name, b"x"), ("happyview.exe", b"MZ")]);
-            let err = extract_binary(&z, WINDOWS).unwrap_err();
-            assert!(error_text(err).contains("outside"), "{name}");
-        }
     }
 
     #[tokio::test]
@@ -572,6 +576,54 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.code, 2);
         assert_eq!(std::fs::read_dir(cache.path()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn windows_is_refused_before_anything_is_looked_up() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let cache = tempfile::tempdir().unwrap();
+        // Even a binary already in the cache is not one HappyView ships.
+        let cached = cache::binary_path(cache.path(), "3.0.0", WINDOWS);
+        std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
+        std::fs::write(&cached, b"MZ").unwrap();
+        let err = ensure_binary(
+            &http_client(),
+            &source(&server),
+            cache.path(),
+            "3.0.0",
+            WINDOWS,
+            &|_| {},
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, 2);
+        assert_eq!(
+            error_text(err),
+            "running HappyView locally isn't supported on Windows; use WSL"
+        );
+    }
+
+    #[tokio::test]
+    async fn latest_for_windows_is_judged_by_the_linux_build() {
+        let server = MockServer::start().await;
+        let linux = asset_name(LINUX);
+        Mock::given(method("GET"))
+            .and(path("/repos/o/happyview/releases"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                { "tag_name": "v3.1.0", "draft": false, "assets": [] },
+                { "tag_name": "v3.0.0", "draft": false, "assets": [{ "name": linux }] }
+            ])))
+            .mount(&server)
+            .await;
+        let version = latest_version(&http_client(), &source(&server), WINDOWS)
+            .await
+            .unwrap();
+        assert_eq!(version, "3.0.0");
     }
 
     #[tokio::test]

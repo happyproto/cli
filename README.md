@@ -58,8 +58,11 @@ That installs the newest **stable** release, of which there is none until
 **Windows**
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/happyproto/cli/releases/latest/download/hpy-cli-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://happyproto.github.io/cli/install-beta.ps1 | iex"
 ```
+
+That installs the newest **beta** release. Once `1.0.0` is cut,
+`install.ps1` in its place installs the newest stable one.
 
 **From source**
 
@@ -86,6 +89,13 @@ These install the stable channel. For the `beta` or `alpha` channel (see
 
   ```sh
   curl -fsSL https://happyproto.github.io/cli/install-beta.sh | sh
+  ```
+
+- Windows: `install-beta.ps1` or `install-alpha.ps1` in place of
+  `install.ps1`:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -c "irm https://happyproto.github.io/cli/install-beta.ps1 | iex"
   ```
 
 After installing, `hpy update` keeps you on the channel you installed from, and
@@ -189,12 +199,17 @@ error, `3` not logged in.
 A HappyView app can be a directory: lexicons and scripts under `src/`,
 configuration in `happyview.toml`, exact plugin versions in `happyview.lock`.
 
+HappyView has no Windows build, so on Windows `dev`, `check`, `test` and
+`types`, which run HappyView itself, refuse to start; run them under WSL. The
+other commands, `deploy` among them, work on Windows.
+
 | Command | Does |
 | --- | --- |
 | `hpy happyview create --name <dir>` | Scaffolds a project: `happyview.toml`, `.gitignore`, `.env.example`, and one query lexicon with its handler. Prompts for the superadmin (default: the account `hpy registry login` holds), interpreters (Lua preselected), libraries and app name; `--superadmin`, `--interpreter`, `--library`, `--app-name` and `--happyview-version` answer them without a terminal, and `--project <at-uri>` picks between projects that answer to one name. Each plugin follows its project's `latest` channel, or the only channel it has. Writes the lock but downloads nothing. |
 | `hpy happyview dev` | Runs the project with its pinned HappyView, in the foreground. |
 | `hpy happyview add <plugin>` | Adds interpreters or libraries to `happyview.toml` and the lock, keeping the file's comments and order. Each follows a channel (`--channel`, default `latest`) or is pinned to `--version`; `--project <at-uri>` picks between projects that answer to one name. Adding a plugin again moves it to its channel's current version. With no plugin (or as `install`), brings the lock up to date and downloads it. |
-| `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. |
+| `hpy happyview scaffold [nsid…]` | Writes a starter handler beside each query or procedure lexicon under `src/` that has none, or only beside the ones named (any other NSID is refused). It has the lexicon's basename and the language of the first `[interpreters]` entry (Lua, TypeScript or JavaScript). A query's handler answers `?uri=` with `db.get` and otherwise lists its collection through `happyview.db`; a procedure's creates a record with `happyview.record`. The collection is written into the file: `--collection <nsid>` names it for every handler the run writes; otherwise `hpy` asks, offering the project's record lexicons, and without a terminal writes the placeholder `COLLECTION` under a TODO comment and warns. An existing handler, in any language, is never replaced. If `happyview.toml` lacks a library a new handler calls, `hpy` offers to add it as `hpy happyview add` would, or without a terminal prints the command. |
+| `hpy happyview check` | Builds the project without serving it; non-zero on any error. What CI runs. First warns of each query or procedure lexicon with no handler, naming the `scaffold` command that writes one; the warnings leave the exit code alone. |
 | `hpy happyview test [--watch] [filter]` | Runs the project's tests. Needs a HappyView that has `happyview test`, which no release has yet; until one does, HappyView refuses it as an unknown command. |
 | `hpy happyview login --url <instance> [handle]` | Signs in to an instance through your browser, as you do for the registry, so you can deploy to it. The handle defaults to the account `hpy registry login` holds; `--no-browser` prints the URL instead of opening it. For CI, `--key-stdin` signs in with an API key instead (see [Deploying from CI](#deploying-from-ci)). |
 | `hpy happyview logout [--url <instance>]` | Signs out of the instance. |
@@ -314,6 +329,19 @@ Then, in this order:
    one installed under the same name from a URL or another publisher is
    replaced. One the lock doesn't list is kept, unless you pass
    `--prune-plugins`.
+
+   The plan lists the capabilities each plugin would be granted, and for one
+   being moved or replaced which of them the installed version did not have.
+   Confirming the deploy accepts them: HappyView grants a plugin only the
+   capabilities an install explicitly accepts, so `hpy` sends the set
+   `happyview.lock` records for that exact version. The lock pins the manifest
+   those came from, so what you review in the lock is what is accepted, and a
+   version whose manifest gained a capability after the lock was written is
+   refused by the instance rather than installed quietly. A lock written by an
+   hpy from before a deploy accepted them is refused with the plugins named;
+   `hpy happyview check` rewrites it, without moving any version it pins, and
+   `--locked` says the same rather than reporting a mismatch against
+   `happyview.toml` that isn't there.
 2. **The project.** `happyview.toml`, everything under `src/` and the builds of
    its `[modules]` (built first, as `hpy happyview build` does) go to the
    instance in one piece. The instance checks the project with the same rules

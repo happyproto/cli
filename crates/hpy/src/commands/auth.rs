@@ -16,7 +16,8 @@ fn no_env(_: &str) -> Option<String> {
     None
 }
 
-fn who(did: &str, handle: Option<&str>) -> String {
+/// `@handle (did)`, or the bare DID when the handle is unknown.
+pub(crate) fn who(did: &str, handle: Option<&str>) -> String {
     match handle {
         Some(h) => format!("@{h} ({did})"),
         None => did.to_string(),

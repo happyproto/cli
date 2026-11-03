@@ -7,6 +7,7 @@ use hpy_project::scaffold::{Scaffold, render, starter_handler, write_new};
 use serde_json::{Value, json};
 
 use crate::cli::CreateArgs;
+use crate::commands::auth::who;
 use crate::ctx::Ctx;
 use crate::failure::Failure;
 use crate::project::binary::{HOST_TARGET, ReleaseSource, http_client, latest_version};
@@ -220,14 +221,26 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
     let signed_in = hpy_atproto::session::current(&ctx.settings, ctx.keystore())
         .ok()
         .flatten()
-        .map(|s| s.credential.did);
-    let superadmin = ctx.prompter.required(
+        .map(|s| (s.credential.did, s.credential.handle));
+    let help = signed_in.as_ref().map(|(did, handle)| {
+        format!(
+            "{}, the account `hpy registry login` holds",
+            who(did, handle.as_deref())
+        )
+    });
+    let superadmin = ctx.prompter.required_with_help(
         "--superadmin",
         "Superadmin DID:",
         args.superadmin,
-        signed_in,
+        signed_in.as_ref().map(|(did, _)| did.clone()),
+        help.as_deref(),
         check_did,
     )?;
+    // Only the signed-in account's handle is known without asking the network.
+    let superadmin_handle = signed_in
+        .as_ref()
+        .filter(|(did, _)| *did == superadmin)
+        .and_then(|(_, handle)| handle.clone());
     let registry = ctx.registry();
     let interpreters_found = candidates(&registry, PluginKind::Interpreter).await?;
     let languages = order_languages(
@@ -313,7 +326,7 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
     let handler_language = interpreters.first().cloned();
     let scaffold = Scaffold {
         app_name,
-        superadmin,
+        superadmin: superadmin.clone(),
         happyview_version: version.clone(),
         interpreters: interpreter_entries.clone(),
         libraries: library_entries.clone(),
@@ -332,7 +345,11 @@ pub async fn run(ctx: &Ctx, args: CreateArgs) -> Result<(), Failure> {
             "hpy has no starter handler for `{lang}`; add one beside src/lexicons/com/example/hello.json"
         ));
     }
-    let mut human = format!("created {}", dir.display());
+    let mut human = format!(
+        "created {}\n  superadmin: {}",
+        dir.display(),
+        who(&superadmin, superadmin_handle.as_deref())
+    );
     for (key, e) in interpreter_entries.iter().chain(&library_entries) {
         if let Pin::Channel(c) = &e.pin
             && c != "latest"
