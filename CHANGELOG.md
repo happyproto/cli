@@ -1,3 +1,27 @@
+# [1.0.0-beta.4](https://github.com/happyproto/cli/compare/v1.0.0-beta.3...v1.0.0-beta.4) (2026-11-03)
+
+
+### Bug Fixes
+
+* let Windows PowerShell 5.1 filter the releases one at a time ([cf0ebfe](https://github.com/happyproto/cli/commit/cf0ebfefe1a5102fe08a01391bec6a61b1db0d6c))
+* publish a PowerShell installer per release channel ([ea7441b](https://github.com/happyproto/cli/commit/ea7441b87995383f6e683d4bf68fc7222fbe60e0))
+* refuse to run HappyView locally on Windows, which it no longer ships for ([287b0db](https://github.com/happyproto/cli/commit/287b0db8e6672571ad997e936f96c0b06ab144f1))
+* rename a copied plugin into place, so a running dev never sees half of one ([f45a07e](https://github.com/happyproto/cli/commit/f45a07e01921814fcb82a98c60c0d3fcf7dc0afe))
+* rewrite a lock that records no plugin capabilities ([a092e0e](https://github.com/happyproto/cli/commit/a092e0e4426c37754ac889f443481af2c56d4765))
+* **scaffold:** import Params whenever the lexicon has a parameters block, as HappyView exports it ([3f44ad3](https://github.com/happyproto/cli/commit/3f44ad309c4dd2aaa9669b2c34d1b1cee5594be0))
+* **scaffold:** show project paths with / on every platform ([59e4d72](https://github.com/happyproto/cli/commit/59e4d724c6766a3160798b3a430084a7805d61b2))
+* show the superadmin's handle beside its DID in hv create ([53a959e](https://github.com/happyproto/cli/commit/53a959e254ea73383cb2eb28b9656059a9b8dd45))
+* stop sending the client key on registry reads ([df50313](https://github.com/happyproto/cli/commit/df50313b96630849170747261b7ec48e1e7437d7))
+* treat a lexicon refusal as the publisher's to fix ([9d75fa1](https://github.com/happyproto/cli/commit/9d75fa137cb670e43de16a77b5b5c0f6804a18a8))
+
+
+### Features
+
+* accept each plugin's locked capabilities when deploying ([c80f5c2](https://github.com/happyproto/cli/commit/c80f5c2e5661c8775c3c83c93dc924db55b9e16f))
+* add hpy happyview scaffold, and have check point at it ([f3fce2b](https://github.com/happyproto/cli/commit/f3fce2b69771b5ec95d9eb01a31b4a45aa2f44eb))
+* place added plugins where dev already has, so it can load them live ([c562503](https://github.com/happyproto/cli/commit/c56250322d5cc2df5e99cf4904ee3d8d09d5de8d))
+* say an instance's limit in its host's words ([b377aa6](https://github.com/happyproto/cli/commit/b377aa67488ac0f79d7c93a839ce44ab85eae2ad))
+
 # [1.0.0-alpha.28](https://github.com/happyproto/cli/compare/v1.0.0-alpha.27...v1.0.0-alpha.28) (2026-11-02)
 
 
