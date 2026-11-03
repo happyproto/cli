@@ -44,6 +44,19 @@ impl Prompter {
         default: Option<String>,
         check: fn(&str) -> Result<(), String>,
     ) -> Result<String, Failure> {
+        self.required_with_help(flag, label, given, default, None, check)
+    }
+
+    /// `required`, with a line under the prompt saying what the default is.
+    pub fn required_with_help(
+        &self,
+        flag: &str,
+        label: &str,
+        given: Option<String>,
+        default: Option<String>,
+        help: Option<&str>,
+        check: fn(&str) -> Result<(), String>,
+    ) -> Result<String, Failure> {
         if let Some(v) = given {
             check(&v).map_err(|e| Failure::usage(format!("{flag}: {e}")))?;
             return Ok(v);
@@ -57,6 +70,9 @@ impl Prompter {
             });
             if let Some(d) = &default {
                 p = p.with_default(d);
+            }
+            if let Some(h) = help {
+                p = p.with_help_message(h);
             }
             return p.prompt().map_err(prompt_err);
         }
@@ -194,6 +210,19 @@ impl Prompter {
         )))
     }
 
+    /// A yes-or-no offer, answered yes by default; `None` without a terminal,
+    /// so the caller can say how to do it instead.
+    pub fn offer(&self, label: &str) -> Result<Option<bool>, Failure> {
+        if !self.interactive {
+            return Ok(None);
+        }
+        inquire::Confirm::new(label)
+            .with_default(true)
+            .prompt()
+            .map(Some)
+            .map_err(prompt_err)
+    }
+
     pub fn confirm(&self, label: &str, yes: bool) -> Result<bool, Failure> {
         if yes {
             return Ok(true);
@@ -292,6 +321,11 @@ mod tests {
             msg.contains("--interpreter: `python`") && msg.contains("lua, javascript"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn an_offer_without_a_terminal_is_left_to_the_caller() {
+        assert_eq!(Prompter::new(true).offer("Add it?").unwrap(), None);
     }
 
     #[test]

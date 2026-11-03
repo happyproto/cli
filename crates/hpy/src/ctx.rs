@@ -27,6 +27,6 @@ impl Ctx {
 
     /// The registry, for reads; publishing goes through `Session::registry`.
     pub fn registry(&self) -> HttpRegistry {
-        HttpRegistry::new(&self.settings.registry_url).with_client_key(&self.settings.client_key)
+        HttpRegistry::new(&self.settings.registry_url)
     }
 }

@@ -2,6 +2,7 @@
 //! the registry and the release downloads live in the `hpy` binary.
 
 pub mod config;
+pub mod handlers;
 pub mod lock;
 pub mod manifest;
 pub mod place;

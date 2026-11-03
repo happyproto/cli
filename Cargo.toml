@@ -35,7 +35,6 @@ toml = "1"
 toml_edit = { version = "0.25", features = ["serde"] }
 unicode-segmentation = "1.13"
 xz2 = { version = "0.1", features = ["static"] }
-zip = { version = "9", default-features = false, features = ["deflate"] }
 tempfile = "3"
 assert_cmd = "2"
 predicates = "3"

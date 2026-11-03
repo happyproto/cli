@@ -246,9 +246,6 @@ pub struct HttpRegistry {
     http: reqwest::Client,
     /// The signed-in session, for the procedures that write.
     session: Option<(Arc<HappyView>, Credential)>,
-    /// Identifies `hpy` to HappyView on reads, so they get its rate limit
-    /// rather than the shared anonymous one.
-    client_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -290,17 +287,10 @@ impl HttpRegistry {
                 .build()
                 .expect("http client"),
             session: None,
-            client_key: None,
         }
     }
 
-    pub fn with_client_key(mut self, client_key: &str) -> HttpRegistry {
-        self.client_key = Some(client_key.into());
-        self
-    }
-
     pub fn with_session(mut self, hv: Arc<HappyView>, cred: Credential) -> HttpRegistry {
-        self.client_key = Some(cred.client_key.clone());
         self.session = Some((hv, cred));
         self
     }
@@ -334,10 +324,7 @@ impl HttpRegistry {
         params: &[(&str, &str)],
     ) -> Result<Option<T>> {
         let url = format!("{}/xrpc/{method}", self.base);
-        let mut request = self.http.get(&url).query(params);
-        if let Some(key) = &self.client_key {
-            request = request.header("x-client-key", key);
-        }
+        let request = self.http.get(&url).query(params);
         let resp = request.send().await.map_err(|e| {
             Error::Other(format!(
                 "could not reach the registry at {}: {e}",
@@ -386,10 +373,7 @@ impl HttpRegistry {
     async fn artifact(&self, cid: &str) -> Result<Vec<u8>> {
         const METHOD: &str = "at.happyproto.registry.getArtifact";
         let url = format!("{}/xrpc/{METHOD}", self.base);
-        let mut request = self.http.get(&url).query(&[("cid", cid)]);
-        if let Some(key) = &self.client_key {
-            request = request.header("x-client-key", key);
-        }
+        let request = self.http.get(&url).query(&[("cid", cid)]);
         let resp = request.send().await.map_err(|e| {
             Error::Other(format!(
                 "could not reach the registry at {}: {e}",
@@ -553,7 +537,7 @@ mod tests {
     use super::*;
     use crate::dpop::DpopKey;
     use serde_json::json;
-    use wiremock::matchers::{body_partial_json, header, method, path, query_param};
+    use wiremock::matchers::{body_partial_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     const DID: &str = "did:plc:abc";
@@ -614,13 +598,11 @@ mod tests {
             .and(path("/xrpc/at.happyproto.registry.getProject"))
             .and(query_param("actor", "trezy.dev"))
             .and(query_param("name", "x"))
-            .and(header("x-client-key", "hvc_test"))
             .respond_with(ResponseTemplate::new(200).set_body_json(project("x")))
             .expect(1)
             .mount(&server)
             .await;
         let got = HttpRegistry::new(&server.uri())
-            .with_client_key("hvc_test")
             .get_project("trezy.dev", "x")
             .await
             .unwrap()
@@ -632,6 +614,10 @@ mod tests {
         assert_eq!(head.state, State::Deprecated);
         assert_eq!(head.availability, Availability::DeletedAtSource);
         assert_eq!(got.lifecycle.state, State::Active);
+        // A read can't prove a client key, so HappyView would only log it and
+        // count the call as anonymous; it isn't sent.
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests[0].headers.get("x-client-key").is_none());
     }
 
     #[tokio::test]

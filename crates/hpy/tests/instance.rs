@@ -163,6 +163,7 @@ fn project() -> tempfile::TempDir {
         package_cid: "bafkreipackage".into(),
         manifest_blob_cid: "bafkreimanifestblob".into(),
         dependencies: deps.iter().map(|d| d.to_string()).collect(),
+        capabilities: Some(vec!["kv:read".into()]),
     };
     Lockfile {
         version: 2,
@@ -269,16 +270,20 @@ async fn deploy_installs_dependencies_first_then_moves() {
     login(config.path(), &server.uri());
     Mock::given(method("POST"))
         .and(path("/admin/plugins"))
-        .and(body_json(
-            json!({"registry": {"did": PUB, "name": "std", "version": "2.0.0"}}),
-        ))
+        .and(body_json(json!({
+            "registry": {"did": PUB, "name": "std", "version": "2.0.0"},
+            "accepted_capabilities": ["kv:read"]
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(installed("std", "2.0.0")))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path("/admin/plugins/lua/reload"))
-        .and(body_json(json!({"registry": {"version": "1.1.0"}})))
+        .and(body_json(json!({
+            "registry": {"version": "1.1.0"},
+            "accepted_capabilities": ["kv:read"]
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(installed("lua", "1.1.0")))
         .expect(1)
         .mount(&server)
@@ -332,17 +337,19 @@ async fn deploy_stops_at_the_first_refusal_and_says_what_was_done() {
     login(config.path(), &server.uri());
     Mock::given(method("POST"))
         .and(path("/admin/plugins"))
-        .and(body_json(
-            json!({"registry": {"did": PUB, "name": "std", "version": "2.0.0"}}),
-        ))
+        .and(body_json(json!({
+            "registry": {"did": PUB, "name": "std", "version": "2.0.0"},
+            "accepted_capabilities": ["kv:read"]
+        })))
         .respond_with(ResponseTemplate::new(200).set_body_json(installed("std", "2.0.0")))
         .mount(&server)
         .await;
     Mock::given(method("POST"))
         .and(path("/admin/plugins"))
-        .and(body_json(
-            json!({"registry": {"did": PUB, "name": "lua", "version": "1.1.0"}}),
-        ))
+        .and(body_json(json!({
+            "registry": {"did": PUB, "name": "lua", "version": "1.1.0"},
+            "accepted_capabilities": ["kv:read"]
+        })))
         .respond_with(ResponseTemplate::new(400).set_body_json(json!({
             "error": "NotInstallable", "message": "lua 1.1.0 reached end of life"
         })))
@@ -372,6 +379,36 @@ async fn deploy_needs_the_lock_to_match() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains("happyview.lock"));
+}
+
+/// A lock from an hpy that did not record capabilities is refused rather than
+/// deployed with an invented set: HappyView reads an absent
+/// `accepted_capabilities` as accepting nothing, and an empty one sent on the
+/// operator's behalf would be a claim nobody made.
+#[tokio::test]
+async fn deploy_refuses_a_lock_that_records_no_capabilities() {
+    let config = tempfile::tempdir().unwrap();
+    let project = project();
+    let lock = project.path().join("happyview.lock");
+    let stripped: String = std::fs::read_to_string(&lock)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.starts_with("capabilities"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(&lock, stripped).unwrap();
+    let server = instance_with(&[]).await;
+    login(config.path(), &server.uri());
+    hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--yes"])
+        .assert()
+        .code(2)
+        .stderr(
+            predicate::str::contains("lua")
+                .and(predicate::str::contains("std"))
+                .and(predicate::str::contains("hpy happyview check")),
+        );
 }
 
 #[tokio::test]

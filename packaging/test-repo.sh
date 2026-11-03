@@ -4,7 +4,8 @@
 #   1. builds a static Linux `hpy` (musl, for the host's architecture)
 #   2. packages it as 0.0.1 with build-packages.sh, publishes it with
 #      update-repo.sh using a throwaway signing key
-#   3. serves the site and installs `hpy` from it on Debian (apt) and
+#   3. checks the shell and PowerShell installers resolve their own channel,
+#      then serves the site and installs `hpy` from it on Debian (apt) and
 #      Fedora (dnf), exactly as the README tells users to
 #   4. publishes 0.0.2-alpha.1 to the alpha channel and checks stable
 #      ignores it, then publishes 0.0.2 and checks both upgrade
@@ -104,17 +105,35 @@ fi
 # them installs the other's release. `if !` rather than `&&`, which under
 # `set -e` would end the run on the passing case.
 for c in beta alpha; do
-  f="$work/site/install-$c.sh"
-  if ! grep -q -- "-$c(" "$f"; then
-    echo "test-repo: install-$c.sh does not select the $c channel" >&2
-    exit 1
-  fi
   if [[ "$c" == beta ]]; then other=alpha; else other=beta; fi
-  if grep -q -- "-$other(" "$f"; then
-    echo "test-repo: install-$c.sh also selects $other" >&2
+  for f in "$work/site/install-$c.sh" "$work/site/install-$c.ps1"; do
+    if ! grep -q -- "-$c(" "$f"; then
+      echo "test-repo: $(basename "$f") does not select the $c channel" >&2
+      exit 1
+    fi
+    if grep -q -- "-$other(" "$f"; then
+      echo "test-repo: $(basename "$f") also selects $other" >&2
+      exit 1
+    fi
+  done
+done
+
+# The PowerShell installers get the same checks a `sh -n` cannot give them:
+# this image has no pwsh, so what is checked is that each one is written and
+# points at the .ps1 asset rather than the shell one.
+step "checking the PowerShell installers"
+for c in "" -beta -alpha; do
+  f="$work/site/install$c.ps1"
+  [[ -f "$f" ]] || { echo "test-repo: $f was not written" >&2; exit 1; }
+  if ! grep -q 'hpy-cli-installer\.ps1' "$f"; then
+    echo "test-repo: install$c.ps1 does not install the .ps1 asset" >&2
     exit 1
   fi
 done
+if ! grep -q 'releases/latest/download' "$work/site/install.ps1"; then
+  echo "test-repo: the stable PowerShell installer should use releases/latest" >&2
+  exit 1
+fi
 
 step "serving the repository"
 docker network create "$net" >/dev/null
