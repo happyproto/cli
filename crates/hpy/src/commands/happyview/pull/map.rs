@@ -134,16 +134,44 @@ pub fn safe_src_path(path: &str) -> Option<String> {
 
 /// The extension a language's files take: the one its interpreter claims
 /// first, else the usual one, else (`false`) the language id itself.
-pub fn extension(language: &str, claimed: &BTreeMap<String, String>) -> (String, bool) {
-    if let Some(ext) = claimed.get(language) {
-        return (ext.clone(), true);
-    }
-    match language {
-        "lua" => ("lua".into(), true),
-        "typescript" => ("ts".into(), true),
-        "javascript" => ("js".into(), true),
-        other => (other.to_string(), false),
-    }
+/// `None` when that isn't a plain extension (`[a-z0-9][a-z0-9_-]*`): both
+/// the claim and the id come from the instance, and either ends up in a
+/// file name.
+pub fn extension(language: &str, claimed: &BTreeMap<String, String>) -> Option<(String, bool)> {
+    let (ext, known) = if let Some(ext) = claimed.get(language) {
+        (ext.clone(), true)
+    } else {
+        match language {
+            "lua" => ("lua".into(), true),
+            "typescript" => ("ts".into(), true),
+            "javascript" => ("js".into(), true),
+            other => (other.to_string(), false),
+        }
+    };
+    plain_extension(&ext).then_some((ext, known))
+}
+
+/// `[a-z0-9][a-z0-9_-]*`.
+fn plain_extension(ext: &str) -> bool {
+    let mut bytes = ext.bytes();
+    bytes
+        .next()
+        .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+}
+
+/// A project-relative path the instance gave, if a project can hold it:
+/// relative, with no empty, `.` or `..` part. Unlike [`safe_src_path`] it
+/// needn't be under `src/` (a compiled module's crate isn't).
+pub fn safe_rel_path(path: &str) -> Option<String> {
+    let path = path.replace('\\', "/");
+    let ok = !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains(':')
+        && path
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..");
+    ok.then_some(path)
 }
 
 /// `[lexicons."<nsid>"]` with only what differs from a project lexicon's
@@ -311,6 +339,54 @@ pub fn default_dir(url: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_plain_extension_names_a_file() {
+        let none = BTreeMap::new();
+        assert_eq!(super::extension("lua", &none), Some(("lua".into(), true)));
+        assert_eq!(
+            super::extension("python3", &none),
+            Some(("python3".into(), false))
+        );
+        for hostile in [
+            "x/../../../../../tmp/evil",
+            "../x",
+            "a/b",
+            "",
+            ".lua",
+            "Lua",
+            "a b",
+            "C:x",
+        ] {
+            assert_eq!(super::extension(hostile, &none), None, "{hostile:?}");
+            let claimed = BTreeMap::from([("lua".to_string(), hostile.to_string())]);
+            assert_eq!(
+                super::extension("lua", &claimed),
+                None,
+                "claimed {hostile:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_relative_path_stays_in_the_project() {
+        assert_eq!(
+            super::safe_rel_path("modules/registry").as_deref(),
+            Some("modules/registry")
+        );
+        for hostile in [
+            "",
+            "/etc",
+            "../x",
+            "modules/../../x",
+            "a//b",
+            "./a",
+            "C:/x",
+            "a\\..\\..\\x",
+        ] {
+            assert_eq!(super::safe_rel_path(hostile), None, "{hostile:?}");
+        }
+    }
+
     use super::*;
 
     fn place(id: &str, ext: &str) -> (Kind, String) {
@@ -422,15 +498,18 @@ mod tests {
     #[test]
     fn the_extension_is_the_interpreters_else_the_usual_one() {
         let claimed = BTreeMap::from([("typescript".to_string(), "mts".to_string())]);
-        assert_eq!(extension("typescript", &claimed), ("mts".into(), true));
-        assert_eq!(extension("lua", &claimed), ("lua".into(), true));
+        assert_eq!(
+            extension("typescript", &claimed),
+            Some(("mts".into(), true))
+        );
+        assert_eq!(extension("lua", &claimed), Some(("lua".into(), true)));
         assert_eq!(
             extension("javascript", &BTreeMap::new()),
-            ("js".into(), true)
+            Some(("js".into(), true))
         );
         assert_eq!(
             extension("python", &BTreeMap::new()),
-            ("python".into(), false)
+            Some(("python".into(), false))
         );
     }
 

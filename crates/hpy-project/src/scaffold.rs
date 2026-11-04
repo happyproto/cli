@@ -317,6 +317,20 @@ fn empty_out(dir: &Path) {
 }
 
 fn fill(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
+    // Every path is checked before anything is written, so a bad one leaves
+    // nothing half done.
+    for (rel, _) in files {
+        let plain = !rel.as_os_str().is_empty()
+            && rel
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)));
+        if !plain {
+            return Err(format!(
+                "{} isn't a plain path inside the project, so nothing was written",
+                rel.display()
+            ));
+        }
+    }
     for (rel, body) in files {
         let target = root.join(rel);
         if let Some(parent) = target.parent() {
@@ -550,6 +564,28 @@ mod tests {
 
     /// A project whose last file cannot be written: `happyview.toml` is a
     /// file by then, so nothing can go under it.
+    #[test]
+    fn a_path_that_leaves_the_project_writes_nothing() {
+        for hostile in [
+            "../outside.lua",
+            "/tmp/outside.lua",
+            "src/../../outside.lua",
+            "",
+        ] {
+            let parent = tempfile::tempdir().unwrap();
+            let dir = parent.path().join("app");
+            let mut files = render(&scaffold(Some("lua")));
+            files.push((PathBuf::from(hostile), "evil".into()));
+            let err = write_new(&dir, &files).unwrap_err();
+            assert!(
+                err.message.contains("isn't a plain path"),
+                "{hostile:?}: {err}"
+            );
+            assert!(!parent.path().join("outside.lua").exists());
+            assert!(!dir.join("happyview.toml").exists(), "{hostile:?}");
+        }
+    }
+
     fn failing_files() -> Vec<(PathBuf, String)> {
         let mut files = render(&scaffold(Some("lua")));
         files.push((PathBuf::from("happyview.toml/oops"), String::new()));

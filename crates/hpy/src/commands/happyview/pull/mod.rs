@@ -463,16 +463,23 @@ async fn source(
 
     for s in &remote.scripts {
         if let Some(m) = &s.module {
+            let Some(module_path) = map::safe_rel_path(&m.path) else {
+                report.warn(format!(
+                    "module `{}` has a path outside the project ({:?}), so it is left out",
+                    m.module, m.path
+                ));
+                continue;
+            };
             out.toml.modules.insert(
                 m.module.clone(),
                 ModuleSettings {
                     language: s.script_type.clone(),
-                    path: m.path.clone(),
+                    path: module_path.clone(),
                 },
             );
             report.modules.push(format!(
                 "{} ({}, `{}` handles {})",
-                m.module, m.path, m.handler, s.id
+                m.module, module_path, m.handler, s.id
             ));
             continue;
         }
@@ -483,7 +490,13 @@ async fn source(
             ));
             continue;
         };
-        let (ext, known) = map::extension(&s.script_type, extensions);
+        let Some((ext, known)) = map::extension(&s.script_type, extensions) else {
+            report.warn(format!(
+                "script {} is in a language whose extension can't name a file ({:?}), so it is left out",
+                s.id, s.script_type
+            ));
+            continue;
+        };
         if !known {
             report.warn(format!(
                 "no interpreter says which extension `{}` files take, so {} is written as .{ext}",
@@ -493,7 +506,11 @@ async fn source(
         let given = (generation == Generation::V3)
             .then(|| s.path.as_deref().and_then(map::safe_src_path))
             .flatten();
-        let path = match given.map_or_else(|| map::handler_path(&trigger, &ext), Ok) {
+        let path = match given
+            .map_or_else(|| map::handler_path(&trigger, &ext), Ok)
+            .and_then(|p| {
+                map::safe_src_path(&p).ok_or_else(|| format!("{p:?} isn't a path under src/"))
+            }) {
             Ok(p) => p,
             Err(e) => {
                 report.warn(format!("script {}: {e}, so it is left out", s.id));
@@ -988,6 +1005,63 @@ pub async fn run(ctx: &Ctx, args: PullArgs) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn script(id: &str, language: &str, module_path: Option<&str>) -> wire::Script {
+        let mut v = serde_json::json!({ "id": id, "script_type": language, "body": "return 1" });
+        if let Some(path) = module_path {
+            v["module"] = serde_json::json!({ "module": "m", "path": path, "handler": "h" });
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    /// Script languages, interpreter extensions and module paths all come
+    /// from the instance; none of them may put a file outside `src/`.
+    #[tokio::test]
+    async fn what_the_instance_names_stays_inside_the_project() {
+        let remote = Remote {
+            lexicons: vec![],
+            network: vec![],
+            scripts: vec![
+                script("job.run:a", "x/../../../../../tmp/evil", None),
+                script("job.run:b", "lua", None),
+                script("job.run:c", "typescript", None),
+                script("job.run:d", "lua", Some("../../outside")),
+                script("job.run:e", "lua", Some("modules/fine")),
+            ],
+            variables: vec![],
+            plugins: vec![],
+            app_name: None,
+            superadmin: None,
+            labelers: vec![],
+        };
+        // The registry says Lua files take a hostile extension; TS is fine.
+        let extensions = BTreeMap::from([
+            ("lua".to_string(), "../../../tmp/evil".to_string()),
+            ("typescript".to_string(), "ts".to_string()),
+        ]);
+        let mut report = Report::default();
+        let out = source(&remote, Generation::V3, None, &extensions, &mut report)
+            .await
+            .unwrap();
+
+        assert_eq!(out.files.keys().collect::<Vec<_>>(), ["src/jobs/c.ts"]);
+        for path in out.files.keys() {
+            assert!(map::safe_src_path(path).is_some(), "{path}");
+        }
+        assert_eq!(
+            out.toml.modules.len(),
+            1,
+            "only the module inside the project"
+        );
+        let warned = report.warnings.join("\n");
+        for id in ["job.run:a", "job.run:b"] {
+            assert!(warned.contains(id), "{id} not warned: {warned}");
+        }
+        assert!(
+            warned.contains("module `m` has a path outside the project"),
+            "{warned}"
+        );
+    }
 
     #[test]
     fn two_and_below_is_v2() {
