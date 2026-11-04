@@ -1,3 +1,17 @@
+# [1.0.0-alpha.30](https://github.com/happyproto/cli/compare/v1.0.0-alpha.29...v1.0.0-alpha.30) (2026-11-04)
+
+
+### Bug Fixes
+
+* **pull:** name the last deploy instead of calling a regenerated project different ([de39940](https://github.com/happyproto/cli/commit/de399403ebca0ca6cd494db1cb74a6a159821f7c))
+* **pull:** write only plain project paths ([4ec6786](https://github.com/happyproto/cli/commit/4ec6786499c245282e6355ead00f895f67370ff8))
+
+
+### Features
+
+* add hpy happyview pull, to build a project from an instance ([5d91266](https://github.com/happyproto/cli/commit/5d9126612f15149f2b61b1ca9ba5983a9b36d3c8))
+* **pull:** write interpreter modules from GET /admin/scripts/modules ([0800d76](https://github.com/happyproto/cli/commit/0800d76e171d92e89eeb804ae11ec28a461a64ee))
+
 # [1.0.0-alpha.29](https://github.com/happyproto/cli/compare/v1.0.0-alpha.28...v1.0.0-alpha.29) (2026-11-04)
 
 
