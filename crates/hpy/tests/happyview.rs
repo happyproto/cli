@@ -3570,6 +3570,119 @@ mod pull {
         );
     }
 
+    /// A row of `GET /admin/scripts/modules`.
+    fn module_source(at: &str, language: &str, source: &str) -> Value {
+        json!({"id": at, "path": at, "language": language, "source": source})
+    }
+
+    #[test]
+    fn an_interpreter_module_is_written_to_its_path() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        let source = "local M = {}\nfunction M.title(s) return s end\nreturn M\n";
+        i.serve(
+            &stack,
+            "/admin/scripts/modules",
+            json!([module_source("src/lib/format.lua", "lua", source)]),
+        );
+        let out = pull(&stack, &i)
+            .env("HV_EXIT", "0")
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let dir = stack.project.path().join("pulled");
+        assert_eq!(read(&dir.join("src/lib/format.lua")), source);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("1 interpreter modules"), "{stdout}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!stderr.contains("interpreter module source"), "{stderr}");
+    }
+
+    #[test]
+    fn a_module_path_outside_src_is_left_out_with_a_warning() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        i.serve(
+            &stack,
+            "/admin/scripts/modules",
+            json!([
+                module_source("src/../../escaped.lua", "lua", "return 'out'\n"),
+                module_source("/etc/escaped.lua", "lua", "return 'abs'\n"),
+                module_source("lib/escaped.lua", "lua", "return 'root'\n"),
+            ]),
+        );
+        let out = pull(&stack, &i)
+            .env("HV_EXIT", "0")
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        for p in [
+            "src/../../escaped.lua",
+            "/etc/escaped.lua",
+            "lib/escaped.lua",
+        ] {
+            assert!(
+                stderr.contains(&format!(
+                    "module {p} has a path that isn't under src/ (\"{p}\"), so it is left out"
+                )),
+                "{p}: {stderr}"
+            );
+        }
+        let dir = stack.project.path().join("pulled");
+        assert!(
+            !tree(&dir).iter().any(|f| f.contains("escaped")),
+            "{:?}",
+            tree(&dir)
+        );
+        assert!(!stack.project.path().join("escaped.lua").exists());
+        assert!(!dir.parent().unwrap().join("escaped.lua").exists());
+    }
+
+    /// An older HappyView has no module route; the project is still pulled,
+    /// with a warning that imported files have to be copied in.
+    #[test]
+    fn an_instance_without_the_module_route_warns_and_still_pulls() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        i.serve_status(
+            &stack,
+            "/admin/scripts/modules",
+            404,
+            json!({"error": "NotFound", "message": "script not found: modules"}),
+        );
+        pull(&stack, &i)
+            .env("HV_EXIT", "0")
+            .assert()
+            .success()
+            .stderr(says(
+                "this HappyView doesn't serve interpreter module source, so files scripts import (such as src/lib/…) aren't pulled; copy them in by hand",
+            ));
+        let dir = stack.project.path().join("pulled");
+        assert!(!tree(&dir).iter().any(|f| f.starts_with("src/lib")));
+    }
+
+    #[test]
+    fn a_sign_in_without_scripts_read_for_modules_warns() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        i.serve_status(
+            &stack,
+            "/admin/scripts/modules",
+            403,
+            json!({"error": "Forbidden", "message": "Missing permission: scripts:read"}),
+        );
+        pull(&stack, &i)
+            .env("HV_EXIT", "0")
+            .assert()
+            .success()
+            .stderr(says(
+                "the sign-in can't read interpreter module source (that needs scripts:read)",
+            ));
+    }
+
     #[test]
     fn a_key_without_settings_manage_skips_the_app_name_and_a_failed_check_still_writes() {
         let stack = Stack::new();

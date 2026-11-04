@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use hpy_atproto::admin::Admin;
+use hpy_atproto::admin::{Admin, Optional};
 use hpy_atproto::{Registry, VersionView};
 use hpy_plugin::artifact::PluginArtifact;
 use hpy_project::config::{CONFIG_FILE, Pin, PluginEntry, PluginKind, ProjectToml};
@@ -99,6 +99,8 @@ struct Remote {
     app_name: Option<Option<String>>,
     superadmin: Option<String>,
     labelers: Vec<String>,
+    /// The files scripts import, or why the instance didn't give them.
+    modules: Result<Vec<wire::ModuleSource>, String>,
 }
 
 fn parse<T: DeserializeOwned>(base: &str, what: &str, v: Value) -> Result<T, Failure> {
@@ -110,7 +112,23 @@ async fn get<T: DeserializeOwned>(admin: &Admin, what: &str, path: &str) -> Resu
     parse(admin.base(), what, admin.get(what, path).await?)
 }
 
-async fn read(admin: &Admin) -> Result<Remote, Failure> {
+/// The interpreter modules a v3 instance serves (`GET /admin/scripts/modules`),
+/// or the warning to give when it serves none: an older HappyView has no
+/// such route, and a sign-in without `scripts:read` may not read it.
+async fn read_modules(admin: &Admin) -> Result<Result<Vec<wire::ModuleSource>, String>, Failure> {
+    let what = "listing interpreter modules";
+    Ok(match admin.get_optional(what, "/scripts/modules").await? {
+        Optional::Read(v) => Ok(parse(admin.base(), what, v)?),
+        Optional::NotServed => Err(
+            "this HappyView doesn't serve interpreter module source, so files scripts import (such as src/lib/…) aren't pulled; copy them in by hand".into(),
+        ),
+        Optional::NotPermitted => Err(
+            "the sign-in can't read interpreter module source (that needs scripts:read), so files scripts import (such as src/lib/…) aren't pulled".into(),
+        ),
+    })
+}
+
+async fn read(admin: &Admin, generation: Generation) -> Result<Remote, Failure> {
     let mut lexicons: Vec<wire::Lexicon> = get(admin, "listing lexicons", "/lexicons").await?;
     for l in lexicons.iter_mut().filter(|l| !l.is_network()) {
         // An id that can't be a path is never asked for; it's reported later.
@@ -171,6 +189,11 @@ async fn read(admin: &Admin) -> Result<Remote, Failure> {
         .filter(|l| l.status == "active")
         .map(|l| l.did)
         .collect();
+    // v2 has no project, so nothing for scripts to import.
+    let modules = match generation {
+        Generation::V3 => read_modules(admin).await?,
+        Generation::V2 => Ok(Vec::new()),
+    };
     Ok(Remote {
         lexicons,
         network,
@@ -180,6 +203,7 @@ async fn read(admin: &Admin) -> Result<Remote, Failure> {
         app_name,
         superadmin,
         labelers,
+        modules,
     })
 }
 
@@ -414,6 +438,7 @@ struct Source {
     requires: BTreeSet<String>,
     lexicons: usize,
     scripts: usize,
+    modules: usize,
 }
 
 async fn source(
@@ -563,6 +588,32 @@ async fn source(
         }
         out.scripts += 1;
     }
+
+    match &remote.modules {
+        Ok(modules) => {
+            for m in modules {
+                // HappyView reads modules only from under `src/`
+                // (`project/walk.rs`), so a path anywhere else isn't one.
+                let Some(path) = map::safe_src_path(&m.path) else {
+                    report.warn(format!(
+                        "module {} has a path that isn't under src/ ({:?}), so it is left out",
+                        m.id, m.path
+                    ));
+                    continue;
+                };
+                if out.files.contains_key(&path) {
+                    report.warn(format!(
+                        "module {} belongs at {path}, where a script already is; the script was kept",
+                        m.id
+                    ));
+                    continue;
+                }
+                out.files.insert(path, m.source.clone());
+                out.modules += 1;
+            }
+        }
+        Err(why) => report.warn(why.clone()),
+    }
     Ok(out)
 }
 
@@ -573,6 +624,7 @@ struct Pulled {
     happyview: String,
     lexicons: usize,
     scripts: usize,
+    modules: usize,
     network: usize,
     variables: Vec<String>,
     report: Report,
@@ -703,7 +755,7 @@ async fn pull(
     served: Option<&str>,
 ) -> Result<Pulled, Failure> {
     let url = admin.base().to_string();
-    let remote = read(admin).await.map_err(|e| {
+    let remote = read(admin, generation).await.map_err(|e| {
         if generation == Generation::V2 && e.code == 3 {
             Failure::from(hpy_atproto::Error::LoginRequired(format!(
                 "{url} refused the v2 API key; create one in its dashboard with {LEGACY_PERMISSIONS}, and revoke it after the pull"
@@ -804,6 +856,7 @@ async fn pull(
         happyview,
         lexicons: src.lexicons,
         scripts: src.scripts,
+        modules: src.modules,
         network: remote.network.len(),
         variables: remote.variables,
         report,
@@ -868,8 +921,8 @@ fn summary(url: &str, dir: &Path, p: &Pulled) -> String {
     let mut lines = vec![
         format!("Pulled {url} into {}", dir.display()),
         format!(
-            "  {} lexicons, {} scripts, {} network lexicons; HappyView {}",
-            p.lexicons, p.scripts, p.network, p.happyview
+            "  {} lexicons, {} scripts, {} interpreter modules, {} network lexicons; HappyView {}",
+            p.lexicons, p.scripts, p.modules, p.network, p.happyview
         ),
     ];
     let r = &p.report;
@@ -1033,6 +1086,7 @@ mod tests {
             app_name: None,
             superadmin: None,
             labelers: vec![],
+            modules: Ok(vec![]),
         };
         // The registry says Lua files take a hostile extension; TS is fine.
         let extensions = BTreeMap::from([
