@@ -196,6 +196,16 @@ impl ProjectDeploy {
     }
 }
 
+/// What [`Admin::get_optional`] got.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Optional {
+    Read(Value),
+    /// 404: the instance has no such route, as an older HappyView may not.
+    NotServed,
+    /// 403: the sign-in may not read it.
+    NotPermitted,
+}
+
 enum Body<'a> {
     None,
     Json(&'a Value),
@@ -499,6 +509,26 @@ impl Admin {
             }
         }
         self.answer(what, status, &bytes).map(Some)
+    }
+
+    /// `get` for a read an older instance may not serve: a 404 answers
+    /// [`Optional::NotServed`] and a 403 [`Optional::NotPermitted`], rather
+    /// than an error. A reached limit is still an error: it is not a missing
+    /// permission.
+    pub async fn get_optional(&self, what: &str, path: &str) -> Result<Optional> {
+        let (status, bytes) = self
+            .request(what, reqwest::Method::GET, path, Body::None, None)
+            .await?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(Optional::NotServed);
+        }
+        if status == reqwest::StatusCode::FORBIDDEN {
+            let refusal: Refusal = serde_json::from_slice(&bytes).unwrap_or_default();
+            if refusal.error.as_deref() != Some("LimitReached") {
+                return Ok(Optional::NotPermitted);
+            }
+        }
+        self.answer(what, status, &bytes).map(Optional::Read)
     }
 
     /// Every installed plugin.

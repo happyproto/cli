@@ -78,6 +78,17 @@ fn lua() -> String {
     "lua".into()
 }
 
+/// A row of `GET /admin/scripts/modules` (`scripts.rs`,
+/// `ModuleSourceResponse`); v3, from the HappyView that added the route. An
+/// interpreter module: a file under `src/` that scripts import.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModuleSource {
+    pub id: String,
+    /// Project-relative and `/`-separated.
+    pub path: String,
+    pub source: String,
+}
+
 /// `GET /admin/script-variables` (`ScriptVariableSummary`). Only the key is
 /// read; the preview is a mask, and is ignored all the same.
 #[derive(Debug, Clone, Deserialize)]
