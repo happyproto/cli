@@ -10,6 +10,9 @@ use serde_json::{Value, json};
 use crate::credential::Credential;
 use crate::{Error, Result};
 
+mod script_variables;
+pub use script_variables::ScriptVariable;
+
 pub struct Admin {
     base: String,
     auth: Auth,
