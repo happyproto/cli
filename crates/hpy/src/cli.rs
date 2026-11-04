@@ -240,6 +240,9 @@ pub enum HappyviewCommand {
     Whoami,
     /// Make an instance match the project: its plugins from happyview.lock, then its lexicons, scripts and modules.
     Deploy(DeployArgs),
+    /// Work with the deployed instance's script variables, which scripts read as `ctx.env`.
+    #[command(subcommand)]
+    Env(EnvCommand),
 }
 
 #[derive(Args, Default)]
@@ -275,6 +278,35 @@ pub struct DeployArgs {
     #[arg(long)]
     pub prune_plugins: bool,
     /// Do not ask for confirmation.
+    #[arg(long, short)]
+    pub yes: bool,
+}
+
+#[derive(Subcommand)]
+pub enum EnvCommand {
+    /// Send keys from the project's .env to the instance's script variables, asking before each.
+    ///
+    /// Values are never shown: not in the questions, the output, --json or an error.
+    /// Keys are read from the file only, never from your shell's environment. The
+    /// instance shows values masked, so a key it already has is replaced without
+    /// knowing whether the value differs.
+    Push(EnvPushArgs),
+}
+
+#[derive(Args)]
+pub struct EnvPushArgs {
+    /// Only these keys; each must be in the file (default: every key in it).
+    #[arg(value_name = "KEY")]
+    pub keys: Vec<String>,
+    #[command(flatten)]
+    pub instance: InstanceArgs,
+    /// Read the keys from this file instead of .env in the project root.
+    #[arg(long, value_name = "PATH")]
+    pub env_file: Option<PathBuf>,
+    /// List each key as new or replacing an existing one, and send nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Send every key without asking.
     #[arg(long, short)]
     pub yes: bool,
 }
