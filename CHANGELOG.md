@@ -1,3 +1,10 @@
+# [1.0.0-alpha.29](https://github.com/happyproto/cli/compare/v1.0.0-alpha.28...v1.0.0-alpha.29) (2026-11-04)
+
+
+### Features
+
+* add hpy hv env push, sending .env keys to the instance's script variables ([1239348](https://github.com/happyproto/cli/commit/1239348d536da5711a6cf271f5e5b6548b20c04c))
+
 # [1.0.0-alpha.28](https://github.com/happyproto/cli/compare/v1.0.0-alpha.27...v1.0.0-alpha.28) (2026-11-02)
 
 
