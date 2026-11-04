@@ -845,13 +845,25 @@ async fn env_push_refuses_a_bad_key_by_its_line() {
     let server = variables_instance().await;
     login(config.path(), &server.uri());
     let before = server.received_requests().await.unwrap().len();
-    push(config.path(), project.path(), &["--yes"])
+    let stderr = push(config.path(), project.path(), &["--yes"])
         .code(2)
-        .stderr(
-            predicate::str::contains(".env:2: a key starts with a letter or _")
-                .and(predicate::str::contains(".env:3: expected KEY=VALUE"))
-                .and(predicate::str::contains("nothing was sent")),
-        );
+        .get_output()
+        .stderr
+        .clone();
+    // The report wraps at the terminal width, and a long temp path (as on
+    // Windows) moves the breaks: compare the words, not the layout.
+    let words = String::from_utf8_lossy(&stderr)
+        .replace(['│', '×', '├', '└', '─', '╭', '╰'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for wanted in [
+        ".env:2: a key starts with a letter or _",
+        ".env:3: expected KEY=VALUE",
+        "nothing was sent",
+    ] {
+        assert!(words.contains(wanted), "{wanted:?} not in {words:?}");
+    }
     assert_eq!(server.received_requests().await.unwrap().len(), before);
 }
 
