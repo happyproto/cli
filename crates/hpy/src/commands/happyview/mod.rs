@@ -4,6 +4,7 @@ pub mod check;
 pub mod create;
 pub mod deploy;
 pub mod dev;
+pub mod env;
 pub mod instance;
 #[cfg(unix)]
 pub mod network;
@@ -28,6 +29,7 @@ pub async fn run(ctx: &Ctx, command: HappyviewCommand) -> Result<(), Failure> {
         HappyviewCommand::Logout(a) => instance::logout(ctx, a).await,
         HappyviewCommand::Whoami => instance::whoami(ctx).await,
         HappyviewCommand::Deploy(a) => deploy::run(ctx, a).await,
+        HappyviewCommand::Env(c) => env::run(ctx, c).await,
         HappyviewCommand::Pull(a) => pull::run(ctx, a).await,
     }
 }
