@@ -479,6 +479,28 @@ impl Admin {
         }
     }
 
+    /// Any admin read, as the JSON it answers. `what` names the call in
+    /// errors; `path` is under `/admin`.
+    pub async fn get(&self, what: &str, path: &str) -> Result<Value> {
+        self.send(what, reqwest::Method::GET, path, None).await
+    }
+
+    /// `get`, answering `None` rather than an error when the sign-in lacks
+    /// the permission (403), for a read a caller can do without. A reached
+    /// limit is still an error: it is not a missing permission.
+    pub async fn get_if_permitted(&self, what: &str, path: &str) -> Result<Option<Value>> {
+        let (status, bytes) = self
+            .request(what, reqwest::Method::GET, path, Body::None, None)
+            .await?;
+        if status == reqwest::StatusCode::FORBIDDEN {
+            let refusal: Refusal = serde_json::from_slice(&bytes).unwrap_or_default();
+            if refusal.error.as_deref() != Some("LimitReached") {
+                return Ok(None);
+            }
+        }
+        self.answer(what, status, &bytes).map(Some)
+    }
+
     /// Every installed plugin.
     pub async fn plugins(&self) -> Result<Vec<InstalledPlugin>> {
         let out = self
@@ -1095,6 +1117,40 @@ mod tests {
         // HappyView checks htu against the path, without the query.
         assert_eq!(claims["htu"], format!("{}/admin/project", server.uri()));
         assert!(claims["ath"].is_string());
+    }
+
+    #[tokio::test]
+    async fn a_read_without_its_permission_can_be_done_without() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/admin/settings"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+                "error": "Forbidden", "message": "Missing permission: settings:manage"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/admin/users"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"did": "did:plc:a"}])))
+            .mount(&server)
+            .await;
+        let admin = Admin::new(&server.uri(), KEY);
+        assert_eq!(
+            admin
+                .get_if_permitted("reading settings", "/settings")
+                .await
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            admin.get("listing users", "/users").await.unwrap(),
+            json!([{"did": "did:plc:a"}])
+        );
+        let err = admin
+            .get("reading settings", "/settings")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("settings:manage"), "{err}");
     }
 
     #[test]

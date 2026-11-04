@@ -243,6 +243,38 @@ pub enum HappyviewCommand {
     /// Work with the deployed instance's script variables, which scripts read as `ctx.env`.
     #[command(subcommand)]
     Env(EnvCommand),
+    /// Build a project from what an instance serves: its lexicons, scripts, plugins and settings.
+    ///
+    /// The project is read from the instance's live state, so dashboard edits are kept. A v3
+    /// instance is read with your `hpy hv login` sign-in. A v2 instance needs --legacy and an API
+    /// key with lexicons:read, scripts:read, script-variables:read, plugins:read, labelers:read,
+    /// users:read and settings:manage (revoke it afterwards); each script is rewritten for v3 by
+    /// the pinned HappyView's happyview-codemod, and v2 plugins without an official registry
+    /// project are left out. Script variable values and plugin secrets are never pulled: the
+    /// variables' keys go to .env.example, and the secrets a plugin needs are listed. Ends by
+    /// running `hpy hv check` on the new project, which is written either way.
+    Pull(PullArgs),
+}
+
+#[derive(Args)]
+pub struct PullArgs {
+    /// Directory to create, relative to the current one (default: one named after the instance's host).
+    #[arg(value_name = "DIR")]
+    pub directory: Option<PathBuf>,
+    #[command(flatten)]
+    pub instance: InstanceArgs,
+    /// The instance runs HappyView v2: sign in with an API key and rewrite each script for v3.
+    #[arg(long)]
+    pub legacy: bool,
+    /// With --legacy, the environment variable holding the v2 API key (default: HAPPYVIEW_API_KEY); without it, the key is asked for.
+    #[arg(long, value_name = "NAME", requires = "legacy")]
+    pub api_key_env: Option<String>,
+    /// Compare the instance with the project in DIR and print a unified diff; writes nothing.
+    #[arg(long, conflicts_with = "dry_run")]
+    pub diff: bool,
+    /// Print the files and the happyview.toml a pull would write, and write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Args, Default)]
