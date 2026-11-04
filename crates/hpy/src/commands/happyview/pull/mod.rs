@@ -834,8 +834,10 @@ async fn compare_with_deploy(ctx: &Ctx, admin: &Admin, root: &Path) {
         Ok(b) if b.sha256 == deployed.sha256 => {
             ctx.out.status(&format!("It matches the last deploy, {short}."));
         }
+        // A regenerated happyview.toml rarely matches the deployed one byte
+        // for byte, so a different hash says little: name the deploy only.
         Ok(_) => ctx.out.status(&format!(
-            "It differs from the last deploy, {short}{}: the project is what the instance serves now.",
+            "Last deployed with `hpy happyview deploy` as {short}{}; the project is what the instance serves now.",
             deployed
                 .deployed_at
                 .map(|at| format!(" ({at})"))
