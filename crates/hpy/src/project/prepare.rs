@@ -90,7 +90,15 @@ fn locked_refusal(drift: Option<&[String]>, unrecorded: &[String]) -> String {
 }
 
 pub async fn prepare(ctx: &Ctx, opts: &PrepareOptions) -> Result<Prepared, Failure> {
-    let root = project_root(ctx)?;
+    prepare_at(ctx, project_root(ctx)?, opts).await
+}
+
+/// `prepare` for the project at `root`, which need not be where `hpy` runs.
+pub async fn prepare_at(
+    ctx: &Ctx,
+    root: PathBuf,
+    opts: &PrepareOptions,
+) -> Result<Prepared, Failure> {
     if std::env::var_os("PLUGIN_DIR").is_some() {
         ctx.out
             .status("warning: ignoring PLUGIN_DIR; hpy runs the plugins locked in happyview.lock");

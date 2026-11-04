@@ -50,6 +50,9 @@ pub fn http_client() -> reqwest::Client {
 }
 
 pub const BINARY_NAME: &str = "happyview";
+/// The v2-to-v3 script rewriter, which the release archive carries beside
+/// `happyview`.
+pub const CODEMOD_NAME: &str = "happyview-codemod";
 
 /// HappyView ships no Windows build, so a Windows host can't run it.
 fn runs_locally(target: &str) -> bool {
@@ -72,10 +75,10 @@ pub fn asset_name(target: &str) -> String {
     format!("happyview-{target}.tar.xz")
 }
 
-/// Where the binary sits inside the release archive: cargo-dist nests a
+/// Where a binary sits inside the release archive: cargo-dist nests a
 /// tarball's contents under `happyview-<triple>/`.
-fn archive_entry(target: &str) -> String {
-    format!("happyview-{target}/{BINARY_NAME}")
+fn archive_entry(target: &str, name: &str) -> String {
+    format!("happyview-{target}/{name}")
 }
 
 /// The digest in a `.sha256` file, which leads with the hex digest and may
@@ -123,10 +126,11 @@ fn check_entry(entry: &Entry, want: &str) -> Result<bool, Failure> {
     Ok(entry.file && entry.name == want)
 }
 
-/// The bytes of the `happyview` binary in a release archive, taken from the
-/// one entry cargo-dist puts it at and nowhere else.
-pub fn extract_binary(archive: &[u8], target: &str) -> Result<Vec<u8>, Failure> {
-    let want = archive_entry(target);
+/// The bytes of the binary called `name` (`happyview`, or a helper beside
+/// it) in a release archive, taken from the one entry cargo-dist puts it at
+/// and nowhere else.
+pub fn extract_named(archive: &[u8], target: &str, name: &str) -> Result<Vec<u8>, Failure> {
+    let want = archive_entry(target, name);
     let mut found: Option<Vec<u8>> = None;
     let take = |found: &mut Option<Vec<u8>>, reader: &mut dyn Read| {
         if found.is_some() {
@@ -274,6 +278,35 @@ pub async fn ensure_binary(
     target: &str,
     status: &dyn Fn(&str),
 ) -> Result<PathBuf, Failure> {
+    ensure_named(http, src, root, version, target, BINARY_NAME, status).await
+}
+
+/// The cached `happyview-codemod` of `version`, from the same verified
+/// archive `ensure_binary` reads. `HPY_HAPPYVIEW_CODEMOD` names one to use
+/// instead, for testing.
+pub async fn ensure_codemod(
+    http: &reqwest::Client,
+    src: &ReleaseSource,
+    root: &Path,
+    version: &str,
+    target: &str,
+    status: &dyn Fn(&str),
+) -> Result<PathBuf, Failure> {
+    if let Some(path) = std::env::var_os("HPY_HAPPYVIEW_CODEMOD").filter(|p| !p.is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+    ensure_named(http, src, root, version, target, CODEMOD_NAME, status).await
+}
+
+async fn ensure_named(
+    http: &reqwest::Client,
+    src: &ReleaseSource,
+    root: &Path,
+    version: &str,
+    target: &str,
+    name: &str,
+    status: &dyn Fn(&str),
+) -> Result<PathBuf, Failure> {
     require_local_build(target)?;
     // The version names a cache directory, so anything but a version could
     // point it somewhere else.
@@ -282,7 +315,7 @@ pub async fn ensure_binary(
             "`{version}` is not a HappyView version; set [happyview] version in happyview.toml to one, like 3.0.0"
         )));
     }
-    let path = cache::binary_path(root, version, target);
+    let path = cache::binary_path(root, version, target).with_file_name(name);
     if path.is_file() {
         return Ok(path);
     }
@@ -306,7 +339,7 @@ pub async fn ensure_binary(
             "the downloaded {asset} does not match its published .sha256; nothing was installed"
         )));
     }
-    let binary = extract_binary(&archive, target)?;
+    let binary = extract_named(&archive, target, name)?;
     cache::install_file(&path, &binary, true).map_err(Failure::runtime)?;
     Ok(path)
 }
@@ -401,12 +434,76 @@ mod tests {
             ("elsewhere/happyview", b"NOT IT EITHER", 0o755),
             (LINUX_ENTRY, b"ELF", 0o755),
         ]);
-        assert_eq!(extract_binary(&tar, LINUX).unwrap(), b"ELF");
+        assert_eq!(extract_named(&tar, LINUX, BINARY_NAME).unwrap(), b"ELF");
         let misplaced = tar_xz(&[("README.md", b"r", 0o644), ("happyview", b"ELF", 0o755)]);
         assert!(
-            error_text(extract_binary(&misplaced, LINUX).unwrap_err())
+            error_text(extract_named(&misplaced, LINUX, BINARY_NAME).unwrap_err())
                 .contains(&format!("no `{LINUX_ENTRY}`"))
         );
+    }
+
+    #[test]
+    fn extracts_the_codemod_beside_the_binary() {
+        let tar = tar_xz(&[
+            (LINUX_ENTRY, b"ELF", 0o755),
+            (
+                "happyview-x86_64-unknown-linux-musl/happyview-codemod",
+                b"CODEMOD",
+                0o755,
+            ),
+        ]);
+        assert_eq!(
+            extract_named(&tar, LINUX, CODEMOD_NAME).unwrap(),
+            b"CODEMOD"
+        );
+        let without = tar_xz(&[(LINUX_ENTRY, b"ELF", 0o755)]);
+        assert!(
+            error_text(extract_named(&without, LINUX, CODEMOD_NAME).unwrap_err())
+                .contains("happyview-codemod")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_codemod_comes_from_the_same_verified_archive() {
+        let server = MockServer::start().await;
+        let archive = tar_xz(&[
+            (LINUX_ENTRY, b"ELF", 0o755),
+            (
+                "happyview-x86_64-unknown-linux-musl/happyview-codemod",
+                b"#!/bin/sh\n",
+                0o755,
+            ),
+        ]);
+        let asset = asset_name(LINUX);
+        Mock::given(method("GET"))
+            .and(path(format!("/dl/v3.0.0/{asset}")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(archive.clone()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/dl/v3.0.0/{asset}.sha256")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(hex(&archive)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let cache = tempfile::tempdir().unwrap();
+        let got = ensure_named(
+            &http_client(),
+            &source(&server),
+            cache.path(),
+            "3.0.0",
+            LINUX,
+            CODEMOD_NAME,
+            &|_| {},
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            got,
+            cache::binary_path(cache.path(), "3.0.0", LINUX).with_file_name(CODEMOD_NAME)
+        );
+        assert_eq!(std::fs::read(&got).unwrap(), b"#!/bin/sh\n");
     }
 
     #[test]
@@ -443,14 +540,17 @@ mod tests {
             ),
             (vec![(LINUX_ENTRY, Symlink, &b""[..])], "link"),
         ] {
-            let err = extract_binary(&raw_tar_xz(&entries), LINUX).unwrap_err();
+            let err = extract_named(&raw_tar_xz(&entries), LINUX, BINARY_NAME).unwrap_err();
             assert!(error_text(err).contains(says), "{entries:?}");
         }
         let twice = raw_tar_xz(&[
             (LINUX_ENTRY, Regular, b"one"),
             (LINUX_ENTRY, Regular, b"two"),
         ]);
-        assert!(error_text(extract_binary(&twice, LINUX).unwrap_err()).contains("more than once"));
+        assert!(
+            error_text(extract_named(&twice, LINUX, BINARY_NAME).unwrap_err())
+                .contains("more than once")
+        );
     }
 
     #[tokio::test]

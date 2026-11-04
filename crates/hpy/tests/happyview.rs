@@ -3085,3 +3085,835 @@ fn a_chosen_subnet_is_kept_until_reset_moves_it() {
     let calls = net.sandbox_calls();
     assert!(calls.contains(&created_on("10.41.0.0/24")), "{calls:?}");
 }
+
+/// `hpy happyview pull` against a fake admin API: v3-shaped answers built
+/// from HappyView's alpha (`src/admin/`), v2-shaped ones from its beta
+/// (v2.17.0), and the fake release and registry above.
+#[cfg(unix)]
+mod pull {
+    use super::*;
+    use serde_json::{Value, json};
+    use wiremock::matchers::header;
+
+    const KEY: &str = "hv_0123456789abcdef0123456789abcdef";
+    const OFFICIAL: &str = "did:plc:mo7vq4jbioxwafy5zkcc3eux";
+
+    fn lexicon(id: &str, ty: &str) -> Value {
+        let main = match ty {
+            "record" => {
+                json!({"type": "record", "key": "tid", "record": {"type": "object", "properties": {}}})
+            }
+            "procedure" => json!({"type": "procedure"}),
+            _ => json!({"type": "query"}),
+        };
+        json!({"lexicon": 1, "id": id, "defs": {"main": main}})
+    }
+
+    /// A row of v3's `GET /admin/lexicons`.
+    fn v3_lexicon(id: &str, ty: &str, layer: &str, backfill: bool, indexed: bool) -> Value {
+        json!({
+            "id": id, "revision": 1, "lexicon_type": ty, "backfill": backfill,
+            "source": layer, "layer": layer,
+            "path": (layer == "project").then(|| format!("src/lexicons/{}.json", id.replace('.', "/"))),
+            "shadows_stored": false, "declared": layer == "network",
+            "authority_did": null, "last_fetched_at": null,
+            "created_at": null, "updated_at": null, "token_cost": null, "indexed": indexed
+        })
+    }
+
+    /// A row of v3's `GET /admin/scripts`.
+    fn v3_script(
+        id: &str,
+        language: &str,
+        layer: &str,
+        body: &str,
+        description: Option<&str>,
+    ) -> Value {
+        json!({
+            "id": id, "script_type": language, "body": body, "description": description,
+            "outbound_xrpcs": null, "created_at": null, "updated_at": null,
+            "layer": layer, "path": null, "shadows_stored": false, "recreatable": true,
+            "needs_migration": [], "runnable": true
+        })
+    }
+
+    /// A v3 plugin installed from the fake registry.
+    fn v3_plugin(id: &str, ty: &str, namespace: Option<&str>, secrets: &[&str]) -> Value {
+        json!({
+            "id": id, "name": id, "version": "1.4.2", "description": null, "icon_url": null,
+            "banner_url": null, "source": "registry", "url": null, "sha256": null,
+            "enabled": true, "auth_type": "none",
+            "required_secrets": secrets.iter().map(|k| json!({"key": k, "name": k, "description": null})).collect::<Vec<_>>(),
+            "secrets_configured": secrets.is_empty(), "loaded_at": null, "update_available": false,
+            "pending_releases": [],
+            "registry": {
+                "did": HV_DID, "name": id, "channel": "latest",
+                "version_uri": format!("at://{HV_DID}/software.release.version/{id}.1.4.2"),
+                "installed_state": "active", "installed_reason": null, "channel_state": "active",
+                "unresolved": false
+            },
+            "plugin_type": ty, "namespace": namespace, "dependencies": [], "allowed_hosts": [],
+            "capabilities": {"declared": []}
+        })
+    }
+
+    struct Instance {
+        server: MockServer,
+    }
+
+    impl Instance {
+        fn start(stack: &Stack) -> Instance {
+            Instance {
+                server: stack.rt.block_on(MockServer::start()),
+            }
+        }
+
+        fn serve(&self, stack: &Stack, at: &str, body: Value) {
+            self.serve_status(stack, at, 200, body);
+        }
+
+        fn serve_status(&self, stack: &Stack, at: &str, status: u16, body: Value) {
+            stack.rt.block_on(
+                Mock::given(method("GET"))
+                    .and(path(at))
+                    .respond_with(ResponseTemplate::new(status).set_body_json(body))
+                    .mount(&self.server),
+            );
+        }
+
+        /// Fails the test if pull ever asks for a plugin's secrets.
+        fn forbid_secrets(&self, stack: &Stack) {
+            stack.rt.block_on(
+                Mock::given(wiremock::matchers::path_regex(
+                    "^/admin/plugins/[^/]+/secrets$",
+                ))
+                .respond_with(ResponseTemplate::new(500))
+                .expect(0)
+                .mount(&self.server),
+            );
+        }
+
+        fn lexicons(&self, stack: &Stack, rows: &[(Value, Value)]) {
+            let list: Vec<Value> = rows.iter().map(|(row, _)| row.clone()).collect();
+            self.serve(stack, "/admin/lexicons", json!(list));
+            for (row, doc) in rows {
+                let mut full = row.clone();
+                full["lexicon_json"] = doc.clone();
+                self.serve(
+                    stack,
+                    &format!("/admin/lexicons/{}", row["id"].as_str().unwrap()),
+                    full,
+                );
+            }
+        }
+
+        fn uri(&self) -> String {
+            self.server.uri()
+        }
+
+        fn requests(&self, stack: &Stack) -> Vec<wiremock::Request> {
+            stack
+                .rt
+                .block_on(self.server.received_requests())
+                .unwrap_or_default()
+        }
+    }
+
+    fn ts_interpreter() -> Plugin {
+        let mut ts = Plugin::interpreter("happyview-ts", "typescript", b"\0asm ts");
+        ts.fields["fileExtensions"] = json!(["ts"]);
+        ts
+    }
+
+    fn library_with_secret() -> Plugin {
+        Plugin::library("happyview-db", "happyview.db", b"\0asm db")
+    }
+
+    /// A v3 instance with one of everything a project holds.
+    fn v3(stack: &Stack, settings_allowed: bool) -> Instance {
+        mount_registry(
+            stack,
+            &[
+                Plugin::interpreter("happyview-lua", "lua", b"\0asm lua"),
+                ts_interpreter(),
+                library_with_secret(),
+            ],
+        );
+        let i = Instance::start(stack);
+        i.serve(
+            stack,
+            "/config",
+            json!({"version": VERSION, "cli_client_key": "hvc_hpy"}),
+        );
+        i.lexicons(
+            stack,
+            &[
+                (
+                    v3_lexicon("com.example.listPosts", "query", "project", false, true),
+                    lexicon("com.example.listPosts", "query"),
+                ),
+                (
+                    v3_lexicon("com.example.createPost", "procedure", "manual", false, true),
+                    lexicon("com.example.createPost", "procedure"),
+                ),
+                (
+                    v3_lexicon("com.example.post", "record", "manual", true, false),
+                    lexicon("com.example.post", "record"),
+                ),
+                (
+                    v3_lexicon("com.example.getThing", "query", "manual", false, true),
+                    lexicon("com.example.getThing", "query"),
+                ),
+                (
+                    v3_lexicon("com.other.feed", "record", "network", false, true),
+                    lexicon("com.other.feed", "record"),
+                ),
+            ],
+        );
+        i.serve(
+            stack,
+            "/admin/network-lexicons",
+            json!([{"nsid": "com.other.feed", "authority_did": "did:plc:other",
+                    "last_fetched_at": null, "created_at": "2026-01-01T00:00:00Z",
+                    "declared": true, "indexed": true}]),
+        );
+        let mut listed = v3_script(
+            "xrpc.query:com.example.listPosts",
+            "lua",
+            "project",
+            "-- Lists posts.\nfunction handle(input, ctx)\n  return xrpc.query(\"com.other.get\")\nend\n",
+            Some("Lists posts."),
+        );
+        listed["path"] = json!("src/lexicons/com/example/listPosts.lua");
+        listed["outbound_xrpcs"] = json!(["com.other.get"]);
+        i.serve(
+            stack,
+            "/admin/scripts",
+            json!([
+                listed,
+                v3_script(
+                    "xrpc.procedure:com.example.createPost",
+                    "typescript",
+                    "manual",
+                    "export function handle(input, ctx) {\n  return {};\n}\n",
+                    Some("Creates a post"),
+                ),
+                v3_script(
+                    "record.create:com.example.post",
+                    "lua",
+                    "manual",
+                    "function handle() end\n",
+                    None
+                ),
+                v3_script(
+                    "job.run:nightly",
+                    "lua",
+                    "manual",
+                    "function handle() end\n",
+                    None
+                ),
+                v3_script(
+                    "labeler.apply:_actor",
+                    "lua",
+                    "manual",
+                    "function handle() end\n",
+                    None
+                ),
+            ]),
+        );
+        i.serve(
+            stack,
+            "/admin/script-variables",
+            json!([{"key": "API_TOKEN", "preview": "••••••••", "unreadable": false,
+                    "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}]),
+        );
+        let mut hand_made = v3_plugin("hand-made", "library", Some("hand.made"), &[]);
+        hand_made["source"] = json!("url");
+        hand_made["registry"] = Value::Null;
+        i.serve(
+            stack,
+            "/admin/plugins",
+            json!({"plugins": [
+                v3_plugin("happyview-lua", "interpreter", None, &[]),
+                v3_plugin("happyview-ts", "interpreter", None, &[]),
+                v3_plugin("happyview-db", "library", Some("happyview.db"), &["DB_URL"]),
+                hand_made,
+            ], "encryption_configured": true}),
+        );
+        if settings_allowed {
+            i.serve(
+                stack,
+                "/admin/settings",
+                json!([{"key": "app_name", "value": "My App", "source": "database"},
+                       {"key": "logo_uri", "value": "https://x/logo.png", "source": "database"}]),
+            );
+        } else {
+            i.serve_status(
+                stack,
+                "/admin/settings",
+                403,
+                json!({"error": "Forbidden", "message": "Missing permission: settings:manage"}),
+            );
+        }
+        i.serve(
+            stack,
+            "/admin/users",
+            json!([
+                {"id": "1", "did": "did:plc:member", "is_super": false, "permissions": [], "created_at": "x", "last_used_at": null},
+                {"id": "2", "did": "did:plc:super", "is_super": true, "permissions": [], "created_at": "x", "last_used_at": null}
+            ]),
+        );
+        i.serve(
+            stack,
+            "/admin/labelers",
+            json!([
+                {"declared": false, "did": "did:plc:labeler", "status": "active", "cursor": null, "created_at": "x", "updated_at": "x"},
+                {"declared": false, "did": "did:plc:paused", "status": "paused", "cursor": null, "created_at": "x", "updated_at": "x"}
+            ]),
+        );
+        i.serve_status(stack, "/admin/project", 404, json!({"error": "NoProject"}));
+        i.forbid_secrets(stack);
+        i
+    }
+
+    fn pull(stack: &Stack, i: &Instance) -> Command {
+        let mut cmd = stack.hpy();
+        cmd.env("HPY_HV_URL", i.uri()).env("HPY_HV_API_KEY", KEY);
+        cmd.args(["hv", "pull", "pulled"]);
+        cmd
+    }
+
+    fn toml_of(dir: &Path) -> toml::Value {
+        toml::from_str(&read(&dir.join("happyview.toml"))).unwrap()
+    }
+
+    fn tree(dir: &Path) -> Vec<String> {
+        fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(root, &p, out);
+                } else {
+                    out.push(p.strip_prefix(root).unwrap().to_string_lossy().into_owned());
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(dir, dir, &mut out);
+        out.retain(|p| !p.starts_with(".happyview"));
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn pulls_a_v3_instance_into_a_project_that_checks() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        let out = pull(&stack, &i)
+            .env("HV_EXIT", "0")
+            .assert()
+            .success()
+            .stderr(says("plugin `hand-made` was installed from a url"))
+            .get_output()
+            .clone();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("happyview-db: DB_URL"), "{stdout}");
+        assert!(
+            stdout.contains("Script variables, in .env.example without their values: API_TOKEN"),
+            "{stdout}"
+        );
+        let dir = stack.project.path().join("pulled");
+        let files = tree(&dir);
+        for want in [
+            ".env.example",
+            ".gitignore",
+            "happyview.lock",
+            "happyview.toml",
+            "src/jobs/nightly.lua",
+            "src/labels/_actor.lua",
+            "src/lexicons/com/example/createPost.json",
+            "src/lexicons/com/example/createPost.ts",
+            "src/lexicons/com/example/getThing.json",
+            "src/lexicons/com/example/listPosts.json",
+            "src/lexicons/com/example/listPosts.lua",
+            "src/lexicons/com/example/post.create.lua",
+            "src/lexicons/com/example/post.json",
+        ] {
+            assert!(
+                files.contains(&want.to_string()),
+                "{want} missing from {files:?}"
+            );
+        }
+        // A network lexicon is named, not copied.
+        assert!(!files.iter().any(|f| f.contains("com/other")), "{files:?}");
+        assert_eq!(
+            read(&dir.join("src/lexicons/com/example/createPost.ts")),
+            "export function handle(input, ctx) {\n  return {};\n}\n"
+        );
+        let doc: Value =
+            serde_json::from_str(&read(&dir.join("src/lexicons/com/example/post.json"))).unwrap();
+        assert_eq!(doc, lexicon("com.example.post", "record"));
+
+        let t = toml_of(&dir);
+        assert_eq!(t["happyview"]["version"].as_str(), Some(VERSION));
+        assert_eq!(t["instance"]["app_name"].as_str(), Some("My App"));
+        assert_eq!(t["instance"]["superadmin"].as_str(), Some("did:plc:super"));
+        assert_eq!(
+            t["interpreters"]["lua"]["name"].as_str(),
+            Some("happyview-lua")
+        );
+        assert_eq!(t["interpreters"]["lua"]["channel"].as_str(), Some("latest"));
+        assert_eq!(
+            t["interpreters"]["typescript"]["did"].as_str(),
+            Some(HV_DID)
+        );
+        assert_eq!(
+            t["libraries"]["happyview.db"]["name"].as_str(),
+            Some("happyview-db")
+        );
+        assert!(t["libraries"].get("hand.made").is_none());
+        assert_eq!(
+            t["network_lexicons"]["include"].as_array().unwrap(),
+            &vec![toml::Value::from("com.other.feed")]
+        );
+        assert_eq!(
+            t["labels"]["subscribe"].as_array().unwrap(),
+            &vec![toml::Value::from("did:plc:labeler")]
+        );
+        // Only what differs from a project lexicon's defaults.
+        let lexicons = t["lexicons"].as_table().unwrap();
+        assert_eq!(lexicons.keys().collect::<Vec<_>>(), ["com.example.post"]);
+        assert_eq!(
+            lexicons["com.example.post"]["backfill"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            lexicons["com.example.post"]["indexed"].as_bool(),
+            Some(false)
+        );
+        // A description the leading comment already gives, and calls the
+        // body already makes, are not repeated.
+        let scripts = t["scripts"].as_table().unwrap();
+        assert_eq!(
+            scripts.keys().collect::<Vec<_>>(),
+            ["xrpc.procedure:com.example.createPost"]
+        );
+        assert_eq!(
+            scripts["xrpc.procedure:com.example.createPost"]["description"].as_str(),
+            Some("Creates a post")
+        );
+        assert!(t.get("jetstream").is_none());
+
+        let env = read(&dir.join(".env.example"));
+        assert!(env.contains("\nAPI_TOKEN=\n"), "{env}");
+        assert!(!env.contains("••"), "{env}");
+        let lock = read(&dir.join("happyview.lock"));
+        for id in ["happyview-lua", "happyview-ts", "happyview-db"] {
+            assert!(lock.contains(&format!("id = \"{id}\"")), "{lock}");
+        }
+        // Pull ends with the same check `hpy hv check` runs.
+        assert_eq!(stack.log().trim(), "check .");
+        assert!(
+            i.requests(&stack)
+                .iter()
+                .all(|r| !r.url.path().contains("secrets")),
+            "asked for plugin secrets"
+        );
+    }
+
+    #[test]
+    fn a_module_handler_is_declared_and_its_missing_crate_fails_the_check() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        // Mounted after the full listing, so it answers instead.
+        stack.rt.block_on(
+            Mock::given(method("GET"))
+                .and(path("/admin/scripts"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
+                    "id": "xrpc.query:com.example.getThing", "script_type": "rust", "body": "",
+                    "description": null, "outbound_xrpcs": null, "created_at": null,
+                    "updated_at": null, "layer": "project", "path": "modules/scoring",
+                    "shadows_stored": false, "recreatable": true, "needs_migration": [],
+                    "runnable": true,
+                    "module": {"module": "scoring", "path": "modules/scoring", "handler": "get_thing", "hash": "ab12"}
+                }])))
+                .with_priority(1)
+                .mount(&i.server),
+        );
+        let out = pull(&stack, &i)
+            .env("HV_EXIT", "0")
+            .assert()
+            .failure()
+            .get_output()
+            .clone();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stdout.contains(
+                "scoring (modules/scoring, `get_thing` handles xrpc.query:com.example.getThing)"
+            ),
+            "{stdout}"
+        );
+        assert!(stderr.contains("was written"), "{stderr}");
+        let dir = stack.project.path().join("pulled");
+        let t = toml_of(&dir);
+        assert_eq!(t["modules"]["scoring"]["language"].as_str(), Some("rust"));
+        assert_eq!(
+            t["modules"]["scoring"]["path"].as_str(),
+            Some("modules/scoring")
+        );
+        // A module handler has no body to write.
+        assert!(
+            !tree(&dir)
+                .iter()
+                .any(|f| f.contains("getThing.") && !f.ends_with(".json"))
+        );
+    }
+
+    #[test]
+    fn a_key_without_settings_manage_skips_the_app_name_and_a_failed_check_still_writes() {
+        let stack = Stack::new();
+        let i = v3(&stack, false);
+        pull(&stack, &i)
+            .env("HV_EXIT", "3")
+            .assert()
+            .code(3)
+            .stderr(says("that needs settings:manage"))
+            .stderr(says("was written"));
+        let dir = stack.project.path().join("pulled");
+        let t = toml_of(&dir);
+        assert!(t["instance"].get("app_name").is_none());
+        assert_eq!(t["instance"]["superadmin"].as_str(), Some("did:plc:super"));
+        assert_eq!(stack.log().trim(), "check .");
+    }
+
+    #[test]
+    fn an_existing_project_is_refused() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        let dir = stack.project.path().join("pulled");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("happyview.toml"), "mine\n").unwrap();
+        pull(&stack, &i)
+            .assert()
+            .code(2)
+            .stderr(says("is already a project; use --diff"));
+        assert_eq!(read(&dir.join("happyview.toml")), "mine\n");
+        assert_eq!(tree(&dir), ["happyview.toml"]);
+    }
+
+    #[test]
+    fn diff_prints_what_differs_and_writes_nothing() {
+        let stack = Stack::new();
+        let i = v3(&stack, true);
+        let dir = stack.project.path().join("pulled");
+        std::fs::create_dir_all(dir.join("src/jobs")).unwrap();
+        std::fs::write(
+            dir.join("happyview.toml"),
+            "[happyview]\nversion = \"0.0.1\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/jobs/nightly.lua"), "-- mine\n").unwrap();
+        std::fs::write(dir.join("src/jobs/nightly.test.lua"), "-- a test\n").unwrap();
+        let before = tree(&dir);
+        let out = pull(&stack, &i)
+            .arg("--diff")
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("--- a/src/jobs/nightly.lua\n+++ b/src/jobs/nightly.lua"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("--- /dev/null\n+++ b/src/lexicons/com/example/post.json"),
+            "{stdout}"
+        );
+        assert!(stdout.contains("-version = \"0.0.1\""), "{stdout}");
+        assert!(!stdout.contains("nightly.test.lua"), "{stdout}");
+        assert_eq!(tree(&dir), before);
+        assert_eq!(read(&dir.join("src/jobs/nightly.lua")), "-- mine\n");
+        // Nothing to check: nothing was written.
+        assert_eq!(stack.log(), "");
+    }
+
+    #[test]
+    fn a_v2_instance_needs_legacy() {
+        let stack = Stack::new();
+        let i = Instance::start(&stack);
+        i.serve(&stack, "/config", json!({"version": "2.17.0"}));
+        pull(&stack, &i)
+            .assert()
+            .code(2)
+            .stderr(says("is a v2 instance (HappyView 2.17.0); add --legacy"));
+        assert!(!stack.project.path().join("pulled").exists());
+    }
+
+    /// Stands in for `happyview-codemod`: logs its arguments, prefixes the
+    /// script with what it was asked, adds a `happyview.db` require, and
+    /// leaves a marker in a job.
+    const FAKE_CODEMOD: &str = r#"#!/bin/sh
+echo "$*" >> "$CODEMOD_LOG"
+kind=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "--kind" ] && kind="$2"
+  shift
+done
+echo "-- v3 $kind"
+echo 'local db = require("happyview.db")'
+cat
+if [ "$kind" = job ]; then
+  echo "-- codemod: ctx.job has no v3 equivalent"
+  echo "ctx.job has no v3 equivalent" >&2
+  exit 2
+fi
+"#;
+
+    fn v2_lexicon(id: &str, ty: &str, target: Option<&str>) -> Value {
+        json!({
+            "id": id, "revision": 1, "lexicon_json": lexicon(id, ty), "lexicon_type": ty,
+            "backfill": true, "action": if ty == "procedure" { json!("upsert") } else { Value::Null },
+            "target_collection": target, "source": "manual", "authority_did": null,
+            "last_fetched_at": null, "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z", "token_cost": null
+        })
+    }
+
+    fn v2_script(id: &str, body: &str, description: Option<&str>) -> Value {
+        json!({
+            "id": id, "script_type": "lua", "body": body, "description": description,
+            "outbound_xrpcs": null, "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z", "recreatable": true
+        })
+    }
+
+    fn v2_plugin(id: &str, secrets: &[&str]) -> Value {
+        json!({
+            "id": id, "name": id, "version": "0.3.0", "source": "url",
+            "url": format!("https://plugins.example/{id}.wasm"), "sha256": null, "enabled": true,
+            "auth_type": "oauth2",
+            "required_secrets": secrets.iter().map(|k| json!({"key": k, "name": k, "description": null})).collect::<Vec<_>>(),
+            "secrets_configured": false, "loaded_at": null, "update_available": false,
+            "latest_version": null, "pending_releases": []
+        })
+    }
+
+    fn v2(stack: &Stack) -> Instance {
+        let steam = Plugin::library("steam", "steam", b"\0asm steam");
+        let steam_version = steam.version_json();
+        mount_registry(
+            stack,
+            &[
+                Plugin::interpreter("happyview-lua", "lua", b"\0asm lua"),
+                library_with_secret(),
+                steam,
+            ],
+        );
+        stack.rt.block_on(async {
+            // The official project of a v2 plugin, on its alpha channel.
+            Mock::given(method("GET"))
+                .and(path("/xrpc/at.happyproto.registry.resolveChannel"))
+                .and(wiremock::matchers::query_param("name", "steam"))
+                .and(wiremock::matchers::query_param("channel", "alpha"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(steam_version))
+                .mount(&stack.server)
+                .await;
+            Mock::given(method("GET"))
+                .and(path("/repos/gamesgamesgamesgamesgames/happyview/releases"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([{
+                    "tag_name": format!("v{VERSION}"), "draft": false,
+                    "assets": [{"name": format!("happyview-{}.tar.xz", target())}]
+                }])))
+                .mount(&stack.server)
+                .await;
+        });
+        let i = Instance::start(stack);
+        i.serve(stack, "/config", json!({"version": "2.17.0"}));
+        // Every admin read needs the key, as a bearer token.
+        stack.rt.block_on(
+            Mock::given(wiremock::matchers::path_regex("^/admin/"))
+                .respond_with(
+                    ResponseTemplate::new(401).set_body_json(json!({"error": "Unauthorized"})),
+                )
+                .with_priority(10)
+                .mount(&i.server),
+        );
+        let authed = |at: &str, body: Value| {
+            stack.rt.block_on(
+                Mock::given(method("GET"))
+                    .and(path(at))
+                    .and(header("authorization", format!("Bearer {KEY}").as_str()))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                    .mount(&i.server),
+            );
+        };
+        let lexicons = [
+            v2_lexicon("com.example.listPosts", "query", Some("com.example.post")),
+            v2_lexicon("com.example.post", "record", None),
+        ];
+        authed("/admin/lexicons", json!(lexicons));
+        for l in &lexicons {
+            authed(
+                &format!("/admin/lexicons/{}", l["id"].as_str().unwrap()),
+                l.clone(),
+            );
+        }
+        authed("/admin/network-lexicons", json!([]));
+        authed(
+            "/admin/scripts",
+            json!([
+                v2_script(
+                    "xrpc.query:com.example.listPosts",
+                    "return db.query({collection = collection})\n",
+                    Some("Lists posts")
+                ),
+                v2_script("record.create:com.example.post", "log(record.uri)\n", None),
+                v2_script("job.run:cleanup", "local j = ctx.job\n", None),
+                v2_script("labeler.apply:com.example.post", "return {}\n", None),
+            ]),
+        );
+        authed(
+            "/admin/script-variables",
+            json!([{"key": "WEBHOOK_SECRET", "preview": "••••••••", "unreadable": false, "created_at": "x", "updated_at": "x"}]),
+        );
+        authed(
+            "/admin/plugins",
+            json!({"plugins": [v2_plugin("steam", &["STEAM_API_KEY"]), v2_plugin("homebrew-thing", &[])], "encryption_configured": true}),
+        );
+        authed(
+            "/admin/settings",
+            json!([{"key": "app_name", "value": "Old App", "source": "database"}]),
+        );
+        authed(
+            "/admin/users",
+            json!([{"id": "1", "did": "did:plc:super", "is_super": true, "permissions": [], "created_at": "x", "last_used_at": null}]),
+        );
+        authed("/admin/labelers", json!([]));
+        i.forbid_secrets(stack);
+        i
+    }
+
+    fn codemod(stack: &Stack) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = stack.cache.path().join("fake-codemod");
+        std::fs::write(&bin, FAKE_CODEMOD).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (bin, stack.project.path().join("codemod.log"))
+    }
+
+    #[test]
+    fn legacy_pulls_a_v2_instance_through_the_codemod() {
+        let stack = Stack::new();
+        let i = v2(&stack);
+        let (bin, log) = codemod(&stack);
+        let out = stack
+            .hpy()
+            .args(["hv", "pull", "--legacy", "--url", &i.uri(), "pulled"])
+            .env("HAPPYVIEW_API_KEY", KEY)
+            .env("HPY_HAPPYVIEW_CODEMOD", &bin)
+            .env("CODEMOD_LOG", &log)
+            .env("HV_EXIT", "0")
+            .assert()
+            .success()
+            .stderr(says(
+                "v2 plugin `homebrew-thing` has no official registry project",
+            ))
+            .get_output()
+            .clone();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("src/jobs/cleanup.lua: the codemod left `-- codemod:` markers"),
+            "{stdout}"
+        );
+        assert!(stdout.contains("steam: STEAM_API_KEY"), "{stdout}");
+
+        let calls = read(&log);
+        assert!(
+            calls.contains("--stdin --kind query --collection com.example.post\n"),
+            "{calls}"
+        );
+        assert!(calls.contains("--stdin --kind record\n"), "{calls}");
+        assert!(calls.contains("--stdin --kind job\n"), "{calls}");
+        assert!(calls.contains("--stdin --kind label\n"), "{calls}");
+
+        let dir = stack.project.path().join("pulled");
+        assert_eq!(
+            read(&dir.join("src/lexicons/com/example/listPosts.lua")),
+            "-- v3 query\nlocal db = require(\"happyview.db\")\nreturn db.query({collection = collection})\n"
+        );
+        assert!(read(&dir.join("src/jobs/cleanup.lua")).contains("-- codemod: ctx.job"));
+        assert!(
+            dir.join("src/lexicons/com/example/post.create.lua")
+                .is_file()
+        );
+        assert!(dir.join("src/labels/com.example.post.lua").is_file());
+
+        let t = toml_of(&dir);
+        assert_eq!(t["happyview"]["version"].as_str(), Some(VERSION));
+        assert_eq!(t["instance"]["app_name"].as_str(), Some("Old App"));
+        assert_eq!(
+            t["interpreters"]
+                .as_table()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            ["lua"]
+        );
+        assert_eq!(
+            t["libraries"]["happyview.db"]["name"].as_str(),
+            Some("happyview-db")
+        );
+        assert_eq!(t["libraries"]["steam"]["did"].as_str(), Some(OFFICIAL));
+        assert_eq!(t["libraries"]["steam"]["channel"].as_str(), Some("alpha"));
+        assert!(t["libraries"].get("homebrew-thing").is_none());
+        // Backfill means something only for a record lexicon; v2 sets it on
+        // every one.
+        assert_eq!(
+            t["lexicons"].as_table().unwrap().keys().collect::<Vec<_>>(),
+            ["com.example.post"]
+        );
+        assert_eq!(
+            t["lexicons"]["com.example.post"]["backfill"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            t["scripts"]["xrpc.query:com.example.listPosts"]["description"].as_str(),
+            Some("Lists posts")
+        );
+        let text = read(&dir.join("happyview.toml"));
+        assert!(
+            !text.contains("target_collection") && !text.contains("action"),
+            "{text}"
+        );
+        assert!(read(&dir.join(".env.example")).contains("\nWEBHOOK_SECRET=\n"));
+
+        // The key is read, never written.
+        for f in tree(&dir) {
+            assert!(!read(&dir.join(&f)).contains(KEY), "{f} holds the key");
+        }
+        assert_eq!(stack.log().trim(), "check .");
+    }
+
+    #[test]
+    fn legacy_without_a_key_or_a_terminal_says_where_to_put_one() {
+        let stack = Stack::new();
+        let i = v2(&stack);
+        stack
+            .hpy()
+            .args([
+                "hv",
+                "pull",
+                "--legacy",
+                "--url",
+                &i.uri(),
+                "--api-key-env",
+                "MY_V2_KEY",
+            ])
+            .env_remove("MY_V2_KEY")
+            .assert()
+            .code(2)
+            .stderr(says("from MY_V2_KEY"));
+    }
+}
