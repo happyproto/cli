@@ -22,6 +22,11 @@ sudo apt update &amp;&amp; sudo apt install hpy</pre>
 sudo dnf install hpy</pre>
 <h2>Anything else</h2>
 <pre>curl -fsSL https://happyproto.github.io/cli/install.sh | sh</pre>
+<p>That installs <code>hpy</code> into <code>/usr/local/bin</code>. When
+that directory is not writable by you, <code>sudo</code> asks for your password
+once, only to copy <code>hpy</code> there. To install without sudo, set
+<code>HPY_CLI_INSTALL_DIR</code>, e.g. <code>HPY_CLI_INSTALL_DIR=$HOME/.local</code>
+for <code>~/.local/bin</code>.</p>
 <p>For a prerelease channel, the same command with
 <code>install-beta.sh</code> or <code>install-alpha.sh</code>.
 <code>hpy update</code> then keeps you on the channel you installed from.</p>
