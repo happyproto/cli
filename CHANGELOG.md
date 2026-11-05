@@ -1,3 +1,16 @@
+# [1.0.0-alpha.31](https://github.com/happyproto/cli/compare/v1.0.0-alpha.30...v1.0.0-alpha.31) (2026-11-05)
+
+
+### Bug Fixes
+
+* **installer:** never offer the copy just installed for removal, and ignore test-only variables in the published scripts ([f879c43](https://github.com/happyproto/cli/commit/f879c4394604ebc130cdff47addb115b4ef09ffa))
+
+
+### Features
+
+* **installer:** install hpy into /usr/local/bin, with sudo for the copy alone ([4ea0c07](https://github.com/happyproto/cli/commit/4ea0c079db969dc7af6bffd309c1c0a5794c45d6))
+* **update:** replace a root-owned copy of hpy with sudo, for the copy alone ([e18bf0b](https://github.com/happyproto/cli/commit/e18bf0b34620a1660d2cbfba0cb734b42cdaeab3))
+
 # [1.0.0-alpha.30](https://github.com/happyproto/cli/compare/v1.0.0-alpha.29...v1.0.0-alpha.30) (2026-11-04)
 
 
