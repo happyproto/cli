@@ -104,44 +104,22 @@ EOF
 done
 
 # One installer per channel, so a shell install is the same command
-# everywhere and only the URL differs. Stable rides GitHub's own
-# `releases/latest`; a prerelease channel cannot, because GitHub excludes
-# prereleases from it, so those read the releases list instead. Resolving at
-# install time rather than baking in the tag being published keeps a
-# re-publish of an older release (this script run by hand) from moving a
-# channel backwards.
-cat > "$site/install.sh" <<'EOF'
-#!/bin/sh
-# Installs the newest stable hpy release for this machine.
-set -eu
-curl --proto '=https' --tlsv1.2 -fsSL \
-  https://github.com/happyproto/cli/releases/latest/download/hpy-cli-installer.sh | sh
-EOF
-
-for c in beta alpha; do
-  # A quoted heredoc through sed: the script is written exactly as it runs,
-  # with no shell of this script's expanding anything inside it.
-  sed "s/@CHANNEL@/$c/g" > "$site/install-$c.sh" <<'EOF'
-#!/bin/sh
-# Installs the newest hpy @CHANNEL@ release for this machine.
-#
-# GitHub's `releases/latest` is the newest stable release and never a
-# prerelease, so this reads the releases list, which the API answers newest
-# first, and takes the first tag on this channel.
-set -eu
-repo=happyproto/cli
-tag=$(curl --proto '=https' --tlsv1.2 -fsSL \
-  "https://api.github.com/repos/$repo/releases?per_page=100" \
-  | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-  | grep -E -- '-@CHANNEL@(\.|$)' \
-  | head -n 1)
-if [ -z "$tag" ]; then
-  echo "no hpy release on the @CHANNEL@ channel" >&2
-  exit 1
-fi
-curl --proto '=https' --tlsv1.2 -fsSL \
-  "https://github.com/$repo/releases/download/$tag/hpy-cli-installer.sh" | sh
-EOF
+# everywhere and only the URL differs. All three come from one script,
+# packaging/install-wrapper.sh, with the channel and the URL it is served from
+# filled in; each must stay a single file for `curl | sh`. It runs the
+# release's own installer (dist's) unprivileged into a temporary directory and
+# copies hpy into /usr/local/bin, using sudo for that copy alone when it has
+# to. Stable rides GitHub's own `releases/latest`; a prerelease channel cannot,
+# because GitHub excludes prereleases from it, so those read the releases list
+# instead. Resolving at install time rather than baking in the tag being
+# published keeps a re-publish of an older release (this script run by hand)
+# from moving a channel backwards.
+wrapper="$(dirname "$0")/install-wrapper.sh"
+for c in stable beta alpha; do
+  if [[ "$c" == stable ]]; then out="$site/install.sh"; else out="$site/install-$c.sh"; fi
+  # sed only, so the script is written exactly as it runs, with no shell of
+  # this script's expanding anything inside it.
+  sed -e "s/@CHANNEL@/$c/g" -e "s#@BASE_URL@#$base_url#g" "$wrapper" > "$out"
 done
 
 # The same per channel for Windows, which has the same problem: a
@@ -199,6 +177,11 @@ sudo apt update &amp;&amp; sudo apt install hpy</pre>
 sudo dnf install hpy</pre>
 <h2>Anything else</h2>
 <pre>curl -fsSL $base_url/install.sh | sh</pre>
+<p>That installs <code>hpy</code> into <code>/usr/local/bin</code>. When
+that directory is not writable by you, <code>sudo</code> asks for your password
+once, only to copy <code>hpy</code> there. To install without sudo, set
+<code>HPY_CLI_INSTALL_DIR</code>, e.g. <code>HPY_CLI_INSTALL_DIR=\$HOME/.local</code>
+for <code>~/.local/bin</code>.</p>
 <p>For a prerelease channel, the same command with
 <code>install-beta.sh</code> or <code>install-alpha.sh</code>.
 <code>hpy update</code> then keeps you on the channel you installed from.</p>

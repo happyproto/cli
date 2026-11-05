@@ -88,14 +88,37 @@ arch_pair() {
 publish 0.0.1 stable
 
 # The shell installers install from GitHub rather than from this repository,
-# so what can be checked here is that each one is written, parses, and
-# resolves its own channel. Running one would install a real release over the
-# machine's hpy.
+# so what can be checked here is that each one is written, parses, is the
+# wrapper (packaging/install-wrapper.sh) filled in for its channel and this
+# site, and resolves its own channel. Running one is packaging/test-installer.sh's
+# job, against a locally served release.
 step "checking the shell installers"
 for c in "" -beta -alpha; do
   f="$work/site/install$c.sh"
   [[ -f "$f" ]] || { echo "test-repo: $f was not written" >&2; exit 1; }
   sh -n "$f" || { echo "test-repo: $f is not valid sh" >&2; exit 1; }
+  if grep -q '@CHANNEL@\|@BASE_URL@' "$f"; then
+    echo "test-repo: $(basename "$f") still has a placeholder" >&2
+    exit 1
+  fi
+  want="${c#-}"
+  if ! grep -q "^channel=${want:-stable}$" "$f"; then
+    echo "test-repo: $(basename "$f") is not for its channel" >&2
+    exit 1
+  fi
+  if ! grep -q '^pages=http://repo:8000$' "$f"; then
+    echo "test-repo: $(basename "$f") does not name the site it is served from" >&2
+    exit 1
+  fi
+  # The wrapper's sudo boundary: dist's installer unprivileged into a
+  # temporary directory, then the one copy.
+  # shellcheck disable=SC2016 # matched as written
+  for want in 'HPY_CLI_UNMANAGED_INSTALL="$tmp/stage"' 'install -m 0755 "$staged" "$dest"' 'hpy-cli-receipt.json'; do
+    if ! grep -qF -- "$want" "$f"; then
+      echo "test-repo: $(basename "$f") is not the install wrapper (no $want)" >&2
+      exit 1
+    fi
+  done
 done
 if ! grep -q 'releases/latest/download' "$work/site/install.sh"; then
   echo "test-repo: the stable installer should use releases/latest" >&2
