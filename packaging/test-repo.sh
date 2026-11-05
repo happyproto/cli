@@ -97,13 +97,17 @@ for c in "" -beta -alpha; do
   f="$work/site/install$c.sh"
   [[ -f "$f" ]] || { echo "test-repo: $f was not written" >&2; exit 1; }
   sh -n "$f" || { echo "test-repo: $f is not valid sh" >&2; exit 1; }
-  if grep -q '@CHANNEL@\|@BASE_URL@' "$f"; then
+  if grep -q '@CHANNEL@\|@BASE_URL@\|@TEST_KNOBS@' "$f"; then
     echo "test-repo: $(basename "$f") still has a placeholder" >&2
     exit 1
   fi
   want="${c#-}"
   if ! grep -q "^channel=${want:-stable}$" "$f"; then
     echo "test-repo: $(basename "$f") is not for its channel" >&2
+    exit 1
+  fi
+  if ! grep -q '^test_knobs=0$' "$f"; then
+    echo "test-repo: $(basename "$f") honours the test-only variables" >&2
     exit 1
   fi
   if ! grep -q '^pages=http://repo:8000$' "$f"; then

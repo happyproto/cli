@@ -139,7 +139,7 @@ work="$(cd "$work" && pwd -P)"
 
 # The installer as update-repo.sh writes it, for the alpha channel.
 wrapper="$work/install-alpha.sh"
-sed -e "s/@CHANNEL@/alpha/g" -e "s#@BASE_URL@#$pages#g" "$root/packaging/install-wrapper.sh" > "$wrapper"
+sed -e "s/@CHANNEL@/alpha/g" -e "s#@BASE_URL@#$pages#g" -e "s/@TEST_KNOBS@/1/g" "$root/packaging/install-wrapper.sh" > "$wrapper"
 sh -n "$wrapper" || fail "$wrapper is not valid sh"
 
 cat > "$work/bin/sudo" <<'EOF'
@@ -401,6 +401,18 @@ if selected migrate-yes; then
     || fail "something else under ~/.cargo changed:"$'\n'"$(diff <(echo "$before") <(listing "$case_dir/home/.cargo"))"
   expect_sudo_calls
   expect_receipt "$case_dir/sys" flat
+fi
+
+# The system directory is the cargo home's bin, spelled another way: the copy
+# just installed must not be offered for removal.
+if selected migrate-same-dir; then
+  new_case migrate-same-dir
+  old_cargo_copy
+  dist_receipt "$case_dir/home/.cargo"
+  run tty "$case_dir/home/.cargo/./bin" "[Y/n]=y"
+  expect_rc 0
+  [[ -x "$case_dir/home/.cargo/bin/hpy" ]] || fail "the copy just installed was removed"
+  ! grep -qF "Remove the old copy" "$case_dir/out" || fail "offered to remove the copy just installed"
 fi
 
 if selected migrate-declined; then

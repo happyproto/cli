@@ -33,6 +33,11 @@ set -eu
 channel=@CHANNEL@
 pages=@BASE_URL@
 repo=happyproto/cli
+# 1 only in the copy packaging/test-installer.sh makes: the published scripts
+# have 0, so HPY_CLI_SYSTEM_DIR and HPY_CLI_INSTALLER_URL do nothing there,
+# and a variable left exported from testing can't move an install or fetch
+# over plain HTTP.
+test_knobs=@TEST_KNOBS@
 
 say() {
   printf '%s\n' "$*" >&2
@@ -83,7 +88,7 @@ self_url() {
 }
 
 installer_url() {
-  if [ -n "${HPY_CLI_INSTALLER_URL:-}" ]; then
+  if [ "$test_knobs" = 1 ] && [ -n "${HPY_CLI_INSTALLER_URL:-}" ]; then
     printf '%s' "$HPY_CLI_INSTALLER_URL"
   elif [ "$channel" = stable ]; then
     printf '%s' "https://github.com/$repo/releases/latest/download/hpy-cli-installer.sh"
@@ -107,7 +112,7 @@ installer_url() {
 }
 
 download() { # url file
-  if [ -n "${HPY_CLI_INSTALLER_URL:-}" ]; then
+  if [ "$test_knobs" = 1 ] && [ -n "${HPY_CLI_INSTALLER_URL:-}" ]; then
     curl -fsSL "$1" -o "$2"
   else
     curl --proto '=https' --tlsv1.2 -fsSL "$1" -o "$2"
@@ -149,7 +154,10 @@ no_sudo() {
 }
 
 main() {
-  sysdir=${HPY_CLI_SYSTEM_DIR:-/usr/local/bin}
+  sysdir=/usr/local/bin
+  if [ "$test_knobs" = 1 ]; then
+    sysdir=${HPY_CLI_SYSTEM_DIR:-/usr/local/bin}
+  fi
   case "$sysdir" in
     /*) ;;
     *) die "HPY_CLI_SYSTEM_DIR must be an absolute path" ;;
@@ -302,7 +310,10 @@ main() {
     case "$old" in
       "$HOME"/*) shown="~${old#"$HOME"}" ;;
     esac
-    if [ "$old" != "$dest" ] && { [ -e "$old" ] || [ -L "$old" ]; }; then
+    # Compared as directories, not strings: $sysdir spelled another way, or
+    # a cargo home reached through a symlink, can name the copy just
+    # installed, which must never be offered for removal.
+    if ! same_dir "$(dirname "$old")" "$sysdir" && { [ -e "$old" ] || [ -L "$old" ]; }; then
       if [ -n "$old_prefix" ] && same_dir "$old_prefix" "$cargo_home" \
         && [ -f "$old" ] && [ ! -L "$old" ]; then
         if have_tty; then

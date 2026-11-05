@@ -119,7 +119,7 @@ for c in stable beta alpha; do
   if [[ "$c" == stable ]]; then out="$site/install.sh"; else out="$site/install-$c.sh"; fi
   # sed only, so the script is written exactly as it runs, with no shell of
   # this script's expanding anything inside it.
-  sed -e "s/@CHANNEL@/$c/g" -e "s#@BASE_URL@#$base_url#g" "$wrapper" > "$out"
+  sed -e "s/@CHANNEL@/$c/g" -e "s#@BASE_URL@#$base_url#g" -e "s/@TEST_KNOBS@/0/g" "$wrapper" > "$out"
 done
 
 # The same per channel for Windows, which has the same problem: a
