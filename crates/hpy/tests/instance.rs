@@ -666,3 +666,249 @@ async fn a_first_deploy_with_nothing_to_show_is_still_sent() {
         ["PUT dry_run=true", "PUT dry_run=false"]
     );
 }
+
+// `hpy hv env push`
+
+/// Distinctive, so finding it anywhere in the output is a leak.
+const SECRET: &str = "sk-live-7Q9zX-never-shown-41d8";
+
+/// An instance that has `B` already, and accepts every set.
+async fn variables_instance() -> MockServer {
+    let server = MockServer::start().await;
+    // What `hpy hv login --key-stdin` checks the key against.
+    Mock::given(method("GET"))
+        .and(path("/admin/plugins"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(plugins(&[])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/admin/script-variables"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"key": "B", "preview": "****", "unreadable": false,
+             "created_at": "2026-11-01T00:00:00Z", "updated_at": "2026-11-01T00:00:00Z"}
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/admin/script-variables"))
+        .respond_with(ResponseTemplate::new(204))
+        .with_priority(10)
+        .mount(&server)
+        .await;
+    server
+}
+
+/// A project whose `.env` holds `text`.
+fn env_project(text: &str) -> tempfile::TempDir {
+    let dir = project();
+    std::fs::write(dir.path().join(".env"), text).unwrap();
+    dir
+}
+
+fn env_text() -> String {
+    format!("# keys for scripts\nA={SECRET}\nB=\"second {SECRET}\"\n")
+}
+
+/// The sets the instance received, as `(key, value)`.
+async fn sets(server: &MockServer) -> Vec<(String, String)> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "POST")
+        .map(|r| {
+            let body: Value = serde_json::from_slice(&r.body).unwrap();
+            (
+                body["key"].as_str().unwrap().to_string(),
+                body["value"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect()
+}
+
+/// Runs `hpy hv env push` with `args`, and checks the value appears nowhere
+/// in what it printed.
+fn push(
+    config: &std::path::Path,
+    project: &std::path::Path,
+    args: &[&str],
+) -> assert_cmd::assert::Assert {
+    let assert = hpy(config)
+        .current_dir(project)
+        .args(["hv", "env", "push"])
+        .args(args)
+        .assert();
+    let out = assert.get_output();
+    let shown = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!shown.contains(SECRET), "the value was printed:\n{shown}");
+    assert
+}
+
+#[tokio::test]
+async fn env_push_with_yes_sends_every_key() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&env_text());
+    let server = variables_instance().await;
+    login(config.path(), &server.uri());
+    push(config.path(), project.path(), &["--yes"])
+        .success()
+        .stderr(
+            predicate::str::contains("sent A")
+                .and(predicate::str::contains("sent B"))
+                .and(predicate::str::contains(server.uri())),
+        )
+        .stdout(predicate::str::contains("Sent 2 keys"));
+    assert_eq!(
+        sets(&server).await,
+        [
+            ("A".to_string(), SECRET.to_string()),
+            ("B".to_string(), format!("second {SECRET}")),
+        ]
+    );
+
+    // And as JSON, still without a value.
+    push(config.path(), project.path(), &["--yes", "--json"])
+        .success()
+        .stdout(
+            predicate::str::contains(r#""sent": ["#)
+                .and(predicate::str::contains(r#""dryRun": false"#)),
+        );
+}
+
+#[tokio::test]
+async fn env_push_without_a_terminal_or_yes_sends_nothing() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&env_text());
+    let server = variables_instance().await;
+    login(config.path(), &server.uri());
+    let before = server.received_requests().await.unwrap().len();
+    push(config.path(), project.path(), &[]).code(2).stderr(
+        predicate::str::contains("pass --yes").and(predicate::str::contains("Nothing was sent")),
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), before);
+}
+
+#[tokio::test]
+async fn env_push_dry_run_labels_each_key_and_sends_nothing() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&env_text());
+    let server = variables_instance().await;
+    login(config.path(), &server.uri());
+    let assert = push(config.path(), project.path(), &["--dry-run"])
+        .success()
+        .stderr(
+            predicate::str::contains("  new A\n")
+                .and(predicate::str::contains("  replaces existing B\n")),
+        )
+        .stdout(predicate::str::contains("nothing was sent"));
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr).into_owned();
+    assert_eq!(stderr.matches("masked").count(), 1, "{stderr}");
+    push(config.path(), project.path(), &["--dry-run", "--json"])
+        .success()
+        .stdout(
+            predicate::str::contains(r#""status": "new""#)
+                .and(predicate::str::contains(r#""status": "replace""#)),
+        );
+    assert!(sets(&server).await.is_empty());
+}
+
+#[tokio::test]
+async fn env_push_sends_only_the_keys_named() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&env_text());
+    let server = variables_instance().await;
+    login(config.path(), &server.uri());
+    push(config.path(), project.path(), &["B", "--yes"])
+        .success()
+        .stderr(predicate::str::contains("sent B").and(predicate::str::contains("sent A").not()));
+    assert_eq!(
+        sets(&server).await,
+        [("B".to_string(), format!("second {SECRET}"))]
+    );
+
+    // A key the file doesn't set is refused, and nothing is sent.
+    push(config.path(), project.path(), &["A", "MISSING", "--yes"])
+        .code(2)
+        .stderr(predicate::str::contains("doesn't set MISSING"));
+    assert_eq!(sets(&server).await.len(), 1);
+}
+
+#[tokio::test]
+async fn env_push_refuses_a_bad_key_by_its_line() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&format!("A=1\nMY-TOKEN={SECRET}\n{SECRET}\n"));
+    let server = variables_instance().await;
+    login(config.path(), &server.uri());
+    let before = server.received_requests().await.unwrap().len();
+    let stderr = push(config.path(), project.path(), &["--yes"])
+        .code(2)
+        .get_output()
+        .stderr
+        .clone();
+    // The report wraps at the terminal width, and a long temp path (as on
+    // Windows) moves the breaks: compare the words, not the layout.
+    let words = String::from_utf8_lossy(&stderr)
+        .replace(['│', '×', '├', '└', '─', '╭', '╰'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for wanted in [
+        ".env:2: a key starts with a letter or _",
+        ".env:3: expected KEY=VALUE",
+        "nothing was sent",
+    ] {
+        assert!(words.contains(wanted), "{wanted:?} not in {words:?}");
+    }
+    assert_eq!(server.received_requests().await.unwrap().len(), before);
+}
+
+#[tokio::test]
+async fn env_push_reports_a_failed_key_and_exits_non_zero() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&env_text());
+    let server = variables_instance().await;
+    Mock::given(method("POST"))
+        .and(path("/admin/script-variables"))
+        .and(wiremock::matchers::body_partial_json(json!({"key": "A"})))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "error": "InternalError", "message": format!("failed to upsert script variable: {SECRET}")
+        })))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    login(config.path(), &server.uri());
+    push(config.path(), project.path(), &["--yes"])
+        .code(1)
+        .stderr(
+            predicate::str::contains("failed A: ")
+                .and(predicate::str::contains("failed to upsert script variable"))
+                .and(predicate::str::contains("sent B"))
+                .and(predicate::str::contains("1 key not sent: A")),
+        )
+        .stdout(predicate::str::contains("skipped 0, failed 1"));
+    push(config.path(), project.path(), &["--yes", "--json"])
+        .code(1)
+        .stdout(predicate::str::contains(r#""failed": ["#));
+}
+
+#[tokio::test]
+async fn env_push_signed_out_is_refused_as_deploy_is() {
+    let config = tempfile::tempdir().unwrap();
+    let project = env_project(&env_text());
+    let deploy = hpy(config.path())
+        .current_dir(project.path())
+        .args(["hv", "deploy", "--yes"])
+        .assert()
+        .code(3);
+    let pushed = push(config.path(), project.path(), &["--yes"]).code(3);
+    let said = |a: &assert_cmd::assert::Assert| {
+        String::from_utf8_lossy(&a.get_output().stderr).into_owned()
+    };
+    assert_eq!(said(&pushed), said(&deploy));
+    assert!(said(&pushed).contains("hpy hv login"), "{}", said(&pushed));
+}

@@ -34,6 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: shellcheck packaging/*.sh scripts/*.sh
+      # The shell installer, against a release's own installer and archive
+      # served locally, with a stand-in sudo: it never runs the real one.
+      - run: packaging/test-installer.sh
 
   audit:
     runs-on: depot-ubuntu-24.04

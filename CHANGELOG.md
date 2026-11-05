@@ -1,3 +1,37 @@
+# [1.0.0-alpha.31](https://github.com/happyproto/cli/compare/v1.0.0-alpha.30...v1.0.0-alpha.31) (2026-11-05)
+
+
+### Bug Fixes
+
+* **installer:** never offer the copy just installed for removal, and ignore test-only variables in the published scripts ([f879c43](https://github.com/happyproto/cli/commit/f879c4394604ebc130cdff47addb115b4ef09ffa))
+
+
+### Features
+
+* **installer:** install hpy into /usr/local/bin, with sudo for the copy alone ([4ea0c07](https://github.com/happyproto/cli/commit/4ea0c079db969dc7af6bffd309c1c0a5794c45d6))
+* **update:** replace a root-owned copy of hpy with sudo, for the copy alone ([e18bf0b](https://github.com/happyproto/cli/commit/e18bf0b34620a1660d2cbfba0cb734b42cdaeab3))
+
+# [1.0.0-alpha.30](https://github.com/happyproto/cli/compare/v1.0.0-alpha.29...v1.0.0-alpha.30) (2026-11-04)
+
+
+### Bug Fixes
+
+* **pull:** name the last deploy instead of calling a regenerated project different ([de39940](https://github.com/happyproto/cli/commit/de399403ebca0ca6cd494db1cb74a6a159821f7c))
+* **pull:** write only plain project paths ([4ec6786](https://github.com/happyproto/cli/commit/4ec6786499c245282e6355ead00f895f67370ff8))
+
+
+### Features
+
+* add hpy happyview pull, to build a project from an instance ([5d91266](https://github.com/happyproto/cli/commit/5d9126612f15149f2b61b1ca9ba5983a9b36d3c8))
+* **pull:** write interpreter modules from GET /admin/scripts/modules ([0800d76](https://github.com/happyproto/cli/commit/0800d76e171d92e89eeb804ae11ec28a461a64ee))
+
+# [1.0.0-alpha.29](https://github.com/happyproto/cli/compare/v1.0.0-alpha.28...v1.0.0-alpha.29) (2026-11-04)
+
+
+### Features
+
+* add hpy hv env push, sending .env keys to the instance's script variables ([1239348](https://github.com/happyproto/cli/commit/1239348d536da5711a6cf271f5e5b6548b20c04c))
+
 # [1.0.0-beta.4](https://github.com/happyproto/cli/compare/v1.0.0-beta.3...v1.0.0-beta.4) (2026-11-03)
 
 
@@ -101,24 +135,6 @@
 ### Bug Fixes
 
 * refuse to run HappyView locally on Windows, which it no longer ships for ([287b0db](https://github.com/happyproto/cli/commit/287b0db8e6672571ad997e936f96c0b06ab144f1))
-
-# [1.0.0-beta.3](https://github.com/happyproto/cli/compare/v1.0.0-beta.2...v1.0.0-beta.3) (2026-10-29)
-
-
-### Bug Fixes
-
-* read the admin grant as happyview does, and word refusals for the sign-in used ([3a52706](https://github.com/happyproto/cli/commit/3a527061f77e204caa37ef807d7f630f756b73ac))
-* sign in to an instance through the redirect relay ([decfcca](https://github.com/happyproto/cli/commit/decfcca9e5a99f5186d207288d3c06175e5a6d13))
-
-
-### Features
-
-* ask for happyview's admin permission set when signing in to an instance ([e578aaa](https://github.com/happyproto/cli/commit/e578aaa0ce8a581a2ae0b764874d92f946721996))
-* deploy the project's lexicons, scripts and modules to an instance ([d0c91e9](https://github.com/happyproto/cli/commit/d0c91e93081020705030ade9dc5c45b5c7c5b358))
-* say to sign in again when an instance sign-in lacks the admin grant ([e44b93c](https://github.com/happyproto/cli/commit/e44b93c4aead41def8e4a16315ae41fc912850f1))
-* show where in a file the instance found each project problem ([388c97a](https://github.com/happyproto/cli/commit/388c97af64f2c8b4151f7ba8c7b688aafcd0e2c2))
-* sign in to a happyview instance and deploy its plugins ([5ae331d](https://github.com/happyproto/cli/commit/5ae331d1876fe242e4c2bfd3bb49034f9e32242a))
-* sign in to an instance through the browser and keep api keys for ci ([2d6120f](https://github.com/happyproto/cli/commit/2d6120f41fc1a8c6ddd267f5a96ae2c30107d4f3))
 
 # [1.0.0-alpha.19](https://github.com/happyproto/cli/compare/v1.0.0-alpha.18...v1.0.0-alpha.19) (2026-10-29)
 

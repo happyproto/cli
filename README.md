@@ -55,6 +55,26 @@ curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 That installs the newest **stable** release, of which there is none until
 `1.0.0` is cut — for now use the `beta` channel's installer, below.
 
+`hpy` lands in `/usr/local/bin`. The release's own installer downloads it and
+checks its checksum as you, in a temporary directory; then the script copies
+it into place. When `/usr/local/bin` isn't writable by you (or, on a new
+Apple-silicon Mac, doesn't exist yet), it says why and `sudo` asks for your
+password once, for that copy alone. Nothing else runs as root, and the record
+`hpy update` reads is written as you. Without a terminal, sudo can't ask, so
+the script stops and prints the command to run instead.
+
+To install without sudo, choose the directory yourself. `hpy` goes in its
+`bin`, which you then add to your PATH:
+
+```sh
+curl -fsSL https://happyproto.github.io/cli/install.sh | HPY_CLI_INSTALL_DIR="$HOME/.local" sh
+```
+
+Earlier versions of this script installed into `~/.cargo/bin`. If you have
+that copy, the script offers to remove it once the new one is in place, and
+removes that one file only on a yes. A `~/.cargo/bin/hpy` that `cargo install`
+built is left alone, with a warning that it may come first on your PATH.
+
 **Windows**
 
 ```powershell
@@ -215,6 +235,8 @@ other commands, `deploy` among them, work on Windows.
 | `hpy happyview logout [--url <instance>]` | Signs out of the instance. |
 | `hpy happyview whoami` | Lists the instances you're signed in to, and as whom. |
 | `hpy happyview deploy [--url <instance>]` | Makes the instance match the project: its plugins from `happyview.lock`, then its lexicons, scripts and modules (see [Deploying](#deploying)). `--dry-run` shows the changes without making them; `--yes` skips the confirmation. |
+| `hpy happyview env push [key…] [--url <instance>]` | Sends keys from the project's `.env` (or `--env-file <path>`) to the instance's script variables, which scripts read as `ctx.env`: every key, or only the ones named, each of which must be in the file. Before each key it asks `send KEY (new)?` or `send KEY (replaces existing)?`, defaulting to no; `--yes` sends them all without asking, and without a terminal it sends nothing unless given `--yes`. `--dry-run` lists each key as new or replacing an existing one; the instance shows values masked, so it can't say whether a value would change. Values are never shown, in the questions, the output, `--json` or an error. Keys come only from the file, never from your shell's environment, and a line HappyView can't read is refused by its line number. Exits non-zero if any key failed to send. |
+| `hpy happyview pull [--url <instance>] [dir]` | Builds a project from what an instance serves now: its lexicons (a network lexicon goes in `[network_lexicons]`), scripts in their layout places, the interpreter modules scripts import (from a HappyView that serves `GET /admin/scripts/modules`; an older one gets a warning, and they have to be copied in by hand), plugins as `[interpreters]` and `[libraries]` with the lock resolved as `add` does, app name, superadmin and labelers. Only lexicon settings that differ from the defaults are written. Reads a v3 instance with your `hpy happyview login` sign-in. `--legacy` reads a v2 instance instead, with an API key from `HAPPYVIEW_API_KEY` (or `--api-key-env NAME`, else a hidden prompt) that has `lexicons:read`, `scripts:read`, `script-variables:read`, `plugins:read`, `labelers:read`, `users:read` and `settings:manage`; revoke it afterwards. It rewrites each script through the pinned HappyView's `happyview-codemod` and lists any it marked for a hand edit. A v2 plugin the official publisher has no registry project for is left out with a warning. Never pulls script variable values (their keys go to `.env.example`) or plugin secrets (it lists the ones to set). Refuses a directory that already has `happyview.toml`; `--diff` prints how the instance differs from it instead, and `--dry-run` prints what it would write. Ends by running `hpy happyview check`: the project is written either way, but a failed check makes the exit non-zero. |
 | `hpy happyview types` | Writes editor types for the project into `.happyview/types/`, one directory per interpreter, so your editor's language server can check handlers against their lexicons, `ctx` and the installed libraries. Needs a HappyView that has `happyview types`. |
 
 ### Editor types
@@ -489,7 +511,12 @@ seconds.
 
 - **Installed with the install script, with cargo, or by hand:** `hpy`
   downloads the release's own binary and puts it where this one is, and
-  `hpy channel` does the same for the channel you switch to. After replacing a
+  `hpy channel` does the same for the channel you switch to. When that
+  directory isn't writable by you, as `/usr/local/bin` usually isn't, `hpy`
+  downloads the release as you and asks `sudo` to copy it over this one,
+  which prompts for your password; without a terminal it prints that command
+  and leaves `hpy` as it is. The daily check never asks for sudo: it tells you
+  to run `hpy update`. After replacing a
   copy `cargo install` built, cargo still records the version it compiled, so
   installing hpy with cargo again rebuilds from source over it.
 - **Installed with Homebrew, apt or dnf:** those track the files they own, and

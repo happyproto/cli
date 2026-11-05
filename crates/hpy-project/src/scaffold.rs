@@ -29,42 +29,205 @@ pub fn starter_handler(language: &str) -> Option<(&'static str, &'static str)> {
     }
 }
 
-fn happyview_toml(s: &Scaffold) -> String {
+const HEADER: &str = "# A HappyView project. `hpy happyview dev` runs it; happyview.lock pins\n\
+     # the exact plugin versions, and `hpy happyview add` edits both files.\n\n";
+
+/// `[happyview]`, `[instance]` and the plugin tables, which every project
+/// `hpy` writes has.
+fn base_doc(
+    version: &str,
+    app_name: Option<&str>,
+    superadmin: Option<&str>,
+    interpreters: &BTreeMap<String, PluginEntry>,
+    libraries: &BTreeMap<String, PluginEntry>,
+) -> toml_edit::DocumentMut {
     use toml_edit::{DocumentMut, Table, value};
     let mut doc = DocumentMut::new();
     let mut happyview = Table::new();
-    happyview.insert("version", value(&s.happyview_version));
+    happyview.insert("version", value(version));
     doc.insert("happyview", happyview.into());
     let mut instance = Table::new();
-    instance.insert("app_name", value(&s.app_name));
-    instance.insert("superadmin", value(&s.superadmin));
+    if let Some(app_name) = app_name {
+        instance.insert("app_name", value(app_name));
+    }
+    if let Some(superadmin) = superadmin {
+        instance.insert("superadmin", value(superadmin));
+    }
     doc.insert("instance", instance.into());
-    for (name, entries) in [
-        ("interpreters", &s.interpreters),
-        ("libraries", &s.libraries),
-    ] {
+    for (name, entries) in [("interpreters", interpreters), ("libraries", libraries)] {
         let mut table = Table::new();
         for (k, entry) in entries {
             table.insert(k, toml_edit::Item::Value(entry_value(entry)));
         }
         doc.insert(name, table.into());
     }
-    let mut dev = Table::new();
-    dev.insert("backfill", value(false));
-    doc.insert("dev", dev.into());
-    format!(
-        "# A HappyView project. `hpy happyview dev` runs it; happyview.lock pins\n\
-         # the exact plugin versions, and `hpy happyview add` edits both files.\n\n{doc}"
-    )
+    doc
 }
+
+fn dev_table(doc: &mut toml_edit::DocumentMut) {
+    let mut dev = toml_edit::Table::new();
+    dev.insert("backfill", toml_edit::value(false));
+    doc.insert("dev", dev.into());
+}
+
+fn happyview_toml(s: &Scaffold) -> String {
+    let mut doc = base_doc(
+        &s.happyview_version,
+        Some(&s.app_name),
+        Some(&s.superadmin),
+        &s.interpreters,
+        &s.libraries,
+    );
+    dev_table(&mut doc);
+    format!("{HEADER}{doc}")
+}
+
+/// `[lexicons."<nsid>"]`: only the settings that differ from a project
+/// lexicon's defaults (no backfill, indexed, no token cost).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LexiconSettings {
+    pub backfill: Option<bool>,
+    pub token_cost: Option<i64>,
+    pub indexed: Option<bool>,
+}
+
+impl LexiconSettings {
+    pub fn is_empty(&self) -> bool {
+        *self == LexiconSettings::default()
+    }
+}
+
+/// `[scripts."<trigger>"]`: what the file cannot say about itself.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ScriptSettings {
+    pub description: Option<String>,
+    pub outbound_xrpcs: Option<Vec<String>>,
+}
+
+/// `[modules.<name>]`: a compiled module's crate.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleSettings {
+    pub language: String,
+    pub path: String,
+}
+
+/// A whole `happyview.toml`, as `hpy happyview pull` writes one from an
+/// instance: the scaffold's tables, and the ones an instance can fill in.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ProjectFile {
+    pub happyview_version: String,
+    pub app_name: Option<String>,
+    pub superadmin: Option<String>,
+    pub interpreters: BTreeMap<String, PluginEntry>,
+    pub libraries: BTreeMap<String, PluginEntry>,
+    pub network_lexicons: Vec<String>,
+    pub labels: Vec<String>,
+    pub lexicons: BTreeMap<String, LexiconSettings>,
+    pub scripts: BTreeMap<String, ScriptSettings>,
+    pub modules: BTreeMap<String, ModuleSettings>,
+}
+
+fn string_array(items: &[String]) -> toml_edit::Value {
+    let mut array = toml_edit::Array::new();
+    for item in items {
+        array.push(item.as_str());
+    }
+    toml_edit::Value::Array(array)
+}
+
+impl ProjectFile {
+    pub fn render(&self) -> String {
+        use toml_edit::{Table, value};
+        let mut doc = base_doc(
+            &self.happyview_version,
+            self.app_name.as_deref(),
+            self.superadmin.as_deref(),
+            &self.interpreters,
+            &self.libraries,
+        );
+        dev_table(&mut doc);
+        if !self.network_lexicons.is_empty() {
+            let mut t = Table::new();
+            t.insert("include", value(string_array(&self.network_lexicons)));
+            doc.insert("network_lexicons", t.into());
+        }
+        if !self.labels.is_empty() {
+            let mut t = Table::new();
+            t.insert("subscribe", value(string_array(&self.labels)));
+            doc.insert("labels", t.into());
+        }
+        let mut keyed = |name: &str, rows: Vec<(String, Table)>| {
+            if rows.is_empty() {
+                return;
+            }
+            let mut outer = Table::new();
+            // Only the per-key tables are written, never an empty `[name]`.
+            outer.set_implicit(true);
+            for (key, table) in rows {
+                outer.insert(&key, table.into());
+            }
+            doc.insert(name, outer.into());
+        };
+        keyed(
+            "lexicons",
+            self.lexicons
+                .iter()
+                .filter(|(_, l)| !l.is_empty())
+                .map(|(nsid, l)| {
+                    let mut t = Table::new();
+                    if let Some(b) = l.backfill {
+                        t.insert("backfill", value(b));
+                    }
+                    if let Some(c) = l.token_cost {
+                        t.insert("token_cost", value(c));
+                    }
+                    if let Some(i) = l.indexed {
+                        t.insert("indexed", value(i));
+                    }
+                    (nsid.clone(), t)
+                })
+                .collect(),
+        );
+        keyed(
+            "scripts",
+            self.scripts
+                .iter()
+                .filter(|(_, s)| s.description.is_some() || s.outbound_xrpcs.is_some())
+                .map(|(trigger, s)| {
+                    let mut t = Table::new();
+                    if let Some(d) = &s.description {
+                        t.insert("description", value(d));
+                    }
+                    if let Some(o) = &s.outbound_xrpcs {
+                        t.insert("outbound_xrpcs", value(string_array(o)));
+                    }
+                    (trigger.clone(), t)
+                })
+                .collect(),
+        );
+        keyed(
+            "modules",
+            self.modules
+                .iter()
+                .map(|(name, m)| {
+                    let mut t = Table::new();
+                    t.insert("language", value(&m.language));
+                    t.insert("path", value(&m.path));
+                    (name.clone(), t)
+                })
+                .collect(),
+        );
+        format!("{HEADER}{doc}")
+    }
+}
+
+/// The `.gitignore` every project gets.
+pub const GITIGNORE: &str = include_str!("../templates/gitignore");
 
 pub fn render(s: &Scaffold) -> Vec<(PathBuf, String)> {
     let mut files = vec![
         (PathBuf::from("happyview.toml"), happyview_toml(s)),
-        (
-            PathBuf::from(".gitignore"),
-            include_str!("../templates/gitignore").to_string(),
-        ),
+        (PathBuf::from(".gitignore"), GITIGNORE.to_string()),
         (
             PathBuf::from(".env.example"),
             include_str!("../templates/env.example").to_string(),
@@ -154,6 +317,20 @@ fn empty_out(dir: &Path) {
 }
 
 fn fill(root: &Path, files: &[(PathBuf, String)]) -> Result<(), String> {
+    // Every path is checked before anything is written, so a bad one leaves
+    // nothing half done.
+    for (rel, _) in files {
+        let plain = !rel.as_os_str().is_empty()
+            && rel
+                .components()
+                .all(|c| matches!(c, std::path::Component::Normal(_)));
+        if !plain {
+            return Err(format!(
+                "{} isn't a plain path inside the project, so nothing was written",
+                rel.display()
+            ));
+        }
+    }
     for (rel, body) in files {
         let target = root.join(rel);
         if let Some(parent) = target.parent() {
@@ -228,6 +405,80 @@ mod tests {
         assert_eq!(raw["instance"]["app_name"].as_str(), Some("Jo's \"App\""));
         assert_eq!(raw["instance"]["superadmin"].as_str(), Some("did:plc:abc"));
         assert_eq!(raw["dev"]["backfill"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn a_pulled_file_writes_only_the_tables_it_has() {
+        let mut file = ProjectFile {
+            happyview_version: "3.0.0".into(),
+            superadmin: Some("did:plc:abc".into()),
+            interpreters: [("lua".to_string(), entry("happyview-lua", "alpha"))].into(),
+            ..ProjectFile::default()
+        };
+        let bare = file.render();
+        let raw: toml::Value = toml::from_str(&bare).unwrap();
+        assert!(raw["instance"].get("app_name").is_none(), "{bare}");
+        for absent in [
+            "lexicons",
+            "scripts",
+            "modules",
+            "labels",
+            "network_lexicons",
+        ] {
+            assert!(raw.get(absent).is_none(), "{absent}: {bare}");
+        }
+        file.app_name = Some("App".into());
+        file.network_lexicons = vec!["com.other.post".into()];
+        file.labels = vec!["did:plc:labeler".into()];
+        file.lexicons.insert(
+            "com.example.post".into(),
+            LexiconSettings {
+                backfill: Some(true),
+                token_cost: Some(3),
+                indexed: None,
+            },
+        );
+        file.lexicons
+            .insert("com.example.quiet".into(), LexiconSettings::default());
+        file.scripts.insert(
+            "xrpc.query:com.example.hello".into(),
+            ScriptSettings {
+                description: Some("Says \"hi\"".into()),
+                outbound_xrpcs: Some(vec!["com.other.get".into()]),
+            },
+        );
+        file.modules.insert(
+            "scoring".into(),
+            ModuleSettings {
+                language: "rust".into(),
+                path: "modules/scoring".into(),
+            },
+        );
+        let text = file.render();
+        let cfg = ProjectToml::parse(&text).unwrap();
+        assert_eq!(cfg.interpreters["lua"], entry("happyview-lua", "alpha"));
+        let raw: toml::Value = toml::from_str(&text).unwrap();
+        assert_eq!(raw["instance"]["app_name"].as_str(), Some("App"));
+        assert_eq!(
+            raw["network_lexicons"]["include"][0].as_str(),
+            Some("com.other.post")
+        );
+        assert_eq!(
+            raw["labels"]["subscribe"][0].as_str(),
+            Some("did:plc:labeler")
+        );
+        let post = &raw["lexicons"]["com.example.post"];
+        assert_eq!(post["backfill"].as_bool(), Some(true));
+        assert_eq!(post["token_cost"].as_integer(), Some(3));
+        assert!(post.get("indexed").is_none());
+        // Nothing to say, so not written at all.
+        assert!(raw["lexicons"].get("com.example.quiet").is_none(), "{text}");
+        assert!(text.contains("[lexicons.\"com.example.post\"]"), "{text}");
+        assert!(!text.contains("[lexicons]\n"), "{text}");
+        let script = &raw["scripts"]["xrpc.query:com.example.hello"];
+        assert_eq!(script["description"].as_str(), Some("Says \"hi\""));
+        assert_eq!(script["outbound_xrpcs"][0].as_str(), Some("com.other.get"));
+        assert_eq!(raw["modules"]["scoring"]["language"].as_str(), Some("rust"));
     }
 
     #[test]
@@ -313,6 +564,28 @@ mod tests {
 
     /// A project whose last file cannot be written: `happyview.toml` is a
     /// file by then, so nothing can go under it.
+    #[test]
+    fn a_path_that_leaves_the_project_writes_nothing() {
+        for hostile in [
+            "../outside.lua",
+            "/tmp/outside.lua",
+            "src/../../outside.lua",
+            "",
+        ] {
+            let parent = tempfile::tempdir().unwrap();
+            let dir = parent.path().join("app");
+            let mut files = render(&scaffold(Some("lua")));
+            files.push((PathBuf::from(hostile), "evil".into()));
+            let err = write_new(&dir, &files).unwrap_err();
+            assert!(
+                err.message.contains("isn't a plain path"),
+                "{hostile:?}: {err}"
+            );
+            assert!(!parent.path().join("outside.lua").exists());
+            assert!(!dir.join("happyview.toml").exists(), "{hostile:?}");
+        }
+    }
+
     fn failing_files() -> Vec<(PathBuf, String)> {
         let mut files = render(&scaffold(Some("lua")));
         files.push((PathBuf::from("happyview.toml/oops"), String::new()));
