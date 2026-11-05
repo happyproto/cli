@@ -55,6 +55,26 @@ curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 That installs the newest **stable** release, of which there is none until
 `1.0.0` is cut — for now use the `beta` channel's installer, below.
 
+`hpy` lands in `/usr/local/bin`. The release's own installer downloads it and
+checks its checksum as you, in a temporary directory; then the script copies
+it into place. When `/usr/local/bin` isn't writable by you (or, on a new
+Apple-silicon Mac, doesn't exist yet), it says why and `sudo` asks for your
+password once, for that copy alone. Nothing else runs as root, and the record
+`hpy update` reads is written as you. Without a terminal, sudo can't ask, so
+the script stops and prints the command to run instead.
+
+To install without sudo, choose the directory yourself. `hpy` goes in its
+`bin`, which you then add to your PATH:
+
+```sh
+curl -fsSL https://happyproto.github.io/cli/install.sh | HPY_CLI_INSTALL_DIR="$HOME/.local" sh
+```
+
+Earlier versions of this script installed into `~/.cargo/bin`. If you have
+that copy, the script offers to remove it once the new one is in place, and
+removes that one file only on a yes. A `~/.cargo/bin/hpy` that `cargo install`
+built is left alone, with a warning that it may come first on your PATH.
+
 **Windows**
 
 ```powershell
@@ -491,7 +511,12 @@ seconds.
 
 - **Installed with the install script, with cargo, or by hand:** `hpy`
   downloads the release's own binary and puts it where this one is, and
-  `hpy channel` does the same for the channel you switch to. After replacing a
+  `hpy channel` does the same for the channel you switch to. When that
+  directory isn't writable by you, as `/usr/local/bin` usually isn't, `hpy`
+  downloads the release as you and asks `sudo` to copy it over this one,
+  which prompts for your password; without a terminal it prints that command
+  and leaves `hpy` as it is. The daily check never asks for sudo: it tells you
+  to run `hpy update`. After replacing a
   copy `cargo install` built, cargo still records the version it compiled, so
   installing hpy with cargo again rebuilds from source over it.
 - **Installed with Homebrew, apt or dnf:** those track the files they own, and
