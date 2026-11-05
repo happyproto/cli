@@ -511,7 +511,12 @@ seconds.
 
 - **Installed with the install script, with cargo, or by hand:** `hpy`
   downloads the release's own binary and puts it where this one is, and
-  `hpy channel` does the same for the channel you switch to. After replacing a
+  `hpy channel` does the same for the channel you switch to. When that
+  directory isn't writable by you, as `/usr/local/bin` usually isn't, `hpy`
+  downloads the release as you and asks `sudo` to copy it over this one,
+  which prompts for your password; without a terminal it prints that command
+  and leaves `hpy` as it is. The daily check never asks for sudo: it tells you
+  to run `hpy update`. After replacing a
   copy `cargo install` built, cargo still records the version it compiled, so
   installing hpy with cargo again rebuilds from source over it.
 - **Installed with Homebrew, apt or dnf:** those track the files they own, and

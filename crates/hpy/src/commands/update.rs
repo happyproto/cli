@@ -42,9 +42,16 @@ pub(crate) async fn install(
                 "Installing hpy {target} into {}…",
                 prefix.display()
             ));
-            update::self_update(target, &prefix)
-                .await
-                .map_err(|e| Failure::runtime(update::self_update_failed(target, &e)))?;
+            match update::self_update(target, &prefix, update::Escalate::Ask).await {
+                Ok(()) => {}
+                // Printed as it is rather than as an error report, which
+                // would wrap the command it gives across lines.
+                Err(e @ update::SelfUpdateError::NeedsRoot(_)) => {
+                    ctx.out.status(&update::self_update_failed(target, &e));
+                    return Err(Failure::exit(1));
+                }
+                Err(e) => return Err(Failure::runtime(update::self_update_failed(target, &e))),
+            }
             Ok(Outcome::Installed(install))
         }
         (install, _) => Ok(Outcome::Hint(hint(install))),
