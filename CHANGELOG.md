@@ -1,3 +1,21 @@
+# [1.0.0-beta.5](https://github.com/happyproto/cli/compare/v1.0.0-beta.4...v1.0.0-beta.5) (2026-11-05)
+
+
+### Bug Fixes
+
+* **installer:** never offer the copy just installed for removal, and ignore test-only variables in the published scripts ([f879c43](https://github.com/happyproto/cli/commit/f879c4394604ebc130cdff47addb115b4ef09ffa))
+* **pull:** name the last deploy instead of calling a regenerated project different ([de39940](https://github.com/happyproto/cli/commit/de399403ebca0ca6cd494db1cb74a6a159821f7c))
+* **pull:** write only plain project paths ([4ec6786](https://github.com/happyproto/cli/commit/4ec6786499c245282e6355ead00f895f67370ff8))
+
+
+### Features
+
+* add hpy happyview pull, to build a project from an instance ([5d91266](https://github.com/happyproto/cli/commit/5d9126612f15149f2b61b1ca9ba5983a9b36d3c8))
+* add hpy hv env push, sending .env keys to the instance's script variables ([1239348](https://github.com/happyproto/cli/commit/1239348d536da5711a6cf271f5e5b6548b20c04c))
+* **installer:** install hpy into /usr/local/bin, with sudo for the copy alone ([4ea0c07](https://github.com/happyproto/cli/commit/4ea0c079db969dc7af6bffd309c1c0a5794c45d6))
+* **pull:** write interpreter modules from GET /admin/scripts/modules ([0800d76](https://github.com/happyproto/cli/commit/0800d76e171d92e89eeb804ae11ec28a461a64ee))
+* **update:** replace a root-owned copy of hpy with sudo, for the copy alone ([e18bf0b](https://github.com/happyproto/cli/commit/e18bf0b34620a1660d2cbfba0cb734b42cdaeab3))
+
 # [1.0.0-alpha.31](https://github.com/happyproto/cli/compare/v1.0.0-alpha.30...v1.0.0-alpha.31) (2026-11-05)
 
 
