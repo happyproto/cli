@@ -68,14 +68,29 @@ function position(argv: string[], display: string): number {
   return i === -1 ? Number.MAX_SAFE_INTEGER : i;
 }
 
+export interface Violation {
+  message: string;
+  /** clap's usage for the error: the arguments that were used, then the positionals. */
+  used: string[];
+  /** A positional left out of the usage's "used" set (the one that conflicted). */
+  except?: string;
+  /** A required positional that was left out: shown as required in the usage. */
+  missing?: string;
+}
+
 /** The first violated rule, as clap's error line (without `error: `), or null. */
-export function check(route: string, args: Args, argv: string[]): string | null {
+export function check(route: string, args: Args, argv: string[]): Violation | null {
   const shown = DISPLAY[route] ?? {};
   for (const rule of RULES[route] ?? []) {
     if ("requires" in rule) {
       const [a, b] = rule.requires;
       if (given(args, a) && !given(args, b))
-        return `the following required arguments were not provided:\n  ${shown[b] ?? b}`;
+        return {
+          message: `the following required arguments were not provided:\n  ${shown[b] ?? b}`,
+          // clap lists the missing argument first, then the one that needs it.
+          used: [...(shown[b]?.startsWith("-") ? [shown[b] as string] : []), shown[a] ?? a],
+          ...(shown[b]?.startsWith("-") ? {} : { missing: b }),
+        };
       continue;
     }
     const [a, b] = "conflicts" in rule ? rule.conflicts : rule.conflictsArg;
@@ -83,7 +98,13 @@ export function check(route: string, args: Args, argv: string[]): string | null 
       const da = shown[a] ?? a;
       const db = shown[b] ?? b;
       const [first, second] = position(argv, da) <= position(argv, db) ? [da, db] : [db, da];
-      return `the argument '${first}' cannot be used with '${second}'`;
+      const firstKey = first === da ? a : b;
+      const isArg = (k: string) => !(shown[k] ?? "-").startsWith("-");
+      return {
+        message: `the argument '${first}' cannot be used with '${second}'`,
+        used: isArg(firstKey) ? [] : [first],
+        except: [a, b].find(isArg),
+      };
     }
   }
   return null;

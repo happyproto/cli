@@ -36,3 +36,20 @@ HPY_CREDENTIAL=garbage -- registry whoami
 @cred @net -- registry plugin show --name nope-xyz
 HPY_OAUTH_REDIRECT=http://evil -- registry whoami
 HPY_CREDENTIAL_STORE=vault -- registry whoami
+-- registry whoami --bogus
+-- registry plugin show --name
+-- registry login a b
+-- hv dev --network nope
+-- hv login --key-stdin --no-browser
+-- registry plugin lifecycle --withdraw at://x --kind security
+-- 
+-- --help
+-- -h
+-- help
+-- help registry plugin
+-- hv
+-- hv env
+-- registry plugin publish --version 1 -h
+-- hv dev --help
+-- hv pull --help
+-- hv add -h

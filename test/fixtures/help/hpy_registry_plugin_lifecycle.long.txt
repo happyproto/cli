@@ -1,0 +1,22 @@
+Record a lifecycle event (end of support, end of life, …) for a version or the whole project
+
+Usage: hpy registry plugin lifecycle [OPTIONS] [VERSION] [EVENT]
+
+Arguments:
+  [VERSION]  The version the event is about; with --project, the event itself
+  [EVENT]    endOfDevelopment, endOfSupport, supersededBy, endOfDistribution or endOfLife
+
+Options:
+      --json                     Print the result as JSON on stdout
+      --project                  The event is about the whole project rather than one version
+      --kind <KIND>              What kind of event it is, in your own words (e.g. security)
+      --no-input                 Never prompt; fail when a value is missing. Irreversible actions
+                                 still need --yes. Implied without a terminal
+  -C <DIR>                       Run as if started in DIR
+      --reason <REASON>          Why, for the people running it
+      --superseded-by <VERSION>  The version to move to (with supersededBy)
+      --withdraw <STATUS_URI>    Withdraw a status recorded in error, by its at:// URI
+      --name <NAME>              Project name (default: hpy.toml [project] name, then manifest.json
+                                 id)
+  -y, --yes                      Do not ask for confirmation
+  -h, --help                     Print help

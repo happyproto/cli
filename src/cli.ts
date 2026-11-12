@@ -381,7 +381,7 @@ export function buildCli(version: string, sink: (i: Invocation) => void): Comman
       "Read the keys from this file instead of .env in the project root.",
     )
     .option("--dry-run", "List each key as new or replacing an existing one, and send nothing.")
-    .addOption(yes().default(false));
+    .addOption(new Option("-y, --yes", "Send every key without asking."));
   leaf(
     hv,
     "pull",

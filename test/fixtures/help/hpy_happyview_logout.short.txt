@@ -1,0 +1,12 @@
+Sign out of an instance
+
+Usage: hpy happyview logout [OPTIONS]
+
+Options:
+      --json       Print the result as JSON on stdout
+      --url <URL>  The instance, e.g. https://api.example.com (default: HPY_HV_URL, else the only
+                   one you are signed in to)
+      --no-input   Never prompt; fail when a value is missing. Irreversible actions still need
+                   --yes. Implied without a terminal
+  -C <DIR>         Run as if started in DIR
+  -h, --help       Print help

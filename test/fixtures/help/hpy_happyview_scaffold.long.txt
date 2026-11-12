@@ -1,0 +1,29 @@
+Write a starter handler beside each query or procedure lexicon under src/ that has none.
+
+The handler is in the language of the first [interpreters] entry and names its collection:
+--collection's, else one chosen at a prompt, else the placeholder COLLECTION under a TODO comment.
+An existing handler, in any language, is never replaced.
+
+Usage: hpy happyview scaffold [OPTIONS] [NSID]...
+
+Arguments:
+  [NSID]...
+          Only these query or procedure lexicons (default: every one without a handler)
+
+Options:
+      --collection <NSID>
+          The collection every handler written reads or writes (default: asked for each, else the
+          placeholder COLLECTION)
+
+      --json
+          Print the result as JSON on stdout
+
+      --no-input
+          Never prompt; fail when a value is missing. Irreversible actions still need --yes. Implied
+          without a terminal
+
+  -C <DIR>
+          Run as if started in DIR
+
+  -h, --help
+          Print help (see a summary with '-h')

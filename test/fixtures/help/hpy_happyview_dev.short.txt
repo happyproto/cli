@@ -1,0 +1,19 @@
+Run the project with its pinned HappyView; a saved file is live on the next request
+
+Usage: hpy happyview dev [OPTIONS]
+
+Options:
+      --json               Print the result as JSON on stdout
+      --locked             Fail rather than update happyview.lock when it no longer matches
+                           happyview.toml
+      --network <NETWORK>  Which atproto network to run against [default: real] [possible values:
+                           real, local]
+      --no-input           Never prompt; fail when a value is missing. Irreversible actions still
+                           need --yes. Implied without a terminal
+  -C <DIR>                 Run as if started in DIR
+      --reset              Discard the local network's accounts, records and database, then start
+                           fresh
+      --subnet <CIDR>      The private IPv4 network the local network is created on, when the one
+                           derived from the project's path is taken. Kept until another is given
+  -y, --yes                Do not ask for confirmation
+  -h, --help               Print help (see more with '--help')
