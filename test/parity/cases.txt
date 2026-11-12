@@ -1,0 +1,38 @@
+# One case per line: [ENV=VALUE ...] -- ARGV
+# @cred puts test/fixtures/credentials/HPY_CREDENTIAL in HPY_CREDENTIAL.
+# @file copies credentials.file.json into the config directory.
+# @net marks a case that reads the public registry (skipped with --offline).
+-- --version
+-- registry whoami
+@cred -- registry whoami
+@cred -- registry whoami --json
+@cred -- --json registry whoami
+@cred -- --no-input registry whoami
+@file -- registry whoami
+@file -- --json registry whoami
+-- registry logout
+-- --json registry logout
+@file -- registry logout
+@file -- --json registry logout
+HPY_CREDENTIAL=garbage -- registry whoami
+@cred -- registry plugin lifecycle --project endOfLife --withdraw at://x
+@cred -- registry plugin lifecycle --withdraw at://x --kind security
+@cred -- registry plugin lifecycle --withdraw at://x --superseded-by 1.0.0
+-- hv pull --diff --dry-run
+-- hv pull --api-key-env FOO
+-- hv add --channel beta
+-- hv add --version 1.0.0
+-- hv add --interpreter --library lua
+-- hv login --key-stdin alice
+-- hv login --key-stdin --no-browser
+-- registry plugin nope
+-- bogus
+-- hv dev --network nope
+-- hv create
+-- --no-input registry login
+-- registry login
+@cred @net -- registry plugin show --name happyview-lua
+@cred @net -- --json registry plugin show --name happyview-lua
+@cred @net -- registry plugin show --name nope-xyz
+HPY_OAUTH_REDIRECT=http://evil -- registry whoami
+HPY_CREDENTIAL_STORE=vault -- registry whoami

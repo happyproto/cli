@@ -68,7 +68,6 @@ const runArgs = (c: Command) =>
 export function buildCli(version: string, sink: (i: Invocation) => void): Command {
   const hpy = new Command("hpy")
     .description("The HappyProto command line")
-    .version(`hpy ${version}`, "-V, --version", "Print version")
     .helpOption("-h, --help", "Print help")
     .option("--json", "Print the result as JSON on stdout.")
     .option(

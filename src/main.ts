@@ -39,6 +39,14 @@ function clapMessage(e: CommanderError): string {
 }
 
 async function run(argv: string[]): Promise<number> {
+  // The root's -V/--version, before any subcommand word.
+  for (const a of argv) {
+    if (a === "-V" || a === "--version") {
+      process.stdout.write(`hpy ${VERSION}\n`);
+      return 0;
+    }
+    if (!a.startsWith("-")) break;
+  }
   let invocation: Invocation | undefined;
   const program = buildCli(VERSION, (i) => {
     invocation = i;
