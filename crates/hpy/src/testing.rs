@@ -180,6 +180,8 @@ pub struct FakeRegistry {
     pub project: Mutex<Option<ProjectView>>,
     /// What `getVersion` answers, by version; `publish_release` adds to it.
     pub versions: Mutex<BTreeMap<String, VersionView>>,
+    /// What `resolveChannel` answers: the version each channel points at.
+    pub channels: Mutex<BTreeMap<String, String>>,
     pub unreachable: bool,
     /// What the gateway was asked: ("project"|"release", validate_only).
     pub calls: Mutex<Vec<(&'static str, bool)>>,
@@ -263,9 +265,19 @@ impl Registry for FakeRegistry {
         Ok(self.versions.lock().unwrap().get(version).cloned())
     }
 
-    async fn resolve_channel(&self, _: &str, _: &str, _: &str) -> Result<Option<VersionView>> {
+    async fn resolve_channel(
+        &self,
+        did: &str,
+        name: &str,
+        channel: &str,
+    ) -> Result<Option<VersionView>> {
         self.check()?;
-        Ok(None)
+        Ok(self
+            .channels
+            .lock()
+            .unwrap()
+            .get(channel)
+            .map(|v| version_view(did, name, v, Value::Null)))
     }
 
     async fn get_artifact(&self, _: &str) -> Result<Vec<u8>> {

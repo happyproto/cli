@@ -4,5 +4,6 @@ pub mod happyview;
 pub mod lifecycle;
 pub mod profile;
 pub mod publish;
+pub mod release;
 pub mod status;
 pub mod update;

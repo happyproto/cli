@@ -71,6 +71,7 @@ async fn run(cli: Cli) -> Result<(), Failure> {
             PluginCommand::Status(a) => commands::status::run(&ctx, a).await,
             PluginCommand::Lifecycle(a) => commands::lifecycle::run(&ctx, a).await,
         },
+        RegistryCommand::Release(command) => commands::release::run(&ctx, command).await,
     }
 }
 

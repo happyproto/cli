@@ -53,6 +53,9 @@ pub enum RegistryCommand {
     /// Manage your HappyView plugins in the registry.
     #[command(subcommand)]
     Plugin(PluginCommand),
+    /// Publish releases of a server project, such as HappyView itself.
+    #[command(subcommand)]
+    Release(crate::commands::release::ReleaseCommand),
 }
 
 #[derive(Args)]
