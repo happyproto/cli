@@ -4,13 +4,23 @@
 //
 //   RUST_HPY=/path/to/rust/hpy node test/parity/run.mjs [--offline] [--ts "node dist/hpy.mjs"] [filter]
 //
-// Exits 1 when any case's exit code or stdout differs. stderr differences are
-// listed but do not fail the run unless --strict-stderr is given.
-import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+// Exits 1 when any case's exit code, stdout, kept files or mock requests
+// differ. stderr differences are listed but do not fail the run unless
+// --strict-stderr is given.
+import { spawn } from "node:child_process";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { describeRequest, startMock } from "./mock-happyview.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
@@ -43,10 +53,30 @@ const cases = readFileSync(join(here, "cases.txt"), "utf8")
   .split("\n")
   .filter((l) => l.trim() !== "" && !l.startsWith("#"));
 
-function run(cmd, line) {
-  const [pre, argvText] = line.split(" -- ");
-  const tags = (pre.startsWith("--") ? "" : pre).split(" ").filter(Boolean);
-  const argv = (line.startsWith("-- ") ? line.slice(3) : argvText).split(" ").filter(Boolean);
+/** Spawns one step, feeding `input` on stdin, while this process keeps serving the mock. */
+function spawnStep(cmd, argv, env, cwd, input) {
+  return new Promise((res) => {
+    const child = spawn(cmd[0], [...cmd.slice(1), ...argv], { env, cwd });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("close", (code) => res({ code, stdout, stderr }));
+    child.stdin.end(input);
+  });
+}
+
+/**
+ * One case: `[tags] -- argv [;; argv ...]`, every step in the same fresh HOME.
+ * Tags: @cred, @file, @net, @mock (a mock HappyView at $MOCK), STDIN=text
+ * (for every step), @keep=<path under the config dir> (the file is compared
+ * after the last step, with its mode), and ENV=VALUE.
+ */
+async function run(cmd, line, mock) {
+  const [pre, argvText] = line.startsWith("-- ") ? ["", line.slice(3)] : line.split(" -- ");
+  const tags = pre.split(" ").filter(Boolean);
+  const sub = (t) => (mock ? t.replaceAll("$MOCK", mock.url) : t);
+  const steps = argvText.split(" ;; ").map((s) => s.split(" ").filter(Boolean).map(sub));
   const home = mkdtempSync(join(tmpdir(), "hpy-parity-"));
   const config = join(home, ".config");
   const env = {
@@ -58,35 +88,64 @@ function run(cmd, line) {
     HPY_NO_UPDATE_CHECK: "1",
     HPY_CREDENTIAL_STORE: "file",
   };
+  let input = "";
+  const keep = [];
   for (const t of tags) {
     if (t === "@cred") env.HPY_CREDENTIAL = readFileSync(join(fixtures, "HPY_CREDENTIAL"), "utf8");
     else if (t === "@file") {
       mkdirSync(join(config, "hpy"), { recursive: true });
       copyFileSync(join(fixtures, "credentials.file.json"), join(config, "hpy/credentials.json"));
-    } else if (t === "@net") {
-    } else if (t.includes("=")) {
+    } else if (t === "@net" || t === "@mock") {
+    } else if (t.startsWith("@keep=")) keep.push(t.slice(6));
+    else if (t.startsWith("STDIN=")) input = sub(t.slice(6)).replaceAll("\\n", "\n");
+    else if (t.includes("=")) {
       const [k, ...v] = t.split("=");
-      env[k] = v.join("=");
+      env[k] = sub(v.join("="));
     }
   }
-  const r = spawnSync(cmd[0], [...cmd.slice(1), ...argv], {
-    env,
-    cwd: home,
-    input: "",
-    encoding: "utf8",
-  });
+  if (mock) mock.requests.length = 0;
+  let code = null;
+  let stdout = "";
+  let stderr = "";
+  for (const [i, argv] of steps.entries()) {
+    const r = await spawnStep(cmd, argv, env, home, input);
+    const mark = steps.length > 1 ? `[step ${i + 1}: exit ${r.code}]\n` : "";
+    code = r.code;
+    stdout += mark + r.stdout;
+    stderr += mark + r.stderr;
+  }
+  const files = keep
+    .map((k) => {
+      const p = join(config, k);
+      if (!existsSync(p)) return `${k}: absent\n`;
+      const mode = (statSync(p).mode & 0o777).toString(8);
+      return `${k} (${mode}):\n${readFileSync(p, "utf8")}\n`;
+    })
+    .join("");
+  const requests = mock ? mock.requests.map(describeRequest).join("\n") : "";
   rmSync(home, { recursive: true, force: true });
-  return { code: r.status, stdout: r.stdout, stderr: r.stderr.replaceAll(home, "$HOME") };
+  const clean = (t) => t.replaceAll(home, "$HOME").replaceAll(mock?.url ?? "\0", "$MOCK");
+  return {
+    code,
+    stdout: clean(stdout),
+    stderr: clean(stderr),
+    files: clean(files),
+    requests: clean(requests),
+  };
 }
+
+const mock = cases.some((l) => l.includes("@mock")) ? await startMock() : undefined;
 
 let failed = 0;
 let stderrOnly = 0;
 for (const line of cases) {
   if (filter && !line.includes(filter)) continue;
   if (offline && line.includes("@net")) continue;
-  const a = run([rust], line);
-  const b = run(tsCmd, line);
-  const same = a.code === b.code && a.stdout === b.stdout;
+  const m = line.includes("@mock") ? mock : undefined;
+  const a = await run([rust], line, m);
+  const b = await run(tsCmd, line, m);
+  const same =
+    a.code === b.code && a.stdout === b.stdout && a.files === b.files && a.requests === b.requests;
   const errSame = a.stderr === b.stderr;
   if (same && errSame) {
     console.log(`ok      ${line}`);
@@ -101,8 +160,13 @@ for (const line of cases) {
     if (a.code !== b.code) console.log(`        exit: rust ${a.code}, ts ${b.code}`);
     if (a.stdout !== b.stdout)
       console.log(`        stdout:\n--- rust\n${a.stdout}--- ts\n${b.stdout}---`);
+    if (a.files !== b.files)
+      console.log(`        files:\n--- rust\n${a.files}--- ts\n${b.files}---`);
+    if (a.requests !== b.requests)
+      console.log(`        requests:\n--- rust\n${a.requests}\n--- ts\n${b.requests}\n---`);
   }
   if (!errSame) console.log(`        stderr:\n--- rust\n${a.stderr}--- ts\n${b.stderr}---`);
 }
 console.log(`\n${cases.length} cases: ${failed} failing, ${stderrOnly} differing only on stderr`);
+await mock?.stop();
 process.exit(failed > 0 || (strictStderr && stderrOnly > 0) ? 1 : 0);
