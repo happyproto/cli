@@ -58,7 +58,11 @@ async function run(argv: string[]): Promise<number> {
   const { target, words } = resolveCommand(program, argv);
   const helpIndex = argv.findIndex((a) => a === "-h" || a === "--help");
   const dashdash = argv.indexOf("--");
-  if (helpIndex !== -1 && (dashdash === -1 || helpIndex < dashdash)) {
+  // An unknown subcommand word is an error even beside --help, as in clap.
+  const stray =
+    target.commands.length > 0 &&
+    argv.some((a, i) => !a.startsWith("-") && argv[i - 1] !== "-C" && !words.includes(a));
+  if (helpIndex !== -1 && (dashdash === -1 || helpIndex < dashdash) && !stray) {
     process.stdout.write(renderHelp(target, argv[helpIndex] === "--help"));
     return 0;
   }
@@ -71,7 +75,10 @@ async function run(argv: string[]): Promise<number> {
   let errText = "";
   program.exitOverride();
   program.configureOutput({ writeErr: (s) => (errText += s) });
+  program.helpOption(false);
   for (const sub of allCommands(program)) {
+    // Help is answered above, in clap's layout; commander must not print its own.
+    sub.helpOption(false);
     sub.exitOverride();
     sub.configureOutput({ writeErr: (s) => (errText += s) });
   }
