@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import type { Credential } from "./credential.ts";
 import { randomToken } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
-import type { HappyView } from "./happyview.ts";
+import { type HappyView, sessionRegistration } from "./happyview.ts";
 import * as oauth from "./oauth.ts";
 import { newPkce } from "./pkce.ts";
 import type { Resolver } from "./resolve.ts";
@@ -116,17 +116,19 @@ export async function login(
       throw AtprotoError.other(`the PDS granted \`${tokens.scope}\`, which lacks \`atproto\``);
 
     const expiresAt = new Date(Date.now() + (tokens.expiresIn ?? 3600) * 1000);
-    await hv.registerSession({
-      provisionId: provision.provisionId,
-      pkceVerifier: hvPkce.verifier,
-      did: resolved.did,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresAt: rfc3339Secs(expiresAt),
-      scopes: tokens.scope,
-      pdsUrl: resolved.pds,
-      issuer: auth.issuer,
-    });
+    await hv.registerSession(
+      sessionRegistration({
+        provisionId: provision.provisionId,
+        pkceVerifier: hvPkce.verifier,
+        did: resolved.did,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: rfc3339Secs(expiresAt),
+        scopes: tokens.scope,
+        pdsUrl: resolved.pds,
+        issuer: auth.issuer,
+      }),
+    );
 
     return {
       registry: hv.base,

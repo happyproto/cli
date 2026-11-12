@@ -37,6 +37,20 @@ export interface SessionRegistration {
   issuer: string;
 }
 
+/**
+ * A registration that `util.inspect` (console.log, test diffs) prints without
+ * its tokens or PKCE verifier, as Rust's hand-written `Debug` does.
+ */
+export function sessionRegistration(r: SessionRegistration): SessionRegistration {
+  const out = { ...r };
+  Object.defineProperty(out, Symbol.for("nodejs.util.inspect.custom"), {
+    enumerable: false,
+    value: () =>
+      `SessionRegistration { provision_id: ${JSON.stringify(r.provisionId)}, did: ${JSON.stringify(r.did)}, scopes: ${JSON.stringify(r.scopes)}, pds_url: ${JSON.stringify(r.pdsUrl)}, issuer: ${JSON.stringify(r.issuer)}, .. }`,
+  });
+  return out;
+}
+
 /** The struct's serde form: fields in declaration order, `refresh_token` skipped when None. */
 function registrationJson(r: SessionRegistration): string {
   const o: Record<string, Json> = {

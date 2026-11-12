@@ -28,6 +28,8 @@ interface Mount {
   extra: Matcher[];
   reply: Reply | ((r: Recorded) => Reply);
   expect?: number;
+  /** wiremock's `up_to_n_times`: the mount stops matching after this many hits. */
+  limit?: number;
   hits: number;
 }
 
@@ -60,6 +62,7 @@ export class MockServer {
       m.requests.push(rec);
       const mount = m.#mounts.find(
         (x) =>
+          (x.limit === undefined || x.hits < x.limit) &&
           (x.method === "*" || x.method === rec.method) &&
           (typeof x.path === "string"
             ? x.path === "*" || x.path === rec.path
@@ -94,11 +97,17 @@ export class MockServer {
   ) {
     const mount: Mount = { method, path, reply, extra, hits: 0 };
     this.#mounts.push(mount);
-    return {
+    const handle = {
       expect(n: number) {
         mount.expect = n;
+        return handle;
+      },
+      times(n: number) {
+        mount.limit = n;
+        return handle;
       },
     };
+    return handle;
   }
 
   /** wiremock's verify-on-drop: every mount with `expect(n)` was hit exactly n times. */
@@ -121,3 +130,7 @@ export const header =
   (k: string, v: string): Matcher =>
   (r) =>
     r.headers[k.toLowerCase()] === v;
+export const bodyContains =
+  (text: string): Matcher =>
+  (r) =>
+    r.body.toString().includes(text);
