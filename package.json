@@ -37,7 +37,6 @@
     "@biomejs/biome": "2.6.7",
     "@bomb.sh/tab": "0.0.22",
     "@clack/prompts": "1.9.0",
-    "@rainbowatcher/toml-edit-js": "0.6.5",
     "@types/node": "24.19.2",
     "commander": "15.1.0",
     "esbuild": "0.28.2",
