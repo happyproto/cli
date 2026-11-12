@@ -62,3 +62,19 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 -- channel foo
 -- channel Beta
 -- channel stable extra
+# hv login/logout/whoami against the mock HappyView ($MOCK/<mode>, see mock-happyview.mjs).
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/ok --key-stdin ;; hv whoami ;; hv whoami --json ;; hv logout ;; hv whoami
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- --json hv login --url $MOCK/ok/ --key-stdin ;; --json hv logout --url $MOCK/ok ;; --json hv logout
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/refuse --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/forbid --key-stdin
+@mock STDIN=nope -- hv login --url $MOCK/ok --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url http://example.com --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/ok --key-stdin ;; hv login --url $MOCK/old --key-stdin ;; hv whoami ;; hv logout ;; hv logout --url $MOCK/old ;; hv whoami --json
+@mock HPY_HV_URL=$MOCK/ci HPY_HV_API_KEY=hv_fedcba9876543210fedcba9876543210 -- hv whoami ;; --json hv whoami
+@mock HPY_HV_API_KEY=hv_fedcba9876543210fedcba9876543210 -- hv whoami
+-- hv logout
+-- hv logout --url https://nowhere.example.com
+-- hv whoami
+-- --json hv whoami
+-- hv logout --url ftp://x

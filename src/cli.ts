@@ -77,7 +77,7 @@ const runArgs = (c: Command) =>
     "Fail rather than update happyview.lock when it no longer matches happyview.toml.",
   );
 
-export function buildCli(version: string, sink: (i: Invocation) => void): Command {
+export function buildCli(_version: string, sink: (i: Invocation) => void): Command {
   const hpy = new Command("hpy")
     .description("The HappyProto command line")
     .helpOption("-h, --help", "Print help")

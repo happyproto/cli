@@ -88,7 +88,7 @@ function optionDisplay(o: Option): string {
   return value ? `${names} ${value}` : names;
 }
 
-function optionRow(o: Option, globals: boolean): Row {
+function optionRow(o: Option, _globals: boolean): Row {
   let help = trimPeriod(o.description);
   const def = o.defaultValue;
   const choices = o.argChoices;
