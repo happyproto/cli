@@ -1,0 +1,49 @@
+{
+  "name": "@happyproto/cli",
+  "version": "1.0.0-alpha.31",
+  "description": "The HappyProto command line",
+  "homepage": "https://happyproto.at",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/happyproto/cli.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "hpy": "dist/hpy.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.15"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:bun": "node scripts/build-bun.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "test:cli": "npm run build && vitest run test/cli",
+    "parity": "node --experimental-strip-types test/parity/run.ts"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "2.1.2",
+    "@napi-rs/lzma": "1.5.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.7",
+    "@bomb.sh/tab": "0.0.22",
+    "@clack/prompts": "1.9.0",
+    "@rainbowatcher/toml-edit-js": "0.6.5",
+    "@types/node": "24.19.2",
+    "commander": "15.1.0",
+    "esbuild": "0.28.2",
+    "execa": "10.2.1",
+    "smol-toml": "1.9.1",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
