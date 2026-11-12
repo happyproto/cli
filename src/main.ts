@@ -13,6 +13,7 @@ import { Prompter } from "./core/prompt.ts";
 import { renderReport } from "./core/report.ts";
 import { VERSION } from "./core/version.ts";
 import { commandPath, renderHelp, usage } from "./help.ts";
+import { ValueError } from "./values.ts";
 
 /** commander's parse errors in clap's words: `error: …`, exit 2. */
 function clapMessage(e: CommanderError, extra?: string): string {
@@ -85,6 +86,10 @@ async function run(argv: string[]): Promise<number> {
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (e) {
+    if (e instanceof ValueError) {
+      process.stderr.write(`error: ${e.message}\n\nFor more information, try '--help'.\n`);
+      return 2;
+    }
     if (e instanceof UsageExit) {
       process.stderr.write(errText);
       return 2;

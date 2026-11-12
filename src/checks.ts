@@ -53,6 +53,9 @@ const RULES: Record<string, Rule[]> = {
   ],
 };
 
+/** The routes that have rules, for the command-tree test. */
+export const CHECKED_ROUTES = Object.keys(RULES);
+
 function given(args: Args, key: string): boolean {
   const v = args[key];
   if (key === "browser") return v === false; // --no-browser

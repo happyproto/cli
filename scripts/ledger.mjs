@@ -25,7 +25,7 @@ const ported = new Set();
 const todo = new Set();
 for (const f of walk("test", ".ts")) {
   const text = readFileSync(f, "utf8");
-  for (const m of text.matchAll(/\bit\(\s*"([a-z0-9_]+)"/g)) ported.add(m[1]);
+  for (const m of text.matchAll(/\bit(?:\.skipIf\([^)]*\))?\(\s*"([a-z0-9_]+)"/g)) ported.add(m[1]);
   for (const m of text.matchAll(/\bit\.todo\(\s*"([a-z0-9_]+)"/g)) todo.add(m[1]);
 }
 let total = 0;

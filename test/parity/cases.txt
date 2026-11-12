@@ -53,3 +53,12 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 -- hv dev --help
 -- hv pull --help
 -- hv add -h
+-- hv dev --subnet 10.40.0.0
+-- hv dev --subnet=10.40.0.1/24
+-- hv dev --subnet 8.8.8.0/24
+-- hv dev --subnet 10.40.0.0/29
+-- hv dev --subnet 172.32.0.0/24
+-- hv dev --subnet
+-- channel foo
+-- channel Beta
+-- channel stable extra

@@ -1,13 +1,24 @@
 // crates/hpy/src/cli.rs: the command tree, with clap's help text, conflicts and
 // requirements, in commander. Each leaf names its handler in `route`; main.ts
 // dispatches on it. Positional arguments land in `args` under their clap names.
-import { Command, Option } from "commander";
+import { Argument, Command, Option } from "commander";
+import { parseChannel, parseSubnet, valueParser } from "./values.ts";
 
 export type Args = Record<string, unknown>;
 export type Invocation = { route: string; args: Args };
 
-/** clap's `value_parser!(Channel)`: stable (also `main`), beta or alpha. */
-const CHANNELS = ["stable", "main", "beta", "alpha"];
+/** Each leaf's route, for checks over the whole tree. */
+export const ROUTES = new WeakMap<Command, string>();
+
+/**
+ * main.rs `checks_for_updates`: whether the daily update check runs around
+ * this route. `update` and `channel` do it themselves, and say so. `happyview`
+ * ends by becoming the HappyView binary, so a check started there would record
+ * the day as checked and then be lost with its notice.
+ */
+export function checksForUpdates(route: string): boolean {
+  return !(route === "update" || route === "channel" || route.startsWith("hv."));
+}
 
 function leaf(
   parent: Command,
@@ -17,6 +28,7 @@ function leaf(
   sink: (i: Invocation) => void,
 ): Command {
   const c = parent.command(name).description(about);
+  ROUTES.set(c, route);
   c.action((...xs: unknown[]) => {
     const cmd = xs[xs.length - 1] as Command;
     const args: Args = { ...cmd.opts() };
@@ -203,9 +215,11 @@ export function buildCli(version: string, sink: (i: Invocation) => void): Comman
   // update, channel
   leaf(hpy, "update", "Update hpy to the newest release on your channel.", "update", sink);
   leaf(hpy, "channel", "Show or choose the release channel hpy updates from.", "channel", sink)
-    .argument(
-      "[CHANNEL]",
-      "stable (also `main`), beta or alpha. Shows the current channel when omitted.",
+    .addArgument(
+      new Argument(
+        "[CHANNEL]",
+        "stable (also `main`), beta or alpha. Shows the current channel when omitted.",
+      ).argParser(valueParser("[CHANNEL]", parseChannel)),
     )
     .addOption(yes());
 
@@ -260,6 +274,7 @@ export function buildCli(version: string, sink: (i: Invocation) => void): Comman
     .option(
       "--subnet <CIDR>",
       "The private IPv4 network the local network is created on, when the one derived from the project's path is taken. Kept until another is given.",
+      valueParser("--subnet <CIDR>", parseSubnet),
     )
     .addOption(yes());
   leaf(
@@ -415,5 +430,3 @@ export function buildCli(version: string, sink: (i: Invocation) => void): Comman
 
   return hpy;
 }
-
-export { CHANNELS };
