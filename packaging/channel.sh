@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prints the release channel a version or tag belongs to: stable, beta or
 # alpha. Prints nothing for a prerelease no channel ships (e.g. -rc.1), which
-# is published nowhere. Matches `Channel::of` in crates/hpy/src/channel.rs.
+# is published nowhere. Matches `channelOf` in src/channel.ts.
 #
 # Usage: channel.sh VERSION   (v1.2.0, 1.3.0-beta.1, ...)
 set -euo pipefail
