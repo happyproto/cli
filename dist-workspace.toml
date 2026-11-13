@@ -46,6 +46,14 @@ post-announce-jobs = ["./publish-linux-packages"]
 # Node, Bun and npm ci before each build (.github/build-setup.yml).
 github-build-setup = "../build-setup.yml"
 
+# dist would otherwise take the gnu build's minimum glibc from the build host
+# (ubuntu 24.04: 2.39), and its installer would turn Debian 12 and Ubuntu
+# 22.04 away from the gnu build. Bun's gnu build runs on glibc 2.31 and newer.
+# packaging/patch-installer.sh fails the release if the installer asks for
+# any other minimum.
+[dist.min-glibc-version]
+"*" = "2.31"
+
 [dist.github-custom-runners]
 global = "depot-ubuntu-24.04"
 # Each Linux build runs on its own architecture, so the smoke test can run

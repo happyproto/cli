@@ -33,7 +33,7 @@ jobs:
       # test/cli runs dist/hpy.mjs under this Node.
       - run: npm run build
       - run: npx vitest run
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         if: matrix.node == 'lts/*'
         with:
           bun-version-file: .bun-version
@@ -84,7 +84,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - run: npm ci
@@ -109,7 +109,7 @@ jobs:
         with:
           node-version: lts/*
           cache: npm
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
       - name: Install dist
@@ -124,14 +124,24 @@ jobs:
       # archive (built with dist) served locally, with a stand-in sudo: it
       # never runs the real one.
       - run: packaging/test-installer.sh --local
-      # The check packaging/patch-installer.sh adds to dist's installer (as
-      # release.yml does), in Alpine and Debian 10 containers: it refuses the
-      # musl build without libstdc++ or on glibc < 2.31, and installs it on
-      # Alpine with libstdc++.
-      - name: Musl runtime check in the installer
+      # The installer as release.yml makes it: each local build's manifest
+      # (with --print=linkage, which is where dist reads the gnu build's
+      # glibc) beside the archives, then the global installer, patched by
+      # packaging/patch-installer.sh, which fails unless the gnu build asks
+      # for glibc 2.31. Then, in containers: Alpine without libstdc++ and
+      # Debian 10 (glibc 2.28) are refused; Alpine with libstdc++ gets the
+      # musl build, and Debian 12 and Ubuntu 22.04 the gnu one.
+      - name: Installer runtime checks
         run: |
-          dist build --artifacts=local --target=x86_64-unknown-linux-musl >/dev/null
+          rm -rf target/distrib
+          for t in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl; do
+            dist build --artifacts=local --target="$t" --print=linkage --output-format=json > "$RUNNER_TEMP/$t.json"
+          done
+          for t in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl; do
+            cp "$RUNNER_TEMP/$t.json" "target/distrib/$t-dist-manifest.json"
+          done
           dist build --artifacts=global >/dev/null
+          grep -n 'check_glibc "' target/distrib/hpy-cli-installer.sh
           packaging/patch-installer.sh target/distrib/hpy-cli-installer.sh
           packaging/test-musl-guard.sh target/distrib
 

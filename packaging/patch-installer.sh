@@ -30,6 +30,16 @@ file="$1"
 [[ -f "$file" ]] || fail "$file: no such file"
 
 marker='# --- hpy: musl runtime check (packaging/patch-installer.sh) ---'
+
+# dist takes the gnu build's minimum glibc from the build host unless
+# dist-workspace.toml's [dist.min-glibc-version] says otherwise. Bun's gnu
+# build needs 2.31; any other minimum turns supported systems away from it
+# (and then, with this patch, away from the musl fallback too).
+want='check_glibc "2" "31"'
+found=$(grep -o 'check_glibc "[0-9]*" "[0-9]*"' "$file" | sort -u || true)
+[[ -n "$found" ]] || fail "dist's installer checks no glibc version; update this script for the new dist"
+[[ "$found" == "$want" ]] \
+  || fail "the installer requires $(echo "$found" | tr '\n' ' ')for the gnu build, not 2.31: check [dist.min-glibc-version] in dist-workspace.toml"
 grep -qF "$marker" "$file" && fail "$file is already patched"
 
 define='select_archive_for_arch() {'
