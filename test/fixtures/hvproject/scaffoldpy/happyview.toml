@@ -1,0 +1,5 @@
+[happyview]
+version = "3.0.0-alpha.12"
+
+[interpreters]
+python = { did = "did:plc:hv", name = "happyview-python", channel = "latest" }
