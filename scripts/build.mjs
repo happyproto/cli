@@ -19,9 +19,12 @@ await build({
   external: ["@napi-rs/keyring", "@napi-rs/lzma"],
   define: { HPY_VERSION: JSON.stringify(version), HPY_PACKAGE_NAME: JSON.stringify(name) },
   banner: {
-    // `node --`: Node 26 reads a `--env-file` anywhere on its command line, even after the
-    // script, so `hpy … --env-file x` would be Node's option without the `--`.
-    js: '#!/usr/bin/env -S node --\nimport { createRequire as __hpyRequire } from "node:module";\nconst require = __hpyRequire(import.meta.url);',
+    // Plain `env node`: BusyBox's env (Alpine, where npm is the natural install) has no `-S`, so
+    // `env -S node --` would not start at all. The cost: Node (22 to 26) also reads a
+    // `--env-file` that comes after the script, so under the npm package `hv env push
+    // --env-file x` loads x into hpy's own environment too, and a missing x is Node's error
+    // (exit 9) rather than hpy's. The Bun binaries are unaffected.
+    js: '#!/usr/bin/env node\nimport { createRequire as __hpyRequire } from "node:module";\nconst require = __hpyRequire(import.meta.url);',
   },
   legalComments: "none",
   logLevel: "warning",
