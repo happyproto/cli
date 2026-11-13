@@ -19,7 +19,9 @@ await build({
   external: ["@napi-rs/keyring", "@napi-rs/lzma"],
   define: { HPY_VERSION: JSON.stringify(version), HPY_PACKAGE_NAME: JSON.stringify(name) },
   banner: {
-    js: '#!/usr/bin/env node\nimport { createRequire as __hpyRequire } from "node:module";\nconst require = __hpyRequire(import.meta.url);',
+    // `node --`: Node 26 reads a `--env-file` anywhere on its command line, even after the
+    // script, so `hpy … --env-file x` would be Node's option without the `--`.
+    js: '#!/usr/bin/env -S node --\nimport { createRequire as __hpyRequire } from "node:module";\nconst require = __hpyRequire(import.meta.url);',
   },
   legalComments: "none",
   logLevel: "warning",
