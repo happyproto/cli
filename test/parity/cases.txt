@@ -282,3 +282,57 @@ ALL_PROXY=127.0.0.1:9 -- update
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel beta
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- --json channel beta
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channel beta ;; channel
+# hv add / scaffold (M4)
+# add: against $MOCK/addreg (lua, happyview.db, happyview.record), $MOCK/addboth (`lua` is both
+# kinds), $MOCK/addtwo (two interpreters answer `lua`) and $MOCK/addpre (only an alpha channel).
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua happyview.db
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv install happyview.record --library
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --interpreter --version 1.4.2
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua --channel latest
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --channel beta
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --channel nightly
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --version 9.9.9
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --version ^1
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --channel beta --version 1.4.2
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --interpreter --library
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project at://did:plc:nobody/software.release.project/x
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project not-a-uri
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua@1.4.2
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add nothing-here
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua --library
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua ;; -C proj hv add happyview.db ;; -C proj hv install ;; --json -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addboth @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addboth @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --library
+@mock HPY_REGISTRY_URL=$MOCK/addtwo @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addtwo @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua --project at://did:plc:hv/software.release.project/other-lua
+@mock HPY_REGISTRY_URL=$MOCK/addtwo @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project at://did:plc:hv/software.release.project/other-lua ;; -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addpre @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add js
+@mock HPY_REGISTRY_URL=$MOCK/addpre @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add js --channel alpha
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addlua @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addlua @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addlua @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj/src hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addold @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addold @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg -- hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg -- --json hv install
+# scaffold: lua and typescript projects with a record, a query and a procedure lexicon.
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua @keep=~/proj/src/lexicons/com/example/saveNote.lua @keep=~/proj/src/lexicons/com/example/note.lua -- -C proj hv scaffold
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua @keep=~/proj/src/lexicons/com/example/saveNote.lua @keep=~/proj/happyview.toml -- -C proj hv scaffold --collection com.example.note
+@project=scaffold -- --json -C proj hv scaffold --collection com.example.note
+@project=scaffold -- --json -C proj hv scaffold
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua @keep=~/proj/src/lexicons/com/example/saveNote.lua -- -C proj hv scaffold com.example.listNotes com.example.listNotes --collection com.example.note
+@project=scaffold -- --json -C proj hv scaffold com.example.saveNote
+@project=scaffold -- -C proj hv scaffold com.example.note
+@project=scaffold -- --json -C proj hv scaffold com.example.note
+@project=scaffold -- -C proj hv scaffold com.example.nowhere
+@project=scaffold -- -C proj hv scaffold --collection notes
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua -- -C proj hv scaffold com.example.listNotes ;; -C proj hv scaffold --collection com.example.note ;; --json -C proj hv scaffold
+@project=scaffoldts @keep=~/proj/src/lexicons/com/example/listNotes.ts @keep=~/proj/src/lexicons/com/example/saveNote.ts -- -C proj hv scaffold --collection com.example.note
+@project=scaffoldts @keep=~/proj/src/lexicons/com/example/listNotes.ts @keep=~/proj/src/lexicons/com/example/saveNote.ts -- -C proj hv scaffold
+@project=scaffoldpy -- -C proj hv scaffold
+@project=addempty -- -C proj hv scaffold
+@project=addlua -- --json -C proj hv scaffold
+@project=addold -- -C proj hv scaffold
+-- hv scaffold
