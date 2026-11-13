@@ -699,6 +699,17 @@ describe("tests/happyview.rs check, test, types, build and dev", () => {
     expect(readdirSync(s.cache)).toHaveLength(0);
   });
 
+  it("a_subnet_is_refused_off_the_local_network_and_when_it_is_not_one", async () => {
+    const s = await stack();
+    const dir = tempdir();
+    let r = await s.hpyIn(dir, ["hv", "dev", "--subnet", "10.40.0.0/24"]);
+    expect(r.code).toBe(2);
+    expect(says(r.stderr, "--subnet applies only to --network local")).toBe(true);
+    r = await s.hpyIn(dir, ["hv", "dev", "--network", "local", "--subnet", "10.40.0.1/24"]);
+    expect(r.code).toBe(2);
+    expect(says(r.stderr, "did you mean 10.40.0.0/24?")).toBe(true);
+  });
+
   it("reset_needs_the_local_network", async () => {
     const s = await stack();
     const r = await s.hpy(["hv", "dev", "--reset"]);

@@ -215,3 +215,95 @@ describe("tests/cli.rs", () => {
     expect(r.stderr).toContain("stable, beta or alpha");
   });
 });
+
+describe.skipIf(process.platform === "win32")("tests/cli.rs happyview_build", () => {
+  let dirs: string[] = [];
+  afterEach(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    dirs = [];
+  });
+
+  function script(dir: string, name: string, body: string): string {
+    const path = join(dir, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return path;
+  }
+
+  function project(): string {
+    const dir = mkdtempSync(join(tmpdir(), "hpy-build-"));
+    dirs.push(dir);
+    writeFileSync(
+      join(dir, "happyview.toml"),
+      '[modules.registry]\nlanguage = "rust"\npath = "modules/registry"\n',
+    );
+    mkdirSync(join(dir, "modules/registry"), { recursive: true });
+    writeFileSync(
+      join(dir, "modules/registry/Cargo.toml"),
+      '[package]\nname = "registry"\n[profile.release]\npanic = "abort"\n',
+    );
+    writeFileSync(join(dir, "built.wasm"), "\0asm");
+    return dir;
+  }
+
+  function cargo(dir: string): string {
+    return script(
+      dir,
+      "cargo",
+      `if [ "$1" = --version ]; then exit 0; fi\n` +
+        `manifest=''; while [ $# -gt 0 ]; do [ "$1" = --manifest-path ] && manifest="$2"; shift; done\n` +
+        `printf '{"reason":"compiler-artifact","manifest_path":"%s","target":{"crate_types":["cdylib"]},"filenames":["${join(dir, "built.wasm")}"]}\\n' "$manifest"`,
+    );
+  }
+
+  function failingCargo(dir: string): string {
+    return script(
+      dir,
+      "cargo",
+      `if [ "$1" = --version ]; then exit 0; fi\necho 'error: could not compile' >&2; exit 101`,
+    );
+  }
+
+  const run = (p: string, cmd: string, cargoPath: string, target = "wasm32-wasip1") =>
+    hpy(home, ["-C", p, "happyview", cmd], {
+      env: { HPY_CARGO: cargoPath, HPY_RUSTUP: script(p, "rustup", `echo ${target}`) },
+    });
+
+  it("build_writes_each_module_to_the_build_directory", async () => {
+    const p = project();
+    const r = await run(p, "build", cargo(p));
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("registry");
+    expect(existsSync(join(p, ".happyview/build/registry.wasm"))).toBe(true);
+  });
+
+  it("build_without_the_target_exits_2_with_the_install_command", async () => {
+    const p = project();
+    const r = await run(p, "build", cargo(p), "aarch64-apple-darwin");
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("rustup target add wasm32-wasip1");
+  });
+
+  it("build_refuses_a_module_that_unwinds", async () => {
+    const p = project();
+    writeFileSync(join(p, "modules/registry/Cargo.toml"), '[package]\nname = "registry"\n');
+    const r = await run(p, "build", cargo(p));
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("'registry'");
+    expect(r.stderr).toContain('panic = "abort"');
+    expect(existsSync(join(p, ".happyview/build/registry.wasm"))).toBe(false);
+  });
+
+  it("check_builds_modules_before_anything_else", async () => {
+    const p = project();
+    const r = await run(p, "check", failingCargo(p));
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain("'registry' failed to build");
+  });
+
+  it("test_builds_modules_before_anything_else", async () => {
+    const p = project();
+    const r = await run(p, "test", failingCargo(p));
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toContain("'registry' failed to build");
+  });
+});
