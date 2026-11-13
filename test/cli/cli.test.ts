@@ -1,6 +1,7 @@
 // crates/hpy/tests/cli.rs, against the built binary. Tests for commands not
 // ported yet are `it.todo` with the Rust test's name, so the ledger stays whole.
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exportedCredential } from "../support/credential.ts";
@@ -77,8 +78,55 @@ describe("tests/cli.rs", () => {
     expect((await hpy(home, ["registry", "logout"])).code).toBe(0);
   });
 
-  it.todo("profile_init_without_tty_names_missing_flag");
-  it.todo("profile_init_local_only_from_flags_writes_hpy_toml");
+  it("profile_init_without_tty_names_missing_flag", async () => {
+    const plugin = mkdtempSync(join(tmpdir(), "hpy-plugin-"));
+    try {
+      writeFileSync(join(plugin, "manifest.json"), '{"id":"my-plugin","name":"Mine"}');
+      const r = await hpy(home, [
+        "registry",
+        "plugin",
+        "init",
+        "--no-input",
+        "--local-only",
+        "-C",
+        plugin,
+      ]);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain("--author");
+    } finally {
+      rmSync(plugin, { recursive: true, force: true });
+    }
+  });
+
+  it("profile_init_local_only_from_flags_writes_hpy_toml", async () => {
+    const plugin = mkdtempSync(join(tmpdir(), "hpy-plugin-"));
+    try {
+      writeFileSync(
+        join(plugin, "manifest.json"),
+        '{"id":"my-plugin","name":"Mine","plugin_type":"library"}',
+      );
+      const r = await hpy(home, [
+        "registry",
+        "plugin",
+        "init",
+        "--no-input",
+        "--local-only",
+        "--author",
+        "Ada <ada@x.io>",
+        "--security",
+        "sec@x.io",
+        "-C",
+        plugin,
+      ]);
+      expect(r.code, r.stderr).toBe(0);
+      const text = readFileSync(join(plugin, "hpy.toml"), "utf8");
+      expect(text).toContain("[project]");
+      expect(text).toContain('display_name = "Mine"');
+      expect(text).toContain("Ada");
+    } finally {
+      rmSync(plugin, { recursive: true, force: true });
+    }
+  });
 
   it("withdraw_and_retry_are_unknown_subcommands", async () => {
     for (const gone of ["withdraw", "retry"]) {
@@ -88,7 +136,30 @@ describe("tests/cli.rs", () => {
     }
   });
 
-  it.todo("publish_validation_errors_exit_2_before_login");
+  it("publish_validation_errors_exit_2_before_login", async () => {
+    const plugin = mkdtempSync(join(tmpdir(), "hpy-plugin-"));
+    try {
+      writeFileSync(
+        join(plugin, "manifest.json"),
+        '{"id":"p","version":"1.0.0+meta","api_version":"2","plugin_type":"library","namespace":"p","capabilities":[]}',
+      );
+      writeFileSync(join(plugin, "p.wasm"), Buffer.from("\0asm\x01\0\0\0", "latin1"));
+      const r = await hpy(home, [
+        "registry",
+        "plugin",
+        "publish",
+        "--no-input",
+        "--wasm",
+        join(plugin, "p.wasm"),
+        "-C",
+        plugin,
+      ]);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain("build metadata");
+    } finally {
+      rmSync(plugin, { recursive: true, force: true });
+    }
+  });
 
   it("logging_out_an_already_revoked_ci_credential_is_fine", async () => {
     const server = await MockServer.start();
