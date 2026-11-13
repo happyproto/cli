@@ -40,6 +40,7 @@ describe("release configuration", () => {
     // npm adds package.json, README.md and a LICENSE file itself; dist/bun's
     // binaries stay out.
     expect(pkg.files).toEqual(["dist/hpy.mjs"]);
-    expect(pkg.engines.node).toMatch(/^>=/);
+    // @napi-rs/lzma's own range: npm skips its binding on any Node outside it.
+    expect(pkg.engines.node).toBe("^22.20 || ^24.12 || >=25");
   });
 });
