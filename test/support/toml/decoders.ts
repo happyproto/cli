@@ -42,84 +42,26 @@ const opt = <T>(d: Decoder<T>) => withDefault(optional(d), undefined);
 
 // --- hpy-plugin config.rs ---
 
-export const imageConfig = struct("ImageConfig", { path: str, alt: opt(str) });
-export const author = struct("Author", { name: str, url: opt(str), email: opt(str) });
-export const contact = struct("Contact", { url: opt(str), email: opt(str) });
-export const projectConfig = struct("ProjectConfig", {
-  name: opt(str),
-  display_name: opt(str),
-  description: opt(str),
-  icon: opt(imageConfig),
-  keywords: withDefault(array(str), []),
-  authors: withDefault(array(author), []),
-  security: withDefault(array(contact), []),
-});
-export const sectionSource = untagged<string | { text: string }>("SectionSource", [
-  str,
-  struct("Inline", { text: str }),
-]);
-export const sectionsConfig = struct("SectionsConfig", {
-  description: opt(sectionSource),
-  installation: opt(sectionSource),
-  security: opt(sectionSource),
-});
-export const artifactsConfig = struct("ArtifactsConfig", {
-  banner: opt(imageConfig),
-  screenshots: withDefault(array(imageConfig), []),
-});
-export const releaseConfig = struct("ReleaseConfig", {
-  license: opt(str),
-  changelog: opt(str),
-  requires: withDefault(map(str), () => new Map()),
-  sections: withDefault(sectionsConfig, () => ({
-    description: undefined,
-    installation: undefined,
-    security: undefined,
-  })),
-  artifacts: withDefault(artifactsConfig, () => ({ banner: undefined, screenshots: [] })),
-});
-export const buildConfig = struct("BuildConfig", { command: opt(str), wasm: opt(str) });
-export const hpyToml = struct("HpyToml", {
-  project: opt(projectConfig),
-  release: opt(releaseConfig),
-  build: opt(buildConfig),
-});
+export {
+  encProjectConfig,
+  HPY_TOML as hpyToml,
+  IMAGE_CONFIG as imageConfig,
+  type ImageConfig,
+  PROJECT_CONFIG as projectConfig,
+  type ProjectConfig,
+} from "../../../src/plugin/config.ts";
 
-export type ImageConfig = { path: string; alt?: string | undefined };
-export type Author = { name: string; url?: string | undefined; email?: string | undefined };
-export type Contact = { url?: string | undefined; email?: string | undefined };
-export type ProjectConfig = {
-  name?: string | undefined;
-  display_name?: string | undefined;
-  description?: string | undefined;
-  icon?: ImageConfig | undefined;
-  keywords: string[];
-  authors: Author[];
-  security: Contact[];
-};
-
-export const encImageConfig = encStruct<ImageConfig>("ImageConfig", {
-  path: encStr,
-  alt: { enc: encOption(encStr), skipIf: isNone },
-});
-export const encAuthor = encStruct<Author>("Author", {
-  name: encStr,
-  url: { enc: encOption(encStr), skipIf: isNone },
-  email: { enc: encOption(encStr), skipIf: isNone },
-});
-export const encContact = encStruct<Contact>("Contact", {
-  url: { enc: encOption(encStr), skipIf: isNone },
-  email: { enc: encOption(encStr), skipIf: isNone },
-});
-export const encProjectConfig = encStruct<ProjectConfig>("ProjectConfig", {
-  name: { enc: encOption(encStr), skipIf: isNone },
-  display_name: { enc: encOption(encStr), skipIf: isNone },
-  description: { enc: encOption(encStr), skipIf: isNone },
-  icon: { enc: encOption(encImageConfig), skipIf: isNone },
-  keywords: { enc: encArray(encStr), skipIf: isEmpty },
-  authors: { enc: encArray(encAuthor), skipIf: isEmpty },
-  security: { enc: encArray(encContact), skipIf: isEmpty },
-});
+import {
+  AUTHOR as author,
+  CONTACT as contact,
+  encAuthor,
+  encContact,
+  encImageConfig,
+  encProjectConfig,
+  type ImageConfig,
+  type ProjectConfig,
+} from "../../../src/plugin/config.ts";
+import type { Author, Contact } from "../../../src/plugin/project.ts";
 
 type SectionSource = string | { text: string };
 type SectionsConfig = {

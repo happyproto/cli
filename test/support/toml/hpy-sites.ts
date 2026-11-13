@@ -18,7 +18,7 @@ import {
   toDocument,
   value,
 } from "../../../src/core/toml-edit.ts";
-import { encProjectConfig, type ProjectConfig } from "./decoders.ts";
+import { type ProjectConfig, projectText } from "../../../src/plugin/config.ts";
 
 /** hpy's `Problem`, displayed as `path: message` (or the message alone). */
 export class Problem extends Error {
@@ -34,28 +34,9 @@ export class Problem extends Error {
 
 // --- hpy-plugin config.rs ---
 
-/**
- * `write_project`: `existing` is `hpy.toml`'s text (`undefined` when absent); returns the text
- * to write. Throws an `Error` whose message is the Rust `io::Error`'s.
- */
+/** `write_project` over `existing` (`undefined` when absent): the real one, in src. */
 export function writeProject(existing: string | undefined, cfg: ProjectConfig): string {
-  let doc: DocumentMut;
-  try {
-    doc = DocumentMut.parse(existing ?? "");
-  } catch (e) {
-    if (e instanceof TomlError) throw new Error(`hpy.toml: ${e.message}`);
-    throw e;
-  }
-  const fresh = toDocument(encProjectConfig(cfg)).root.clone();
-  // Comments above `[project]` belong to its header; keep them, and keep the table where the
-  // author put it.
-  const old = doc.get("project");
-  if (old instanceof Table) {
-    fresh.decor = old.decor.clone();
-    fresh.setPosition(old.position);
-  }
-  doc.set("project", fresh);
-  return doc.toString();
+  return projectText(existing ?? "", cfg);
 }
 
 // --- hpy-project config.rs ---
