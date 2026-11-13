@@ -2297,3 +2297,61 @@ export function fromPlain(v: unknown): Node {
 export function fromValue<T>(v: unknown, decoder: Decoder<T>): T {
   return decode(fromPlain(v), decoder);
 }
+
+/**
+ * A parsed node as a `serde_json::Value` holds it: duplicate keys collapsed to the last, keys
+ * sorted, and no source text, so decoding it reports what `from_value` would (no positions).
+ */
+export function asValue(n: Node): Node {
+  const at = { start: 0, end: 0 };
+  switch (n.kind) {
+    case "array":
+      return { kind: "array", children: n.children.map(asValue), ...at };
+    case "object":
+      return {
+        kind: "object",
+        entries: objectEntries(n).map(([key, value]) => ({
+          key,
+          keyStart: 0,
+          keyEnd: 0,
+          value: asValue(value),
+        })),
+        ...at,
+      };
+    default:
+      return { ...n, ...at };
+  }
+}
+
+/** `serde_json::from_value::<T>` of a parsed `Value`: errors carry no position. */
+export function fromValueNode<T>(n: Node, decoder: Decoder<T>): T {
+  return decode(asValue(n), decoder);
+}
+
+/** `serde_json::to_string_pretty` of a `Value`: two-space indent, keys sorted. */
+export function toStringPretty(n: Node): string {
+  const write = (v: Node, indent: string): string => {
+    switch (v.kind) {
+      case "null":
+        return "null";
+      case "bool":
+        return v.value ? "true" : "false";
+      case "number":
+        return typeof v.value === "bigint" ? v.value.toString() : formatF64(v.value);
+      case "string":
+        return JSON.stringify(v.value);
+      case "array": {
+        if (v.children.length === 0) return "[]";
+        const inner = `${indent}  `;
+        return `[\n${v.children.map((c) => inner + write(c, inner)).join(",\n")}\n${indent}]`;
+      }
+      case "object": {
+        const entries = objectEntries(v);
+        if (entries.length === 0) return "{}";
+        const inner = `${indent}  `;
+        return `{\n${entries.map(([k, c]) => `${inner}${JSON.stringify(k)}: ${write(c, inner)}`).join(",\n")}\n${indent}}`;
+      }
+    }
+  };
+  return write(n, "");
+}

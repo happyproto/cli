@@ -5,7 +5,10 @@ import { type Json, sortKeys } from "../core/output.ts";
 import {
   array,
   bool,
+  fromSlice,
   fromValue,
+  type Node,
+  node,
   optional,
   str as strDe,
   struct,
@@ -465,6 +468,48 @@ export class Admin {
         : (r.error ?? r.message ?? `HTTP ${statusText(status)}`);
     if (r.dependents.length > 0) detail = `${detail} (${r.dependents.join(", ")} depend on it)`;
     return AtprotoError.other(`${base} refused ${what} (${detail})`);
+  }
+
+  /**
+   * `#answer`, keeping the answer as serde_json's `Value` holds it (its numbers' kinds, for a
+   * caller that writes it back out).
+   */
+  #answerNode(what: string, status: number, bytes: Uint8Array): Node {
+    if (status >= 200 && status < 300) {
+      if (bytes.length === 0) return { kind: "null", value: null, start: 0, end: 0 };
+      try {
+        return fromSlice(bytes, node);
+      } catch (e) {
+        throw AtprotoError.other(
+          `${this.base} answered ${what} with something unreadable: ${(e as Error).message}`,
+        );
+      }
+    }
+    throw this.#refused(what, status, refusal(bytes));
+  }
+
+  /** `get`, as a parsed `Value`. */
+  async getNode(what: string, path: string): Promise<Node> {
+    const { status, bytes } = await this.#request(what, "GET", path, { kind: "none" });
+    return this.#answerNode(what, status, bytes);
+  }
+
+  /** `getIfPermitted`, as a parsed `Value`; undefined when not permitted. */
+  async getNodeIfPermitted(what: string, path: string): Promise<Node | undefined> {
+    const { status, bytes } = await this.#request(what, "GET", path, { kind: "none" });
+    if (status === 403 && refusal(bytes).error !== "LimitReached") return undefined;
+    return this.#answerNode(what, status, bytes);
+  }
+
+  /** `getOptional`, as a parsed `Value`. */
+  async getNodeOptional(
+    what: string,
+    path: string,
+  ): Promise<{ kind: "read"; value: Node } | { kind: "notServed" } | { kind: "notPermitted" }> {
+    const { status, bytes } = await this.#request(what, "GET", path, { kind: "none" });
+    if (status === 404) return { kind: "notServed" };
+    if (status === 403 && refusal(bytes).error !== "LimitReached") return { kind: "notPermitted" };
+    return { kind: "read", value: this.#answerNode(what, status, bytes) };
   }
 
   /** Any admin read, as the JSON it answers; `path` is under `/admin`. */
