@@ -222,13 +222,6 @@ export const channel = unitEnum("Channel", ["stable", "beta", "alpha"]);
 export const channelFile = struct("ChannelFile", { channel });
 export const updateState = struct("UpdateState", { last_checked: str });
 export const accessRecord = struct("AccessRecord", { ca_sha256: str });
-export const editable = struct("Editable", {
-  display_name: str,
-  description: opt(str),
-  keywords: withDefault(array(str), []),
-  authors: withDefault(array(author), []),
-  security: withDefault(array(contact), []),
-});
 
 export const encChannelFile = encStruct<{ channel: string }>("ChannelFile", {
   channel: encUnitVariant,
@@ -239,20 +232,9 @@ export const encUpdateState = encStruct<{ last_checked: string }>("UpdateState",
 export const encAccessRecord = encStruct<{ ca_sha256: string }>("AccessRecord", {
   ca_sha256: encStr,
 });
-type Editable = {
-  display_name: string;
-  description?: string;
-  keywords: string[];
-  authors: Author[];
-  security: Contact[];
-};
-export const encEditable = encStruct<Editable>("Editable", {
-  display_name: encStr,
-  description: { enc: encOption(encStr), skipIf: isNone },
-  keywords: encArray(encStr),
-  authors: encArray(encAuthor),
-  security: encArray(encContact),
-});
+
+// commands/profile.rs `Editable` is the real one.
+export { EDITABLE as editable, encEditable } from "../../../src/commands/profile.ts";
 
 // --- oracle-only types ---
 
