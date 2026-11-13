@@ -585,7 +585,7 @@ exit $rc
 describe("update.ts npm install kind (TS-only)", () => {
   it("an_npm_copy_belongs_to_npm_wherever_its_modules_live", () => {
     // Homebrew's Node keeps global modules under /opt/homebrew, which must not read as Homebrew.
-    const homebrewNode = "/opt/homebrew/lib/node_modules/@happyproto/cli/dist/hpy.mjs";
+    const homebrewNode = "/opt/homebrew/lib/node_modules/hpy/dist/hpy.mjs";
     expect(inNodeModules(homebrewNode)).toBe(true);
     expect(detect({ ...facts(homebrewNode), npm: true })).toBe("npm");
     expect(
