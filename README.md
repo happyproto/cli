@@ -121,8 +121,10 @@ These install the stable channel. For the `beta` or `alpha` channel (see
 After installing, `hpy update` keeps you on the channel you installed from, and
 `hpy channel` moves you between them.
 
-The Linux packages contain a static (musl) binary, so they install on any
-glibc or musl distribution, on x86_64 and arm64.
+The Linux packages contain the glibc build, so they install on glibc
+distributions (Debian, Ubuntu, Fedora and the like), on x86_64 and arm64. On
+Alpine and other musl distributions, use the shell installer, which installs
+the musl build (it needs `libstdc++`: `apk add libstdc++`).
 
 ## How publishing works
 

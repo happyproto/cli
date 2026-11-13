@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # End-to-end test of the Linux packages and the apt/yum repository, in Docker.
 #
-#   1. builds a static Linux `hpy` (musl, for the host's architecture)
+#   1. builds a Linux `hpy` with Bun (glibc, for the host's architecture, as
+#      the release packages it; scripts/build-bun.mjs, so it needs Bun and
+#      `npm ci`)
 #   2. packages it as 0.0.1 with build-packages.sh, publishes it with
 #      update-repo.sh using a throwaway signing key
 #   3. checks the shell and PowerShell installers resolve their own channel,
@@ -10,7 +12,7 @@
 #   4. publishes 0.0.2-alpha.1 to the alpha channel and checks stable
 #      ignores it, then publishes 0.0.2 and checks both upgrade
 #   5. switches both to the alpha channel with the commands `hpy channel`
-#      prints (crates/hpy/src/update.rs `switch_hint`), which downgrades
+#      prints (src/update.ts `switchHint`), which downgrades
 #      0.0.2 to 0.0.2-alpha.1
 #
 # The signing key has a passphrase, as the release workflow's may.
@@ -33,8 +35,8 @@ trap cleanup EXIT
 step() { printf '\n==> %s\n' "$*"; }
 
 case "$(uname -m)" in
-  arm64 | aarch64) musl=aarch64-unknown-linux-musl ;;
-  *) musl=x86_64-unknown-linux-musl ;;
+  arm64 | aarch64) target=aarch64-unknown-linux-gnu ;;
+  *) target=x86_64-unknown-linux-gnu ;;
 esac
 
 rm -rf "$work/site" "$work/dist"
@@ -43,15 +45,10 @@ mkdir -p "$work/site" "$work/dist"
 if [[ -n "${HPY_TEST_BINARY:-}" ]]; then
   [[ "$HPY_TEST_BINARY" -ef "$work/hpy" ]] || cp "$HPY_TEST_BINARY" "$work/hpy"
 else
-  step "building a static Linux hpy ($musl)"
-  docker run --rm \
-    -v "$root:/src" -v hpy-cargo-registry:/usr/local/cargo/registry \
-    -e CARGO_TARGET_DIR=/src/target/linux \
-    -w /src rust:1-bookworm bash -c "
-      apt-get update -qq && apt-get install -y -qq musl-tools >/dev/null &&
-      rustup target add $musl >/dev/null &&
-      cargo build --release --locked -p hpy-cli --target $musl"
-  cp "$root/target/linux/$musl/release/hpy" "$work/hpy"
+  step "building a Linux hpy ($target)"
+  # Bun cross-compiles; the Debian and Fedora containers below run it.
+  (cd "$root" && node scripts/build-bun.mjs --no-smoke "$target")
+  cp "$root/dist/bun/hpy-$target" "$work/hpy"
 fi
 
 # The publisher: the same tools the release workflow installs on ubuntu.
@@ -80,7 +77,7 @@ publish() { # version channel
   '
 }
 arch_pair() {
-  case "$musl" in
+  case "$target" in
     aarch64-*) echo "arm64:target/packaging-test/hpy" ;;
     *) echo "amd64:target/packaging-test/hpy" ;;
   esac

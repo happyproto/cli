@@ -77,13 +77,15 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir downloads \
-            --pattern 'hpy-cli-x86_64-unknown-linux-musl.tar.xz' \
-            --pattern 'hpy-cli-aarch64-unknown-linux-musl.tar.xz'
+            --pattern 'hpy-cli-x86_64-unknown-linux-gnu.tar.xz' \
+            --pattern 'hpy-cli-aarch64-unknown-linux-gnu.tar.xz'
           for arch in x86_64 aarch64; do
             mkdir -p "bin/$arch"
-            tar -xJf "downloads/hpy-cli-$arch-unknown-linux-musl.tar.xz" -C "bin/$arch"
+            tar -xJf "downloads/hpy-cli-$arch-unknown-linux-gnu.tar.xz" -C "bin/$arch"
             mv "$(find "bin/$arch" -type f -name hpy | head -n 1)" "bin/$arch/hpy"
           done
+          # The runner is x86_64 glibc: the package's binary must run here.
+          HPY_NO_UPDATE_CHECK=1 bin/x86_64/hpy --version
 
       - name: Import signing key
         env:

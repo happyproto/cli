@@ -1,0 +1,91 @@
+# Publishes the release's npm package (package.json `name`, bin `hpy`) under
+# its channel's dist-tag: `latest` for a stable release, `beta` or `alpha` for
+# a prerelease. A prerelease no channel ships (e.g. -rc.1) is not published.
+#
+# Called by release.yml (dist `publish-jobs`) after the GitHub Release exists.
+# Builds dist/hpy.mjs from the release tag, as `npm run build` does.
+#
+# Needs:
+#   secret NPM_TOKEN  an npm automation (or granular, publish) token for the
+#                     package. TODO(Trezy): create it; until it exists this job
+#                     warns and publishes nothing. Once the package exists on
+#                     npm, a trusted publisher (this repository, workflow
+#                     release.yml) can replace the token: drop NODE_AUTH_TOKEN
+#                     and keep `id-token: write`.
+name: Publish npm package
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  npm:
+    runs-on: depot-ubuntu-24.04
+    # Permissions come from release.yml's call (dist grants publish jobs
+    # id-token: write, which npm provenance needs).
+    env:
+      TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ fromJson(inputs.plan).announcement_tag }}
+          persist-credentials: false
+
+      - name: Find the channel
+        id: channel
+        run: |
+          channel=$(packaging/channel.sh "$TAG")
+          case "$channel" in
+            stable) tag=latest ;;
+            beta | alpha) tag=$channel ;;
+            *) tag="" ; echo "::notice::$TAG is on no release channel; npm is left alone" ;;
+          esac
+          echo "dist-tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check for a token
+        id: token
+        if: steps.channel.outputs.dist-tag != ''
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN is not set, so $TAG was not published to npm"
+            echo "ok=" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.token.outputs.ok == '1'
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Build
+        if: steps.token.outputs.ok == '1'
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          [ "v$version" = "$TAG" ] || { echo "::error::package.json is at $version, not $TAG"; exit 1; }
+          npm ci
+          npm run build
+          HPY_NO_UPDATE_CHECK=1 node dist/hpy.mjs --version
+
+      - name: Publish
+        if: steps.token.outputs.ok == '1'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          DIST_TAG: ${{ steps.channel.outputs.dist-tag }}
+        run: |
+          name=$(node -p 'require("./package.json").name')
+          version=$(node -p 'require("./package.json").version')
+          # A re-run of the release must not fail on a version npm already has.
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm; setting its $DIST_TAG tag"
+            npm dist-tag add "$name@$version" "$DIST_TAG"
+          else
+            npm publish --provenance --access public --tag "$DIST_TAG"
+          fi

@@ -1,3 +1,6 @@
 /target
 /node_modules
 /dist
+# dist builds the Bun binary here (scripts/build-bun.mjs --dist)
+/hpy
+/hpy.exe
