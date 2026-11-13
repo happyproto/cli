@@ -12,8 +12,8 @@ export interface RequestOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: string | Uint8Array;
-  /** Seconds; reqwest's per-client timeout in the Rust code. */
-  timeout?: number;
+  /** Seconds; reqwest's per-client timeout in the Rust code. `null` is a client with none. */
+  timeout?: number | null;
   query?: [string, string][];
   /** Follow redirects (reqwest's default) or report them. */
   redirect?: "follow" | "manual";
@@ -27,7 +27,7 @@ export async function request(url: string, o: RequestOptions = {}): Promise<Resp
     headers: { "user-agent": USER_AGENT, ...(o.headers ?? {}) },
     ...(o.body !== undefined ? { body: o.body as BodyInit } : {}),
     redirect: o.redirect ?? "follow",
-    signal: AbortSignal.timeout((o.timeout ?? 30) * 1000),
+    ...(o.timeout === null ? {} : { signal: AbortSignal.timeout((o.timeout ?? 30) * 1000) }),
   });
 }
 
