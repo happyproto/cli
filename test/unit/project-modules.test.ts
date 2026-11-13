@@ -33,7 +33,6 @@ import {
 } from "../../src/project/modules.ts";
 
 const WIN = process.platform === "win32";
-const unixIt = it.skipIf(WIN);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function script(dir: string, name: string, body: string): string {
@@ -105,33 +104,33 @@ async function failureOf(p: Promise<unknown>): Promise<Failure> {
 
 const first = (p: string): ModuleSpec => readModules(p)[0]!;
 
-unixIt("modules_are_read_and_other_keys_ignored", () => {
+it.skipIf(WIN)("modules_are_read_and_other_keys_ignored", () => {
   const p = project(`[instance]\napp_name = "x"\n\n${REGISTRY}`);
   expect(readModules(p)).toEqual([
     { name: "registry", language: "rust", path: "modules/registry" },
   ]);
 });
 
-unixIt("a_project_without_modules_has_none", () => {
+it.skipIf(WIN)("a_project_without_modules_has_none", () => {
   const p = project('[instance]\napp_name = "x"\n');
   expect(readModules(p)).toEqual([]);
 });
 
-unixIt("a_missing_happyview_toml_is_a_usage_error", () => {
+it.skipIf(WIN)("a_missing_happyview_toml_is_a_usage_error", () => {
   const dir = mkdtempSync(join(tmpdir(), "hpy-modules-"));
   const err = failure(() => readModules(dir));
   expect(err.code).toBe(2);
   expect(err.message).toContain("happyview.toml");
 });
 
-unixIt("a_module_name_that_could_leave_the_build_directory_is_refused", () => {
+it.skipIf(WIN)("a_module_name_that_could_leave_the_build_directory_is_refused", () => {
   const p = project('[modules."../x"]\nlanguage = "rust"\npath = "modules/registry"\n');
   const err = failure(() => readModules(p));
   expect(err.code).toBe(2);
   expect(err.message).toContain("'../x'");
 });
 
-unixIt("a_module_name_must_start_with_a_letter_as_happyview_requires", () => {
+it.skipIf(WIN)("a_module_name_must_start_with_a_letter_as_happyview_requires", () => {
   let p = project('[modules.2fa]\nlanguage = "rust"\npath = "modules/registry"\n');
   const err = failure(() => readModules(p));
   expect(err.code).toBe(2);
@@ -142,7 +141,7 @@ unixIt("a_module_name_must_start_with_a_letter_as_happyview_requires", () => {
   expect(first(p).name).toBe("t2-f_a");
 });
 
-unixIt("a_module_path_whose_symlink_leaves_the_project_is_refused", () => {
+it.skipIf(WIN)("a_module_path_whose_symlink_leaves_the_project_is_refused", () => {
   const outside = mkdtempSync(join(tmpdir(), "hpy-outside-"));
   const p = project('[modules.registry]\nlanguage = "rust"\npath = "modules/link"\n');
   symlinkSync(outside, join(p, "modules/link"));
@@ -158,13 +157,13 @@ unixIt("a_module_path_whose_symlink_leaves_the_project_is_refused", () => {
   expect(first(p).path).toBe("modules/link");
 });
 
-unixIt("an_installed_target_passes", async () => {
+it.skipIf(WIN)("an_installed_target_passes", async () => {
   const p = project(REGISTRY);
   const tc = toolchain(p, "aarch64-apple-darwin wasm32-wasip1");
   await checkToolchain(tc, p, first(p));
 });
 
-unixIt("a_missing_target_names_the_command_that_installs_it", async () => {
+it.skipIf(WIN)("a_missing_target_names_the_command_that_installs_it", async () => {
   const p = project(REGISTRY);
   const tc = toolchain(p, "aarch64-apple-darwin");
   const err = await failureOf(checkToolchain(tc, p, first(p)));
@@ -173,28 +172,28 @@ unixIt("a_missing_target_names_the_command_that_installs_it", async () => {
   expect(err.message).toContain("modules/registry");
 });
 
-unixIt("a_missing_cargo_says_how_to_install_rust", async () => {
+it.skipIf(WIN)("a_missing_cargo_says_how_to_install_rust", async () => {
   const p = project(REGISTRY);
   const tc: Toolchain = { cargo: "/nonexistent/cargo", rustup: "/nonexistent/rustup" };
   const err = await failureOf(checkToolchain(tc, p, first(p)));
   expect(err.message).toContain("https://rustup.rs");
 });
 
-unixIt("without_rustup_the_target_check_is_left_to_cargo", async () => {
+it.skipIf(WIN)("without_rustup_the_target_check_is_left_to_cargo", async () => {
   const p = project(REGISTRY);
   const tc = toolchain(p, "");
   tc.rustup = "/nonexistent/rustup";
   await checkToolchain(tc, p, first(p));
 });
 
-unixIt("an_unsupported_language_is_named", async () => {
+it.skipIf(WIN)("an_unsupported_language_is_named", async () => {
   const p = project('[modules.registry]\nlanguage = "go"\npath = "modules/registry"\n');
   const tc = toolchain(p, "wasm32-wasip1");
   const err = await failureOf(checkToolchain(tc, p, first(p)));
   expect(err.message).toContain("'go'");
 });
 
-unixIt("a_module_path_that_leaves_the_project_is_refused", () => {
+it.skipIf(WIN)("a_module_path_that_leaves_the_project_is_refused", () => {
   for (const bad of ["/etc/x", "../outside", "modules/../../x", ""]) {
     const p = project(`[modules.registry]\nlanguage = "rust"\npath = "${bad}"\n`);
     const err = failure(() => readModules(p));
@@ -205,12 +204,12 @@ unixIt("a_module_path_that_leaves_the_project_is_refused", () => {
   }
 });
 
-unixIt("a_nested_module_path_is_accepted", () => {
+it.skipIf(WIN)("a_nested_module_path_is_accepted", () => {
   const p = project('[modules.registry]\nlanguage = "rust"\npath = "modules/a/b"\n');
   expect(first(p).path).toBe("modules/a/b");
 });
 
-unixIt("a_cargo_that_exits_non_zero_is_a_failure_with_the_install_hint", async () => {
+it.skipIf(WIN)("a_cargo_that_exits_non_zero_is_a_failure_with_the_install_hint", async () => {
   const p = project(REGISTRY);
   const tc = toolchain(p, "wasm32-wasip1");
   tc.cargo = script(p, "badcargo", "exit 1");
@@ -219,7 +218,7 @@ unixIt("a_cargo_that_exits_non_zero_is_a_failure_with_the_install_hint", async (
   expect(err.message).toContain("https://rustup.rs");
 });
 
-unixIt("cargo_and_rustup_run_in_the_module_directory", async () => {
+it.skipIf(WIN)("cargo_and_rustup_run_in_the_module_directory", async () => {
   const p = project(REGISTRY);
   const tc = toolchain(p, "wasm32-wasip1");
   tc.cargo = script(p, "pwdcargo", '[ "$(basename "$PWD")" = registry ] || exit 1');
@@ -231,14 +230,14 @@ unixIt("cargo_and_rustup_run_in_the_module_directory", async () => {
   await checkToolchain(tc, p, first(p));
 });
 
-unixIt("a_rustup_that_fails_leaves_the_target_check_to_cargo", async () => {
+it.skipIf(WIN)("a_rustup_that_fails_leaves_the_target_check_to_cargo", async () => {
   const p = project(REGISTRY);
   const tc = toolchain(p, "");
   tc.rustup = script(p, "badrustup", "exit 1");
   await checkToolchain(tc, p, first(p));
 });
 
-unixIt("a_module_without_a_cargo_toml_is_named", async () => {
+it.skipIf(WIN)("a_module_without_a_cargo_toml_is_named", async () => {
   const p = project(REGISTRY);
   unlinkSync(join(p, "modules/registry/Cargo.toml"));
   const tc = toolchain(p, "wasm32-wasip1");
@@ -247,7 +246,7 @@ unixIt("a_module_without_a_cargo_toml_is_named", async () => {
   expect(err.message).toBe("module 'registry': no Cargo.toml in modules/registry");
 });
 
-unixIt("a_build_installs_the_cdylib_under_the_module_name", async () => {
+it.skipIf(WIN)("a_build_installs_the_cdylib_under_the_module_name", async () => {
   const p = project(REGISTRY);
   const wasm = join(p, "built.wasm");
   writeFileSync(wasm, "\0asm-new");
@@ -257,7 +256,7 @@ unixIt("a_build_installs_the_cdylib_under_the_module_name", async () => {
   expect(readFileSync(dest, "latin1")).toBe("\0asm-new");
 });
 
-unixIt("a_failed_build_leaves_the_previous_module_in_place", async () => {
+it.skipIf(WIN)("a_failed_build_leaves_the_previous_module_in_place", async () => {
   const p = project(REGISTRY);
   const dest = join(p, ".happyview/build/registry.wasm");
   mkdirSync(dirname(dest), { recursive: true });
@@ -268,7 +267,7 @@ unixIt("a_failed_build_leaves_the_previous_module_in_place", async () => {
   expect(readFileSync(dest, "latin1")).toBe("\0asm-old");
 });
 
-unixIt("a_build_with_no_cdylib_says_which_setting_is_missing", async () => {
+it.skipIf(WIN)("a_build_with_no_cdylib_says_which_setting_is_missing", async () => {
   const p = project(REGISTRY);
   const body = `if [ "$1" = --version ]; then exit 0; fi\necho '{"reason":"build-finished","success":true}'`;
   const tc: Toolchain = {
@@ -279,7 +278,7 @@ unixIt("a_build_with_no_cdylib_says_which_setting_is_missing", async () => {
   expect(err.message).toContain('crate-type = ["cdylib"]');
 });
 
-unixIt("build_all_builds_every_module_and_reports_each_failure", async () => {
+it.skipIf(WIN)("build_all_builds_every_module_and_reports_each_failure", async () => {
   const p = project(`${REGISTRY}\n[modules.other]\nlanguage = "rust"\npath = "modules/other"\n`);
   const wasm = join(p, "built.wasm");
   writeFileSync(wasm, "\0asm");
@@ -304,7 +303,7 @@ unixIt("build_all_builds_every_module_and_reports_each_failure", async () => {
   expect(existsSync(join(p, ".happyview/build/registry.wasm"))).toBe(true);
 });
 
-unixIt("a_module_that_unwinds_is_refused_before_cargo_builds_it", async () => {
+it.skipIf(WIN)("a_module_that_unwinds_is_refused_before_cargo_builds_it", async () => {
   for (const [manifest, fix] of [
     [
       '[package]\nname = "registry"\n',
@@ -331,7 +330,7 @@ unixIt("a_module_that_unwinds_is_refused_before_cargo_builds_it", async () => {
   }
 });
 
-unixIt("a_workspace_member_is_judged_by_the_workspace_profile", async () => {
+it.skipIf(WIN)("a_workspace_member_is_judged_by_the_workspace_profile", async () => {
   const p = project(REGISTRY);
   const wasm = join(p, "built.wasm");
   writeFileSync(wasm, "\0asm");
@@ -348,7 +347,7 @@ unixIt("a_workspace_member_is_judged_by_the_workspace_profile", async () => {
   await buildModule(tc, p, module);
 });
 
-unixIt("a_module_excluded_from_an_enclosing_workspace_keeps_its_own_profile", async () => {
+it.skipIf(WIN)("a_module_excluded_from_an_enclosing_workspace_keeps_its_own_profile", async () => {
   const p = project(REGISTRY);
   const wasm = join(p, "built.wasm");
   writeFileSync(wasm, "\0asm");
@@ -357,7 +356,7 @@ unixIt("a_module_excluded_from_an_enclosing_workspace_keeps_its_own_profile", as
   await buildModule(tc, p, first(p));
 });
 
-unixIt(
+it.skipIf(WIN)(
   "the_root_search_passes_an_excluding_workspace_unless_it_also_lists_the_member",
   async () => {
     const p = project(REGISTRY);
@@ -380,7 +379,7 @@ unixIt(
   },
 );
 
-unixIt("a_package_workspace_path_is_named_without_dot_segments", async () => {
+it.skipIf(WIN)("a_package_workspace_path_is_named_without_dot_segments", async () => {
   const p = project(REGISTRY);
   const tc = fakeCargo(p, "/unused", false, join(p, "count"));
   const module = first(p);
@@ -393,7 +392,7 @@ unixIt("a_package_workspace_path_is_named_without_dot_segments", async () => {
   expect(text).toContain("add to modules/Cargo.toml:");
 });
 
-unixIt("a_failed_install_leaves_no_staging_file_and_the_previous_build", () => {
+it.skipIf(WIN)("a_failed_install_leaves_no_staging_file_and_the_previous_build", () => {
   const p = project(REGISTRY);
   const built = join(p, "built.wasm");
   writeFileSync(built, "\0asm");
@@ -405,7 +404,7 @@ unixIt("a_failed_install_leaves_no_staging_file_and_the_previous_build", () => {
   expect(readdirSync(join(p, ".happyview/build"))).toEqual(["registry.wasm"]);
 });
 
-unixIt("the_fingerprint_sees_a_source_change_and_ignores_build_output", () => {
+it.skipIf(WIN)("the_fingerprint_sees_a_source_change_and_ignores_build_output", () => {
   const p = project(REGISTRY);
   const dir = join(p, "modules/registry");
   writeFileSync(join(dir, "src/lib.rs"), "a");
@@ -419,39 +418,42 @@ unixIt("the_fingerprint_sees_a_source_change_and_ignores_build_output", () => {
   expect(sameFingerprint(fingerprint(dir), before)).toBe(false);
 });
 
-unixIt("watch_rebuilds_a_changed_module_once_and_keeps_the_old_build_on_failure", async () => {
-  const p = project(REGISTRY);
-  const dest = join(p, ".happyview/build/registry.wasm");
-  mkdirSync(dirname(dest), { recursive: true });
-  writeFileSync(dest, "\0asm-old");
-  const count = join(p, "count");
-  const tc = fakeCargo(p, "/unused", true, count);
-  const stop = new AbortController();
-  const src = join(p, "modules/registry/src/lib.rs");
-  writeFileSync(src, "a");
-  const from = Snapshot.take(p, readModules(p));
+it.skipIf(WIN)(
+  "watch_rebuilds_a_changed_module_once_and_keeps_the_old_build_on_failure",
+  async () => {
+    const p = project(REGISTRY);
+    const dest = join(p, ".happyview/build/registry.wasm");
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, "\0asm-old");
+    const count = join(p, "count");
+    const tc = fakeCargo(p, "/unused", true, count);
+    const stop = new AbortController();
+    const src = join(p, "modules/registry/src/lib.rs");
+    writeFileSync(src, "a");
+    const from = Snapshot.take(p, readModules(p));
 
-  const outcomes: [string, boolean][] = [];
-  const stopper = (async () => {
-    writeFileSync(src, "changed");
-    // A build still under way when `stop` is set is not reported, so the polls that follow
-    // are timed from the build rather than from the edit.
-    const deadline = Date.now() + 10_000;
-    while (!existsSync(count) && Date.now() < deadline) await sleep(10);
-    await sleep(400);
-    stop.abort();
-  })();
-  await watch(tc, p, from, 50, stop.signal, (m, r) => {
-    outcomes.push([m.name, !(r instanceof Failure)]);
-  });
-  await stopper;
+    const outcomes: [string, boolean][] = [];
+    const stopper = (async () => {
+      writeFileSync(src, "changed");
+      // A build still under way when `stop` is set is not reported, so the polls that follow
+      // are timed from the build rather than from the edit.
+      const deadline = Date.now() + 10_000;
+      while (!existsSync(count) && Date.now() < deadline) await sleep(10);
+      await sleep(400);
+      stop.abort();
+    })();
+    await watch(tc, p, from, 50, stop.signal, (m, r) => {
+      outcomes.push([m.name, !(r instanceof Failure)]);
+    });
+    await stopper;
 
-  expect(outcomes).toEqual([["registry", false]]);
-  expect(readFileSync(count, "utf8").split("\n").filter(Boolean).length).toBe(1);
-  expect(readFileSync(dest, "latin1")).toBe("\0asm-old");
-});
+    expect(outcomes).toEqual([["registry", false]]);
+    expect(readFileSync(count, "utf8").split("\n").filter(Boolean).length).toBe(1);
+    expect(readFileSync(dest, "latin1")).toBe("\0asm-old");
+  },
+);
 
-unixIt("build_each_starts_no_module_once_stopped", async () => {
+it.skipIf(WIN)("build_each_starts_no_module_once_stopped", async () => {
   const p = project(
     `${REGISTRY}\n[modules.other]\nlanguage = "rust"\npath = "modules/other"\ncapabilities = ["library:call"]\n`,
   );
@@ -513,7 +515,7 @@ function alive(pid: number): boolean {
   }
 }
 
-unixIt("stopping_the_watch_ends_a_build_under_way_with_its_children", async () => {
+it.skipIf(WIN)("stopping_the_watch_ends_a_build_under_way_with_its_children", async () => {
   const p = project(REGISTRY);
   const pidFile = join(p, "cargo.pid");
   const grandchild = join(p, "rustc.pid");
