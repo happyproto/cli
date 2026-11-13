@@ -13,3 +13,11 @@ export const trimStart = (s: string): string => s.replace(/^\p{White_Space}+/u, 
 export const trimEnd = (s: string): string => s.replace(/\p{White_Space}+$/u, "");
 /** `str::trim`. */
 export const trim = (s: string): string => trimEnd(trimStart(s));
+
+/** `str::lines`: split on `\n`, each line without it or a `\r` before it; no last empty line. */
+export function lines(s: string): string[] {
+  if (s === "") return [];
+  const out = s.split("\n");
+  if (out[out.length - 1] === "") out.pop();
+  return out.map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+}
