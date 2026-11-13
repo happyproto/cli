@@ -174,6 +174,11 @@ export function callbackParams(query: string): Map<string, string> {
   return new Map(new URLSearchParams(`&${query}`));
 }
 
+/** Text as HTML: `&`, `<`, `>`, `"` and `'` as character references. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
 const PAGE =
   '<!doctype html><meta charset=utf-8><title>hpy</title><body style="font:16px system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem">';
 
@@ -208,7 +213,7 @@ export async function listen(): Promise<{
     if (error !== null) {
       const why = params.get("error_description") ?? error;
       result = { err: AtprotoError.other(`sign-in was not completed: ${why}`) };
-      message = `Sign-in was not completed: ${why}.`;
+      message = `Sign-in was not completed: ${escapeHtml(why)}.`;
     } else if (code !== null && state !== null) {
       result = { ok: { code, state, iss: params.get("iss") ?? null } };
       message = "You're signed in to hpy.";

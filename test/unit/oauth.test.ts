@@ -1,7 +1,14 @@
 // hpy-atproto/src/oauth.rs tests, against MockServer.
 import { afterEach, expect, it } from "vitest";
 import { DpopKey } from "../../src/atproto/dpop.ts";
-import { callbackParams, exchange, listen, type ParParams, par } from "../../src/atproto/oauth.ts";
+import {
+  callbackParams,
+  escapeHtml,
+  exchange,
+  listen,
+  type ParParams,
+  par,
+} from "../../src/atproto/oauth.ts";
 import type { AuthServer } from "../../src/atproto/resolve.ts";
 import { bodyContains, MockServer, type Recorded } from "../support/mock-server.ts";
 
@@ -229,4 +236,23 @@ it("expires_in_is_read_only_as_a_whole_number", async () => {
     await s.stop();
     server = undefined;
   }
+});
+
+// TS-only: the page shows the server's words as text, never as markup; the error keeps them
+// as they were.
+it("the_callback_page_shows_the_error_description_as_text", async () => {
+  const l = await listen();
+  const denied = l.callback.catch((e: Error) => e);
+  const said = `<b>"no" & 'never'</b>`;
+  const page = await (
+    await fetch(
+      `http://127.0.0.1:${l.port}/oauth/callback?error=access_denied&error_description=${encodeURIComponent(said)}`,
+    )
+  ).text();
+  expect(page).toContain(
+    "Sign-in was not completed: &#60;b&#62;&#34;no&#34; &#38; &#39;never&#39;&#60;/b&#62;.",
+  );
+  expect(page).not.toContain("<b>");
+  expect(String(await denied)).toContain(`sign-in was not completed: ${said}`);
+  expect(escapeHtml("a&b")).toBe("a&#38;b");
 });
