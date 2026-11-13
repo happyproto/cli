@@ -3,10 +3,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execa, type Options } from "execa";
 
 const BIN = process.env.HPY_TEST_BIN;
-const SCRIPT = new URL("../../dist/hpy.mjs", import.meta.url).pathname;
+const SCRIPT = fileURLToPath(new URL("../../dist/hpy.mjs", import.meta.url));
 
 export interface Run {
   code: number;

@@ -2,6 +2,7 @@
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   account,
@@ -203,7 +204,7 @@ describe("credential.rs", () => {
   });
 
   it("reads what the Rust exporter and save() wrote (test/fixtures/credentials)", async () => {
-    const fixtures = new URL("../fixtures/credentials/", import.meta.url).pathname;
+    const fixtures = fileURLToPath(new URL("../fixtures/credentials/", import.meta.url));
     const c = await importCredential(readFileSync(join(fixtures, "HPY_CREDENTIAL"), "utf8"));
     expect(c.dpopKey.thumbprint()).toBe("dANLZuw-YcgAZFy8Ai1GCunPGJXy1EnSrx1q8nfRZB8");
     const dir = tmp();

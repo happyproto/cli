@@ -44,7 +44,7 @@ import {
   layout,
   listReleases,
   readLastChecked,
-  receiptPath,
+  receiptPath as receiptPathOf,
   receiptPrefix,
   runJob,
   SelfUpdateError,
@@ -264,6 +264,11 @@ describe("update.rs", () => {
   });
 
   it("finds_the_installer_receipt", () => {
+    // PathBuf's == compares components, so `/x\\hpy-cli` equals `/x/hpy-cli` on Windows.
+    const receiptPath = (env: Parameters<typeof receiptPathOf>[0], windows: boolean) => {
+      const p = receiptPathOf(env, windows);
+      return process.platform === "win32" ? p?.replaceAll("\\", "/") : p;
+    };
     expect(
       receiptPath(
         envOf([

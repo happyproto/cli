@@ -733,7 +733,8 @@ describe("access.rs", () => {
     expect(text).toContain("hpy does not edit");
     // Removed trust cannot be detected, so the remedy is in the text.
     expect(text).toContain("delete that file");
-    expect(text).toContain("/data/x/access.toml");
+    // Path::join: `/data/x\\access.toml` on Windows.
+    expect(text).toContain(recordPath("/data/x"));
     expect(text).toContain("certificate error");
     const done = walkthroughText({ missingHosts: [], caTrusted: true }, "/x", "/x/access.toml");
     expect(done).toBe("");
@@ -847,7 +848,8 @@ describe("network.rs", () => {
     const data = tempdir();
     const first = tempdir();
     const second = tempdir();
-    const firstPath = realpathSync(first);
+    // canonicalize: on Windows also expands 8.3 short names (ADMINI~1).
+    const firstPath = realpathSync.native(first);
     const old = networkDir(data, first);
     expect(claimNetworkDir(old, first)).toEqual([]);
     rmSync(first, { recursive: true });

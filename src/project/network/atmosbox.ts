@@ -16,6 +16,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { sep } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { Failure } from "../../core/failure.ts";
 import { createDirAll, ioErrorText, readToString, writeString } from "../../core/io.ts";
@@ -266,7 +267,7 @@ function unpackTarGz(gz: Uint8Array, dst: string): void {
     const parent = rustParent(target)!;
     createDirAll(parent);
     const real = realpathSync.native(parent);
-    if (real !== root && !real.startsWith(`${root}/`))
+    if (real !== root && !real.startsWith(`${root}${sep}`))
       throw new Error(`trying to unpack outside of destination path: ${root}`);
     const isDir = entry.type === 0x35 || (!entry.modern && entry.path.endsWith("/"));
     if (isDir) {

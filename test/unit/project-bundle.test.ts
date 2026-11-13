@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Failure } from "../../src/core/failure.ts";
 import { type Bundle, bundle } from "../../src/project/bundle.ts";
 import { TREE_CASES, type TreeCase } from "../support/bundle-cases.ts";
+import { onThisPlatform } from "../support/os-text.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -160,7 +161,7 @@ describe("bundle against the Rust oracle", () => {
       const want = fixture.trees[t.name]!;
       const root = makeTree(t);
       if (want.error !== undefined) {
-        expect(failure(() => bundle(root, t.modules)).message).toBe(want.error);
+        expect(failure(() => bundle(root, t.modules)).message).toBe(onThisPlatform(want.error));
         return;
       }
       const b = bundle(root, t.modules);

@@ -19,6 +19,7 @@ import {
 import { manifest } from "../../src/plugin/manifest.ts";
 import type { Problem } from "../../src/plugin/problem.ts";
 import { projectProblems } from "../../src/plugin/project.ts";
+import { ENOENT_TEXT } from "../support/os-text.ts";
 
 const TOML = `
 # keep me
@@ -129,10 +130,8 @@ it("a_missing_section_file_is_a_problem", () => {
   expect(sections.description).toBe("");
   expect(problems).toHaveLength(1);
   expect(problems[0]!.path).toBe("release.sections.description");
-  // io::Error's Display, as Rust prints it
-  expect(problems[0]!.problem).toBe(
-    "cannot read `DESCRIPTION.md`: No such file or directory (os error 2)",
-  );
+  // io::Error's Display, as Rust prints it on this platform
+  expect(problems[0]!.problem).toBe(`cannot read \`DESCRIPTION.md\`: ${ENOENT_TEXT}`);
 });
 
 it("the_changelog_entry_for_a_version_is_read", () => {
