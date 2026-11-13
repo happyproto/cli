@@ -1,0 +1,2124 @@
+[
+  {
+    "error": "EOF while parsing a value at line 1 column 0",
+    "input": "",
+    "name": "value: empty",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "   ",
+    "name": "value: whitespace only",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 3 column 0",
+    "input": "\n\n",
+    "name": "value: newlines only",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 1",
+    "input": "{",
+    "name": "value: eof object open",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a list at line 1 column 1",
+    "input": "[",
+    "name": "value: eof list open",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a string at line 1 column 4",
+    "input": "\"abc",
+    "name": "value: eof string",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 4",
+    "input": "{\"a\"",
+    "name": "value: eof after key",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 5",
+    "input": "{\"a\":",
+    "name": "value: eof after colon",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 6",
+    "input": "{\"a\":1",
+    "name": "value: eof after value in object",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 7",
+    "input": "{\"a\":1,",
+    "name": "value: eof after comma in object",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "[1,",
+    "name": "value: eof after comma in list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a list at line 1 column 2",
+    "input": "[1",
+    "name": "value: eof after value in list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "tru",
+    "name": "value: eof in ident true",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "nul",
+    "name": "value: eof in ident null",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected ident at line 1 column 4",
+    "input": "trux",
+    "name": "value: bad ident",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 1",
+    "input": "-",
+    "name": "value: lone minus",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid number at line 1 column 2",
+    "input": "-a",
+    "name": "value: minus letter",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 2",
+    "input": "1.",
+    "name": "value: eof after decimal point",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid number at line 1 column 3",
+    "input": "1.x",
+    "name": "value: letter after decimal point",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 2",
+    "input": "1e",
+    "name": "value: eof after exponent",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "1e+",
+    "name": "value: eof after exponent sign",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid number at line 1 column 3",
+    "input": "1ex",
+    "name": "value: letter after exponent",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 4",
+    "input": "1.5e",
+    "name": "value: eof after decimal exponent",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": ".5",
+    "name": "value: leading dot",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "+1",
+    "name": "value: leading plus",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing comma at line 1 column 4",
+    "input": "[1,]",
+    "name": "value: trailing comma list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing comma at line 1 column 8",
+    "input": "{\"a\":1,}",
+    "name": "value: trailing comma object",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing comma at line 2 column 2",
+    "input": "[1, 2 ,\n ]",
+    "name": "value: trailing comma nested ws",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing characters at line 1 column 4",
+    "input": "{} x",
+    "name": "value: trailing characters object",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing characters at line 1 column 3",
+    "input": "1 2",
+    "name": "value: trailing characters number",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing characters at line 1 column 8",
+    "input": "{\"a\":1}}",
+    "name": "value: trailing characters extra brace",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing characters at line 1 column 5",
+    "input": "nulls",
+    "name": "value: trailing ident chars",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing characters at line 1 column 5",
+    "input": "truex",
+    "name": "value: trailing true chars",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid escape at line 1 column 3",
+    "input": "\"\\x\"",
+    "name": "value: bad escape",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a string at line 1 column 2",
+    "input": "\"\\",
+    "name": "value: eof after backslash",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a string at line 1 column 3",
+    "input": "\"\\u",
+    "name": "value: eof after \\u",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a string at line 1 column 6",
+    "input": "\"\\u12\"",
+    "name": "value: short hex escape",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid escape at line 1 column 7",
+    "input": "\"\\u12G4\"",
+    "name": "value: invalid hex escape",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "control character (\\u0000-\\u001F) found while parsing a string at line 1 column 3",
+    "input": "\"a\u0001b\"",
+    "name": "value: control character in string",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "control character (\\u0000-\\u001F) found while parsing a string at line 2 column 0",
+    "input": "\"a\nb\"",
+    "name": "value: newline in string",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "control character (\\u0000-\\u001F) found while parsing a string at line 1 column 3",
+    "input": "\"a\tb\"",
+    "name": "value: tab in string",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "lone leading surrogate in hex escape at line 1 column 7",
+    "input": "\"\\uDC00\"",
+    "name": "value: lone trailing surrogate",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "unexpected end of hex escape at line 1 column 8",
+    "input": "\"\\uD800\"",
+    "name": "value: lone leading surrogate",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "lone leading surrogate in hex escape at line 1 column 13",
+    "input": "\"\\uD800\\u0041\"",
+    "name": "value: leading surrogate then BMP escape",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "unexpected end of hex escape at line 1 column 8",
+    "input": "\"\\uD800x\"",
+    "name": "value: leading surrogate then char",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "unexpected end of hex escape at line 1 column 9",
+    "input": "\"\\uD800\\n\"",
+    "name": "value: leading surrogate then other escape",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "\"\\uD83D\\uDE00\"",
+    "name": "value: valid surrogate pair",
+    "ok": true,
+    "type": "value",
+    "value": "\"😀\""
+  },
+  {
+    "error": "number out of range at line 1 column 5",
+    "input": "1e400",
+    "name": "value: number out of range",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "number out of range at line 1 column 6",
+    "input": "-1e400",
+    "name": "value: negative number out of range",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "number out of range at line 1 column 9",
+    "input": "[1, 2e999]",
+    "name": "value: number out of range in list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "number out of range at line 1 column 12",
+    "input": "1e99999999999",
+    "name": "value: huge exponent",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "1e-400",
+    "name": "value: tiny number",
+    "ok": true,
+    "type": "value",
+    "value": "0.0"
+  },
+  {
+    "input": "0e99999999999",
+    "name": "value: huge zero exponent",
+    "ok": true,
+    "type": "value",
+    "value": "0.0"
+  },
+  {
+    "error": "invalid number at line 1 column 2",
+    "input": "01",
+    "name": "value: leading zero",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid number at line 1 column 3",
+    "input": "-01",
+    "name": "value: negative leading zero",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid number at line 1 column 2",
+    "input": "00",
+    "name": "value: double zero",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "invalid number at line 1 column 6",
+    "input": "[1, 02]",
+    "name": "value: leading zero in list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "hello",
+    "name": "value: bare word",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "True",
+    "name": "value: capitalized True",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "NaN",
+    "name": "value: NaN",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "Infinity",
+    "name": "value: Infinity",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "\u000b1",
+    "name": "value: vertical tab",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "﻿{}",
+    "name": "value: byte order mark",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "key must be a string at line 1 column 2",
+    "input": "{1:2}",
+    "name": "value: key must be a string",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "key must be a string at line 1 column 9",
+    "input": "{\"a\":1, 2:3}",
+    "name": "value: key must be a string after comma",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected `:` at line 1 column 6",
+    "input": "{\"a\" 1}",
+    "name": "value: expected colon",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected `,` or `}` at line 1 column 8",
+    "input": "{\"a\":1 \"b\":2}",
+    "name": "value: expected comma or brace",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected `,` or `]` at line 1 column 4",
+    "input": "[1 2]",
+    "name": "value: expected comma or bracket",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": ",",
+    "name": "value: lone comma",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "]",
+    "name": "value: lone close bracket",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "}",
+    "name": "value: lone close brace",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 4 column 1",
+    "input": "{\n  \"a\": 1,\n  \"b\": [1, 2,\n}",
+    "name": "value: multiline trailing comma",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected ident at line 3 column 0",
+    "input": "{\n\"a\": tru\n}",
+    "name": "value: multiline bad ident",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "EOF while parsing a list at line 4 column 0",
+    "input": "[\n1,\n2\n",
+    "name": "value: multiline eof in list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 3 column 1",
+    "input": "{\r\n\"a\":\r\n}",
+    "name": "value: crlf eof value",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing characters at line 1 column 6",
+    "input": "\"é\" x",
+    "name": "value: multibyte column",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "trailing comma at line 1 column 15",
+    "input": "[\"日本語\", ]",
+    "name": "value: multibyte trailing comma",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 14",
+    "input": "{\"ключ\": }",
+    "name": "value: multibyte in key then error",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected `,` or `]` at line 1 column 9",
+    "input": "[\"😀\" 1]",
+    "name": "value: emoji then error",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "name": "value: nested 127 ok",
+    "ok": true,
+    "type": "value",
+    "value": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+  },
+  {
+    "error": "recursion limit exceeded at line 1 column 128",
+    "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "name": "value: nested 128 recursion limit",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "recursion limit exceeded at line 1 column 636",
+    "input": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+    "name": "value: nested objects recursion limit",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "{\"b\":1,\"a\":[true,null,-0,1.5e3,18446744073709551615,-9223372036854775808,18446744073709551616,0.1,1e-7,123456789012345678901234567890]}",
+    "name": "value: ok mixed",
+    "ok": true,
+    "type": "value",
+    "value": "{\"a\":[true,null,-0.0,1500.0,18446744073709551615,-9223372036854775808,1.8446744073709552e+19,0.1,1e-7,1.2345678901234568e+29],\"b\":1}"
+  },
+  {
+    "input": "{\"a\":1,\"b\":2,\"a\":3}",
+    "name": "value: ok duplicate keys last wins",
+    "ok": true,
+    "type": "value",
+    "value": "{\"a\":3,\"b\":2}"
+  },
+  {
+    "input": "{\"b\":1,\"a\":2,\"10\":3,\"9\":4,\"é\":5,\"Z\":6}",
+    "name": "value: ok key ordering",
+    "ok": true,
+    "type": "value",
+    "value": "{\"10\":3,\"9\":4,\"Z\":6,\"a\":2,\"b\":1,\"é\":5}"
+  },
+  {
+    "input": "\"a\\\"b\\\\c\\/d\\b\\f\\n\\r\\t\\u00e9\\uD83D\\uDE00\"",
+    "name": "value: ok escapes",
+    "ok": true,
+    "type": "value",
+    "value": "\"a\\\"b\\\\c/d\\b\\f\\n\\r\\té😀\""
+  },
+  {
+    "input": "[1.0, 100, 1e15, 1e16, 1.5e-5, 1e-6, 2.5e300, -0.0, 5e-324, 1.7976931348623157e308]",
+    "name": "value: ok floats",
+    "ok": true,
+    "type": "value",
+    "value": "[1.0,100,1000000000000000.0,1e+16,0.000015,1e-6,2.5e+300,-0.0,5e-324,1.7976931348623157e+308]"
+  },
+  {
+    "input": "[0.30000000000000004, 3.141592653589793238462643383279, 12345678901234567890.123]",
+    "name": "value: ok long decimal",
+    "ok": true,
+    "type": "value",
+    "value": "[0.30000000000000004,3.141592653589793,1.2345678901234567e+19]"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string at line 1 column 1",
+    "input": "5",
+    "name": "string: integer",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: null, expected a string at line 1 column 4",
+    "input": "null",
+    "name": "string: null",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: boolean `true`, expected a string at line 1 column 4",
+    "input": "true",
+    "name": "string: true",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1.5`, expected a string at line 1 column 3",
+    "input": "1.5",
+    "name": "string: float",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: integer `-3`, expected a string at line 1 column 2",
+    "input": "-3",
+    "name": "string: negative",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: sequence, expected a string at line 1 column 0",
+    "input": "[]",
+    "name": "string: sequence",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: map, expected a string at line 1 column 0",
+    "input": "{}",
+    "name": "string: map",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: sequence, expected a string at line 1 column 0",
+    "input": "[1",
+    "name": "string: unterminated sequence (type error first)",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "EOF while parsing a string at line 1 column 4",
+    "input": "\"abc",
+    "name": "string: unterminated string",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "nul",
+    "name": "string: bad ident",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: integer `42`, expected a string at line 2 column 3",
+    "input": "  \n 42",
+    "name": "string: ws then integer",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "trailing characters at line 1 column 5",
+    "input": "\"a\" \"b\"",
+    "name": "string: trailing after ok",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1e+300`, expected a string at line 1 column 5",
+    "input": "1e300",
+    "name": "string: float formats 1e300",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1.5e-7`, expected a string at line 1 column 6",
+    "input": "1.5e-7",
+    "name": "string: float formats 1.5e-7",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `0.0001`, expected a string at line 1 column 6",
+    "input": "0.0001",
+    "name": "string: float formats 0.0001",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1e+16`, expected a string at line 1 column 4",
+    "input": "1e16",
+    "name": "string: float formats 1e16",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1000000000000000.0`, expected a string at line 1 column 4",
+    "input": "1e15",
+    "name": "string: float formats 1e15",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `100.0`, expected a string at line 1 column 5",
+    "input": "100.0",
+    "name": "string: float formats 100.0",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `-0.0`, expected a string at line 1 column 2",
+    "input": "-0",
+    "name": "string: float formats -0",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `0.00001`, expected a string at line 1 column 7",
+    "input": "0.00001",
+    "name": "string: float formats 0.00001",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1e-6`, expected a string at line 1 column 4",
+    "input": "1e-6",
+    "name": "string: float formats 1e-6",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1.2345678901234568e+29`, expected a string at line 1 column 30",
+    "input": "123456789012345678901234567890",
+    "name": "string: float formats big int",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1e+21`, expected a string at line 1 column 4",
+    "input": "1e21",
+    "name": "string: float formats 1e21",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: floating point `1.25e-10`, expected a string at line 1 column 8",
+    "input": "1.25e-10",
+    "name": "string: float formats 1.25e-10",
+    "ok": false,
+    "type": "string"
+  },
+  {
+    "error": "invalid type: string \"true\", expected a boolean at line 1 column 6",
+    "input": "\"true\"",
+    "name": "bool: string",
+    "ok": false,
+    "type": "bool"
+  },
+  {
+    "error": "invalid type: integer `1`, expected a boolean at line 1 column 1",
+    "input": "1",
+    "name": "bool: integer",
+    "ok": false,
+    "type": "bool"
+  },
+  {
+    "error": "invalid type: null, expected a boolean at line 1 column 4",
+    "input": "null",
+    "name": "bool: null",
+    "ok": false,
+    "type": "bool"
+  },
+  {
+    "error": "invalid value: integer `-1`, expected u32 at line 1 column 2",
+    "input": "-1",
+    "name": "u32: negative",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid value: integer `4294967296`, expected u32 at line 1 column 10",
+    "input": "4294967296",
+    "name": "u32: too big",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: floating point `1.0`, expected u32 at line 1 column 3",
+    "input": "1.0",
+    "name": "u32: float",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: floating point `100.0`, expected u32 at line 1 column 3",
+    "input": "1e2",
+    "name": "u32: exponent",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"5\", expected u32 at line 1 column 3",
+    "input": "\"5\"",
+    "name": "u32: string",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"a\\\"b\\n\\u{7}\\u{ad}\\0\\u{1b}'z\", expected u32 at line 1 column 34",
+    "input": "\"a\\\"b\\n\\u0007\\u00ad\\u0000\\u001b'z\"",
+    "name": "u32: escaped string",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"é日\\u{200b}\\u{301}x\", expected u32 at line 1 column 20",
+    "input": "\"é日\\u200b\\u0301x\"",
+    "name": "u32: unicode string",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "input": "4294967295",
+    "name": "u32: max ok",
+    "ok": true,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: floating point `1.8446744073709552e+19`, expected u64 at line 1 column 20",
+    "input": "18446744073709551616",
+    "name": "u64: too big becomes float",
+    "ok": false,
+    "type": "u64"
+  },
+  {
+    "error": "invalid value: integer `-5`, expected u64 at line 1 column 2",
+    "input": "-5",
+    "name": "u64: negative",
+    "ok": false,
+    "type": "u64"
+  },
+  {
+    "input": "18446744073709551615",
+    "name": "u64: max ok",
+    "ok": true,
+    "type": "u64"
+  },
+  {
+    "error": "invalid value: integer `9223372036854775808`, expected i64 at line 1 column 19",
+    "input": "9223372036854775808",
+    "name": "i64: too big",
+    "ok": false,
+    "type": "i64"
+  },
+  {
+    "error": "invalid type: floating point `-9.223372036854776e+18`, expected i64 at line 1 column 20",
+    "input": "-9223372036854775809",
+    "name": "i64: too small becomes float",
+    "ok": false,
+    "type": "i64"
+  },
+  {
+    "input": "-9223372036854775808",
+    "name": "i64: min ok",
+    "ok": true,
+    "type": "i64"
+  },
+  {
+    "input": "1",
+    "name": "f64: integer ok",
+    "ok": true,
+    "type": "f64"
+  },
+  {
+    "error": "invalid type: string \"x\", expected f64 at line 1 column 3",
+    "input": "\"x\"",
+    "name": "f64: string",
+    "ok": false,
+    "type": "f64"
+  },
+  {
+    "input": "-0",
+    "name": "f64: negative zero ok",
+    "ok": true,
+    "type": "f64"
+  },
+  {
+    "error": "number out of range at line 1 column 5",
+    "input": "1e309",
+    "name": "f64: out of range",
+    "ok": false,
+    "type": "f64"
+  },
+  {
+    "input": "null",
+    "name": "option_string: null ok",
+    "ok": true,
+    "type": "option_string"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string at line 1 column 1",
+    "input": "5",
+    "name": "option_string: integer",
+    "ok": false,
+    "type": "option_string"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 0",
+    "input": "",
+    "name": "option_string: eof",
+    "ok": false,
+    "type": "option_string"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 3",
+    "input": "nul",
+    "name": "option_string: bad null",
+    "ok": false,
+    "type": "option_string"
+  },
+  {
+    "error": "invalid type: null, expected a sequence at line 1 column 4",
+    "input": "null",
+    "name": "vec_string: null",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid type: integer `1`, expected a string at line 1 column 2",
+    "input": "[1]",
+    "name": "vec_string: integer element",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid type: null, expected a string at line 1 column 10",
+    "input": "[\"a\", null]",
+    "name": "vec_string: null element",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid type: map, expected a sequence at line 1 column 0",
+    "input": "{}",
+    "name": "vec_string: map",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid type: string \"a\", expected a sequence at line 1 column 3",
+    "input": "\"a\"",
+    "name": "vec_string: string",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "trailing comma at line 1 column 6",
+    "input": "[\"a\",]",
+    "name": "vec_string: trailing comma",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid type: integer `7`, expected a string at line 3 column 3",
+    "input": "[\n  \"a\",\n  7\n]",
+    "name": "vec_string: multiline element",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid type: integer `1`, expected a string at line 1 column 2",
+    "input": "[1, }",
+    "name": "vec_string: type error before syntax error",
+    "ok": false,
+    "type": "vec_string"
+  },
+  {
+    "error": "invalid value: integer `-1`, expected u32 at line 1 column 8",
+    "input": "{\"a\": -1}",
+    "name": "map_u32: negative value",
+    "ok": false,
+    "type": "map_u32"
+  },
+  {
+    "error": "invalid type: sequence, expected a map at line 1 column 0",
+    "input": "[]",
+    "name": "map_u32: sequence",
+    "ok": false,
+    "type": "map_u32"
+  },
+  {
+    "input": "{\"a\":1,\"a\":2}",
+    "name": "map_u32: duplicate ok",
+    "ok": true,
+    "type": "map_u32"
+  },
+  {
+    "error": "key must be a string at line 1 column 2",
+    "input": "{1:1}",
+    "name": "map_u32: key not string",
+    "ok": false,
+    "type": "map_u32"
+  },
+  {
+    "error": "invalid type: null, expected u32 at line 1 column 9",
+    "input": "{\"a\":null}",
+    "name": "map_u32: null value",
+    "ok": false,
+    "type": "map_u32"
+  },
+  {
+    "error": "unknown variant `nightly`, expected one of `stable`, `beta`, `alpha` at line 1 column 9",
+    "input": "\"nightly\"",
+    "name": "channel: unknown variant",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "5",
+    "name": "channel: integer",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "null",
+    "name": "channel: null",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "input": "{\"beta\":null}",
+    "name": "channel: map form ok",
+    "ok": true,
+    "type": "channel"
+  },
+  {
+    "error": "invalid type: integer `1`, expected unit at line 1 column 9",
+    "input": "{\"beta\":1}",
+    "name": "channel: map form bad unit",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "expected value at line 1 column 2",
+    "input": "{}",
+    "name": "channel: empty map",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "expected value at line 1 column 12",
+    "input": "{\"beta\":null,\"x\":1}",
+    "name": "channel: map extra key",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "input": "\"beta\"",
+    "name": "channel: ok",
+    "ok": true,
+    "type": "channel"
+  },
+  {
+    "error": "expected value at line 1 column 1",
+    "input": "[]",
+    "name": "channel: sequence",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "unknown variant `zeta`, expected one of `stable`, `beta`, `alpha` at line 1 column 7",
+    "input": "{\"zeta\":null}",
+    "name": "channel: map unknown variant",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "key must be a string at line 1 column 2",
+    "input": "{1:null}",
+    "name": "channel: map non-string key",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "missing field `kind` at line 1 column 2",
+    "input": "{}",
+    "name": "sign_in: missing tag",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "unknown variant `x`, expected one of `apiKey`, `session`, `anonymous` at line 1 column 11",
+    "input": "{\"kind\":\"x\"}",
+    "name": "sign_in: unknown variant",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "missing field `key_prefix`",
+    "input": "{\"kind\":\"apiKey\"}",
+    "name": "sign_in: missing struct field",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string",
+    "input": "{\"kind\":\"apiKey\",\"key_prefix\":5}",
+    "name": "sign_in: wrong field type",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: integer `5`, expected variant identifier at line 1 column 9",
+    "input": "{\"kind\":5}",
+    "name": "sign_in: tag not string",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "duplicate field `kind` at line 1 column 23",
+    "input": "{\"kind\":\"apiKey\",\"kind\":\"session\"}",
+    "name": "sign_in: duplicate tag",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: integer `5`, expected internally tagged enum SignIn at line 1 column 1",
+    "input": "5",
+    "name": "sign_in: integer",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: null, expected internally tagged enum SignIn at line 1 column 4",
+    "input": "null",
+    "name": "sign_in: null",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: string \"apiKey\", expected internally tagged enum SignIn at line 1 column 8",
+    "input": "\"apiKey\"",
+    "name": "sign_in: string",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "input": "[\"apiKey\",\"p\"]",
+    "name": "sign_in: seq form ok",
+    "ok": true,
+    "type": "sign_in"
+  },
+  {
+    "error": "missing field `kind` at line 1 column 2",
+    "input": "[]",
+    "name": "sign_in: seq form empty",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "input": "{\"kind\":\"anonymous\",\"z\":1}",
+    "name": "sign_in: unit variant extra fields ok",
+    "ok": true,
+    "type": "sign_in"
+  },
+  {
+    "error": "missing field `pds`",
+    "input": "{\"kind\":\"session\",\"client_key\":\"k\",\"did\":\"d\"}",
+    "name": "sign_in: session missing fields",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "input": "{\"pds\":\"p\",\"kind\":\"session\",\"client_key\":\"k\",\"did\":\"d\",\"handle\":null,\"scopes\":\"s\",\"access_token\":\"t\"}",
+    "name": "sign_in: session ok",
+    "ok": true,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string",
+    "input": "{\"key_prefix\":5,\"kind\":\"apiKey\"}",
+    "name": "sign_in: tag after fields with bad value",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "unknown variant `oauth`, expected one of `apiKey`, `session`, `anonymous` at line 2 column 17",
+    "input": "{\n  \"kind\": \"oauth\"\n}",
+    "name": "sign_in: unknown variant multiline",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "trailing comma at line 1 column 18",
+    "input": "{\"kind\":\"apiKey\",}",
+    "name": "sign_in: syntax error after tag",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "duplicate field `key_prefix`",
+    "input": "{\"kind\":\"apiKey\",\"key_prefix\":\"a\",\"key_prefix\":\"b\"}",
+    "name": "sign_in: duplicate struct field",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "missing field `id` at line 1 column 2",
+    "input": "{}",
+    "name": "manifest: missing id",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string at line 1 column 7",
+    "input": "{\"id\":5}",
+    "name": "manifest: id integer",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "input": "{\"id\":\"a\",\"capabilities\":null}",
+    "name": "manifest: capabilities null ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: null, expected a sequence at line 1 column 30",
+    "input": "{\"id\":\"a\",\"allowed_hosts\":null}",
+    "name": "manifest: allowed_hosts null",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: integer `3`, expected a string at line 1 column 25",
+    "input": "{\"id\":\"a\",\"displayName\":3}",
+    "name": "manifest: renamed field wrong type",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "input": "{\"id\":\"a\",\"display_name\":3}",
+    "name": "manifest: rust name of renamed field ignored ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "error": "duplicate field `id` at line 1 column 14",
+    "input": "{\"id\":\"a\",\"id\":\"b\"}",
+    "name": "manifest: duplicate field",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "missing field `id` at line 3 column 1",
+    "input": "{\n  \"name\": \"x\"\n}",
+    "name": "manifest: multiline missing id",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid value: integer `-1`, expected u32 at line 1 column 24",
+    "input": "{\"id\":\"a\", \"version\": -1}",
+    "name": "manifest: version negative",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid length 1, expected struct Manifest with 6 elements at line 1 column 5",
+    "input": "[\"a\"]",
+    "name": "manifest: seq form short",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid length 0, expected struct Manifest with 6 elements at line 1 column 2",
+    "input": "[]",
+    "name": "manifest: seq form empty",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "input": "[\"a\",null,null,[],null,null]",
+    "name": "manifest: seq form full ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "error": "trailing characters at line 1 column 29",
+    "input": "[\"a\",null,null,[],null,null,1]",
+    "name": "manifest: seq form too long",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: string \"x\", expected struct Manifest at line 1 column 3",
+    "input": "\"x\"",
+    "name": "manifest: string",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "input": "{\"id\":\"a\",\"unknown\":{\"deep\":[1,2,{}]}}",
+    "name": "manifest: unknown field ignored ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "error": "expected ident at line 1 column 24",
+    "input": "{\"id\":\"a\",\"unknown\":tru}",
+    "name": "manifest: unknown field bad syntax",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid number at line 1 column 22",
+    "input": "{\"id\":\"a\",\"unknown\":01}",
+    "name": "manifest: unknown field bad number",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 9",
+    "input": "{\"id\":\"a\"",
+    "name": "manifest: eof after field",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string at line 1 column 7",
+    "input": "{\"id\":5",
+    "name": "manifest: type error before eof",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "trailing comma at line 1 column 11",
+    "input": "{\"id\":\"a\",}",
+    "name": "manifest: trailing comma",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "trailing characters at line 1 column 12",
+    "input": "{\"id\":\"a\"} x",
+    "name": "manifest: trailing characters",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: boolean `false`, expected a string at line 1 column 35",
+    "input": "{\"id\":\"a\",\"capabilities\":[\"x\",false]}",
+    "name": "manifest: capabilities element wrong",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: null, expected struct Manifest at line 1 column 4",
+    "input": "null",
+    "name": "manifest: null",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "missing field `id` at line 1 column 13",
+    "input": "{\"x\":1,\"x\":2}",
+    "name": "manifest: missing id after duplicate unknown",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: map, expected a sequence at line 1 column 25",
+    "input": "{\"id\":\"a\",\"capabilities\":{}}",
+    "name": "manifest: capabilities map",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "missing field `count` at line 1 column 31",
+    "input": "{\"id\":\"a\",\"items\":[{\"name\":\"n\"}]}",
+    "name": "nested: missing item field",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "error": "invalid value: integer `-1`, expected u32 at line 1 column 41",
+    "input": "{\"id\":\"a\",\"items\":[{\"name\":\"n\",\"count\":-1}]}",
+    "name": "nested: item count negative",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "error": "missing field `id` at line 1 column 12",
+    "input": "{\"items\":[]}",
+    "name": "nested: missing id",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "error": "invalid type: integer `1`, expected struct Item at line 1 column 20",
+    "input": "{\"id\":\"a\",\"items\":[1]}",
+    "name": "nested: item integer",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "input": "{\"id\":\"a\",\"items\":[],\"inner\":null}",
+    "name": "nested: inner null ok",
+    "ok": true,
+    "type": "nested"
+  },
+  {
+    "error": "missing field `name` at line 1 column 31",
+    "input": "{\"id\":\"a\",\"items\":[],\"inner\":{}}",
+    "name": "nested: inner missing field last",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "input": "{\"id\":\"a\",\"items\":[],\"extra\":{\"z\":[1],\"a\":null}}",
+    "name": "nested: extra map ok",
+    "ok": true,
+    "type": "nested"
+  },
+  {
+    "error": "invalid type: sequence, expected a map at line 1 column 29",
+    "input": "{\"id\":\"a\",\"items\":[],\"extra\":[]}",
+    "name": "nested: extra not map",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "error": "missing field `count` at line 4 column 17",
+    "input": "{\n  \"id\": \"a\",\n  \"items\": [\n    {\"name\": \"n\"},\n    {\"name\": \"m\", \"count\": 2}\n  ]\n}",
+    "name": "nested: multiline missing count",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "error": "missing field `items` at line 1 column 10",
+    "input": "{\"id\":\"a\"}",
+    "name": "nested: missing items",
+    "ok": false,
+    "type": "nested"
+  },
+  {
+    "error": "missing field `key_prefix` at line 1 column 28",
+    "input": "{\"sign_in\":{\"kind\":\"apiKey\"},\"channel\":\"beta\"}",
+    "name": "holder: tagged missing field mid",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "missing field `key_prefix` at line 1 column 46",
+    "input": "{\"channel\":\"beta\",\"sign_in\":{\"kind\":\"apiKey\"}}",
+    "name": "holder: tagged missing field last",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "missing field `key_prefix` at line 2 column 2",
+    "input": "{\"channel\":\"beta\",\"sign_in\":{\"kind\":\"apiKey\"}  \n }",
+    "name": "holder: tagged missing field last ws",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "unknown variant `nope`, expected one of `apiKey`, `session`, `anonymous` at line 1 column 42",
+    "input": "{\"channel\":\"beta\",\"sign_in\":{\"kind\":\"nope\"}}",
+    "name": "holder: tagged unknown variant",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "unknown variant `nope`, expected one of `stable`, `beta`, `alpha` at line 1 column 17",
+    "input": "{\"channel\":\"nope\"}",
+    "name": "holder: channel unknown",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "invalid type: sequence, expected a string at line 1 column 62",
+    "input": "{\"channel\":\"beta\",\"sign_in\":{\"kind\":\"apiKey\",\"key_prefix\":[]}}",
+    "name": "holder: tagged wrong field type last",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "input": "{\"channel\":\"alpha\",\"sign_in\":{\"kind\":\"apiKey\",\"key_prefix\":\"p\"},\"after\":3}",
+    "name": "holder: ok",
+    "ok": true,
+    "type": "holder"
+  },
+  {
+    "error": "unknown field `c`, expected `a` or `b` at line 1 column 10",
+    "input": "{\"a\":1,\"c\":2}",
+    "name": "strict: unknown field",
+    "ok": false,
+    "type": "strict"
+  },
+  {
+    "input": "{\"a\":1,\"b\":null}",
+    "name": "strict: ok",
+    "ok": true,
+    "type": "strict"
+  },
+  {
+    "error": "unknown field `zz`, expected `a` or `b` at line 1 column 5",
+    "input": "{\"zz\":1}",
+    "name": "strict: unknown field first",
+    "ok": false,
+    "type": "strict"
+  },
+  {
+    "error": "invalid type: floating point `1.5`, expected u64 at line 1 column 14",
+    "input": "{\"a\":1,\"b\":1.5,\"c\":1,\"d\":1}",
+    "name": "nums: u64 float",
+    "ok": false,
+    "type": "nums"
+  },
+  {
+    "error": "invalid value: integer `9223372036854775808`, expected i64 at line 1 column 36",
+    "input": "{\"a\":1,\"b\":1,\"c\":9223372036854775808,\"d\":1}",
+    "name": "nums: i64 too big",
+    "ok": false,
+    "type": "nums"
+  },
+  {
+    "error": "invalid type: boolean `true`, expected f64 at line 1 column 27",
+    "input": "{\"a\":1,\"b\":1,\"c\":1,\"d\":true}",
+    "name": "nums: f64 bool",
+    "ok": false,
+    "type": "nums"
+  },
+  {
+    "input": "{\"a\":0,\"b\":18446744073709551615,\"c\":-9223372036854775808,\"d\":-1}",
+    "name": "nums: ok",
+    "ok": true,
+    "type": "nums"
+  },
+  {
+    "error": "invalid value: integer `4294967296`, expected u32 at line 1 column 15",
+    "input": "{\"a\":4294967296,\"b\":1,\"c\":1,\"d\":1}",
+    "name": "nums: u32 too big",
+    "ok": false,
+    "type": "nums"
+  },
+  {
+    "error": "missing field `v` at line 1 column 2",
+    "input": "{}",
+    "name": "lang: missing v",
+    "ok": false,
+    "type": "lang"
+  },
+  {
+    "input": "{\"v\":null}",
+    "name": "lang: ok default",
+    "ok": true,
+    "type": "lang"
+  },
+  {
+    "error": "invalid type: integer `1`, expected a string at line 1 column 9",
+    "input": "{\"lang\":1,\"v\":1}",
+    "name": "lang: lang wrong type",
+    "ok": false,
+    "type": "lang"
+  },
+  {
+    "error": "trailing comma at line 2 column 1",
+    "input": "[1,\n]",
+    "name": "value: multiline trailing comma in list",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 1 column 8",
+    "input": "{\t\"a\":\t}",
+    "name": "value: tabs count as one column",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "lone leading surrogate in hex escape at line 1 column 12",
+    "input": "{\"x\":\"\\uDC00\"}",
+    "name": "value: lone surrogate escape fails in value",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "1.7976931348623157e308",
+    "name": "value: max f64 ok",
+    "ok": true,
+    "type": "value",
+    "value": "1.7976931348623157e+308"
+  },
+  {
+    "error": "number out of range at line 1 column 22",
+    "input": "1.7976931348623159e308",
+    "name": "value: just above max f64",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "number out of range at line 1 column 310",
+    "input": "1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "name": "value: long integer above f64 max",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "name": "value: long integer below f64 max",
+    "ok": true,
+    "type": "value",
+    "value": "1e+308"
+  },
+  {
+    "input": "2.2250738585072014e-308",
+    "name": "value: min normal",
+    "ok": true,
+    "type": "value",
+    "value": "2.2250738585072014e-308"
+  },
+  {
+    "input": "4.9e-324",
+    "name": "value: min subnormal",
+    "ok": true,
+    "type": "value",
+    "value": "5e-324"
+  },
+  {
+    "input": "2e-324",
+    "name": "value: below min subnormal",
+    "ok": true,
+    "type": "value",
+    "value": "0.0"
+  },
+  {
+    "input": "[0.1e1, 1E5, 1e05, -0.0e0, 0.12345678901234567890123, 123456789.123456789, 1e-99999999999, -9223372036854775809]",
+    "name": "value: misc number forms",
+    "ok": true,
+    "type": "value",
+    "value": "[1.0,100000.0,100000.0,-0.0,0.12345678901234568,123456789.12345679,0.0,-9.223372036854776e+18]"
+  },
+  {
+    "error": "recursion limit exceeded at line 1 column 132",
+    "input": "{\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+    "name": "value: deep nesting via ignored-free value fails",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "error": "expected value at line 3 column 8",
+    "input": "{\r\n  \"a\": 1,\r\n  \"b\": x\r\n}",
+    "name": "value: crlf positions",
+    "ok": false,
+    "type": "value"
+  },
+  {
+    "input": "{\"id\":\"a\",\"x\":\"\\uDC00\"}",
+    "name": "manifest: ignored lone surrogate ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "error": "control character (\\u0000-\\u001F) found while parsing a string at line 1 column 16",
+    "input": "{\"id\":\"a\",\"x\":\"a\u0001\"}",
+    "name": "manifest: ignored control character",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "expected value at line 1 column 18",
+    "input": "{\"id\":\"a\",\"x\":[1,]}",
+    "name": "manifest: ignored trailing comma in list",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "expected `:` at line 1 column 20",
+    "input": "{\"id\":\"a\",\"x\":{\"a\" 1}}",
+    "name": "manifest: ignored expected colon",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "key must be a string at line 1 column 16",
+    "input": "{\"id\":\"a\",\"x\":{1:2}}",
+    "name": "manifest: ignored key must be string",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid number at line 1 column 16",
+    "input": "{\"id\":\"a\",\"x\":1.",
+    "name": "manifest: ignored decimal at eof",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid number at line 1 column 17",
+    "input": "{\"id\":\"a\",\"x\":1.}",
+    "name": "manifest: ignored decimal no digits",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid number at line 1 column 16",
+    "input": "{\"id\":\"a\",\"x\":-}",
+    "name": "manifest: ignored lone minus",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid escape at line 1 column 17",
+    "input": "{\"id\":\"a\",\"x\":\"\\q\"}",
+    "name": "manifest: ignored bad escape",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "expected `,` or `]` at line 1 column 18",
+    "input": "{\"id\":\"a\",\"x\":[1 2]}",
+    "name": "manifest: ignored list missing comma",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "expected `,` or `}` at line 1 column 22",
+    "input": "{\"id\":\"a\",\"x\":{\"a\":1 \"b\":2}}",
+    "name": "manifest: ignored object missing comma",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 18",
+    "input": "{\"id\":\"a\",\"x\":[[1,",
+    "name": "manifest: ignored eof in nested list",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid number at line 1 column 17",
+    "input": "{\"id\":\"a\",\"x\":1e}",
+    "name": "manifest: ignored exponent no digit",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "input": "{\"id\":\"a\",\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+    "name": "manifest: ignored deep nesting ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "input": "{\"i\\u0064\":\"a\"}",
+    "name": "manifest: escaped key ok",
+    "ok": true,
+    "type": "manifest"
+  },
+  {
+    "error": "lone leading surrogate in hex escape at line 1 column 8",
+    "input": "{\"\\uDC00\":1}",
+    "name": "manifest: lone surrogate key",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "key must be a string at line 1 column 2",
+    "input": "{1:2}",
+    "name": "manifest: non-string key",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "missing field `id` at line 3 column 1",
+    "input": "{\r\n  \"name\": \"x\"\r\n}",
+    "name": "manifest: crlf missing id",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string at line 1 column 9",
+    "input": "{\t\"id\":\t5}",
+    "name": "manifest: tab columns",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: sequence, expected a string at line 1 column 17",
+    "input": "{\"capabilities\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+    "name": "manifest: deep nesting known field",
+    "ok": false,
+    "type": "manifest"
+  },
+  {
+    "error": "invalid type: string \"x\", expected u32 at line 1 column 12",
+    "input": "{\"a\\nb\": \"x\"}",
+    "name": "map_u32: escaped key in error",
+    "ok": false,
+    "type": "map_u32"
+  },
+  {
+    "error": "EOF while parsing a value at line 1 column 2",
+    "input": "  ",
+    "name": "option_string: whitespace only",
+    "ok": false,
+    "type": "option_string"
+  },
+  {
+    "input": "\"stable\" ",
+    "name": "channel: trailing ws ok",
+    "ok": true,
+    "type": "channel"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 12",
+    "input": "{\"beta\":null",
+    "name": "channel: map eof",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "expected `:` at line 1 column 9",
+    "input": "{\"beta\" null}",
+    "name": "channel: map missing colon",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "trailing characters at line 1 column 14",
+    "input": "{\"beta\":null}x",
+    "name": "channel: map trailing characters",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 1",
+    "input": "{",
+    "name": "channel: map eof after open",
+    "ok": false,
+    "type": "channel"
+  },
+  {
+    "error": "invalid type: integer `5`, expected a string",
+    "input": "{\"kind\":\"session\",\"pds\":5}",
+    "name": "sign_in: content field wrong type",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "input": "{\"kind\":\"apiKey\",\"key_prefix\":\"a\",\"extra\":[1,2]}",
+    "name": "sign_in: extra fields ok",
+    "ok": true,
+    "type": "sign_in"
+  },
+  {
+    "error": "EOF while parsing an object at line 1 column 33",
+    "input": "{\"kind\":\"apiKey\",\"key_prefix\":\"a\"",
+    "name": "sign_in: eof after fields",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid length 0, expected struct variant SignIn::ApiKey with 1 element",
+    "input": "[\"apiKey\"]",
+    "name": "sign_in: seq form missing field",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid length 2, expected 1 element in sequence",
+    "input": "[\"apiKey\",\"p\",\"q\"]",
+    "name": "sign_in: seq form too long",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid length 1, expected 0 elements in sequence",
+    "input": "[\"anonymous\", 1]",
+    "name": "sign_in: unit variant seq ok",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: null, expected variant identifier at line 1 column 12",
+    "input": "{\"kind\":null}",
+    "name": "sign_in: tag null",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: null, expected a string",
+    "input": "{\"kind\":\"apiKey\",\"key_prefix\":null}",
+    "name": "sign_in: content null for string field",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "invalid type: floating point `1.5`, expected a string",
+    "input": "{\"kind\":\"apiKey\",\"key_prefix\":1.5}",
+    "name": "sign_in: content float for string field",
+    "ok": false,
+    "type": "sign_in"
+  },
+  {
+    "error": "missing field `key_prefix` at line 1 column 46",
+    "input": "{\"channel\":\"beta\",\"sign_in\":{\"kind\":\"apiKey\"}} x",
+    "name": "holder: tagged then trailing",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "missing field `key_prefix` at line 1 column 45",
+    "input": "{\"channel\":\"beta\",\"sign_in\":{\"kind\":\"apiKey\"}",
+    "name": "holder: tagged nested missing then eof",
+    "ok": false,
+    "type": "holder"
+  },
+  {
+    "error": "invalid type: string \"😀\", expected u32 at line 1 column 6",
+    "input": "\"😀\"",
+    "name": "u32: debug emoji",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{feff}\", expected u32 at line 1 column 8",
+    "input": "\"\\ufeff\"",
+    "name": "u32: debug bom",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{a0}\", expected u32 at line 1 column 8",
+    "input": "\"\\u00a0\"",
+    "name": "u32: debug nbsp",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{2028}\", expected u32 at line 1 column 8",
+    "input": "\"\\u2028\"",
+    "name": "u32: debug line separator",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"'\", expected u32 at line 1 column 3",
+    "input": "\"'\"",
+    "name": "u32: debug apostrophe",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{7f}\", expected u32 at line 1 column 8",
+    "input": "\"\\u007f\"",
+    "name": "u32: debug del",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{e000}\", expected u32 at line 1 column 8",
+    "input": "\"\\ue000\"",
+    "name": "u32: debug private use",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{378}\", expected u32 at line 1 column 8",
+    "input": "\"\\u0378\"",
+    "name": "u32: debug unassigned",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{301}a\", expected u32 at line 1 column 9",
+    "input": "\"\\u0301a\"",
+    "name": "u32: debug combining at start",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{200d}\", expected u32 at line 1 column 8",
+    "input": "\"\\u200d\"",
+    "name": "u32: debug zwj",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{200c}\", expected u32 at line 1 column 8",
+    "input": "\"\\u200c\"",
+    "name": "u32: debug zwnj",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{fe0f}\", expected u32 at line 1 column 8",
+    "input": "\"\\ufe0f\"",
+    "name": "u32: debug variation selector",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"🏻\", expected u32 at line 1 column 14",
+    "input": "\"\\uD83C\\uDFFB\"",
+    "name": "u32: debug skin tone",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{e0020}\", expected u32 at line 1 column 14",
+    "input": "\"\\uDB40\\uDC20\"",
+    "name": "u32: debug tag char",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{1160}\", expected u32 at line 1 column 8",
+    "input": "\"\\u1160\"",
+    "name": "u32: debug hangul jamo",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{3000}\", expected u32 at line 1 column 8",
+    "input": "\"\\u3000\"",
+    "name": "u32: debug ideographic space",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{85}\", expected u32 at line 1 column 8",
+    "input": "\"\\u0085\"",
+    "name": "u32: debug c1 control",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{ad}\", expected u32 at line 1 column 8",
+    "input": "\"\\u00ad\"",
+    "name": "u32: debug soft hyphen",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{600}\", expected u32 at line 1 column 8",
+    "input": "\"\\u0600\"",
+    "name": "u32: debug arabic mark",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{202e}\", expected u32 at line 1 column 8",
+    "input": "\"\\u202e\"",
+    "name": "u32: debug bidi",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \" a \", expected u32 at line 1 column 5",
+    "input": "\" a \"",
+    "name": "u32: debug space",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\\\\", expected u32 at line 1 column 4",
+    "input": "\"\\\\\"",
+    "name": "u32: debug backslash",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"\\u{180e}\", expected u32 at line 1 column 8",
+    "input": "\"\\u180e\"",
+    "name": "u32: debug mongolian vowel sep",
+    "ok": false,
+    "type": "u32"
+  },
+  {
+    "error": "invalid type: string \"ﾞ\", expected u32 at line 1 column 8",
+    "input": "\"\\uff9e\"",
+    "name": "u32: debug halfwidth katakana mark",
+    "ok": false,
+    "type": "u32"
+  }
+]
