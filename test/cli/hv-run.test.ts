@@ -717,3 +717,28 @@ describe("tests/happyview.rs check, test, types, build and dev", () => {
     expect(says(r.stderr, "--network")).toBe(true);
   });
 });
+
+// Not Rust tests: what exec does with the process `hpy` hands over, in a runtime that, unlike
+// Rust, sets O_NONBLOCK on its streams and (before Node 26.1) aborts when exec fails.
+describe("exec hands HappyView a process Rust would", () => {
+  /** The fake release cached by a first run, then replaced with `body` (mode `mode`). */
+  async function cachedAs(body: string | Buffer, mode = 0o755): Promise<Stack> {
+    const s = await stack();
+    expect((await s.hpy(["hv", "check"])).code).toBe(0);
+    const bin = join(s.cache, `happyview/${VERSION}/happyview`);
+    writeFileSync(bin, body);
+    chmodSync(bin, mode);
+    return s;
+  }
+
+  it.skipIf(!unix)("a_piped_stdin_reaches_the_binary_blocking", async () => {
+    // test/support/hpy.ts runs hpy with stdin a pipe, the case Node makes non-blocking.
+    const s = await cachedAs(
+      '#!/bin/sh\nexec perl -MFcntl -e \'for (0, 1, 2) { open(my $h, "<&=", $_) or next; ' +
+        'print "fd$_=", ((fcntl($h, F_GETFL, 0) & O_NONBLOCK) ? "nonblocking" : "blocking"), " " }\'\n',
+    );
+    const r = await s.hpy(["hv", "check"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe("fd0=blocking fd1=blocking fd2=blocking");
+  });
+});

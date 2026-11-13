@@ -1,6 +1,7 @@
 // crates/hpy/src/prompt.rs: a flag's value, else a prompt (only with a
 // terminal), else the default, else an error naming the flag. Nothing here ever
 // blocks without a TTY. Prompts draw on stderr, so stdout stays the result's.
+import { isatty } from "node:tty";
 import * as p from "@clack/prompts";
 import { Failure } from "./failure.ts";
 
@@ -17,7 +18,9 @@ export class Prompter {
   /** Why there is no prompting, for the error that names a missing flag. */
   readonly whyNot: string;
 
-  constructor(noInput: boolean, terminal = !!process.stdin.isTTY && !!process.stderr.isTTY) {
+  // `isatty(0)` rather than `process.stdin.isTTY`: reading `process.stdin` creates its handle,
+  // which leaves a piped stdin non-blocking for any program `hpy` later execs.
+  constructor(noInput: boolean, terminal = isatty(0) && !!process.stderr.isTTY) {
     this.interactive = !noInput && terminal;
     this.whyNot = noInput ? "--no-input was given" : "no terminal to prompt on";
   }

@@ -46,10 +46,17 @@ function bunFcntl(): Fcntl | null {
   return fcntl;
 }
 
-/** Clears O_NONBLOCK on fds 0 to 2, so a child that inherits them blocks as it expects. */
+/**
+ * Clears O_NONBLOCK on fds 0 to 2, so a child that inherits them blocks as it expects.
+ *
+ * Node makes fd 0 non-blocking only once something reads `process.stdin`, which creates its
+ * handle; reading it here creates that handle too, but then clears the flag at once, so a pipe
+ * or terminal on stdin reaches the child blocking either way. Elsewhere `hpy` asks whether
+ * stdin is a terminal with `isatty(0)`, which creates nothing.
+ */
 export function blockingStdio(): void {
   if (process.platform === "win32") return;
-  for (const s of [process.stdout, process.stderr]) {
+  for (const s of [process.stdin, process.stdout, process.stderr]) {
     const handle = (s as unknown as { _handle?: { setBlocking?: (b: boolean) => unknown } })
       ._handle;
     try {
