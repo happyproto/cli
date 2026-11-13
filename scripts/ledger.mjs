@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // The port's coverage ledger: every Rust test (#[test] / #[tokio::test] fn in
 // crates/) against the TypeScript tests that carry its name (`it("name"` or
-// `it.todo("name"`). Writes test/LEDGER.md. Run from the repo root while the
-// Rust crates still exist; after they are removed, the ledger is frozen.
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+// `it.todo("name"`). Writes test/LEDGER.md. Run from the repo root. While the
+// Rust crates exist it also writes test/rust-tests.json, the list of their
+// tests; once they are removed, it reads that list instead.
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const walk = (d, ext) =>
@@ -13,13 +14,22 @@ const walk = (d, ext) =>
     return statSync(p).isDirectory() ? walk(p, ext) : p.endsWith(ext) ? [p] : [];
   });
 
+const SNAPSHOT = "test/rust-tests.json";
 const rust = new Map();
-for (const f of walk("crates", ".rs")) {
-  const text = readFileSync(f, "utf8");
-  const names = [
-    ...text.matchAll(/#\[(?:tokio::)?test[^\]]*\]\s*(?:#\[[^\]]*\]\s*)*(?:async\s+)?fn\s+(\w+)/g),
-  ].map((m) => m[1]);
-  if (names.length) rust.set(relative("crates", f), names);
+if (existsSync("crates")) {
+  for (const f of walk("crates", ".rs")) {
+    const text = readFileSync(f, "utf8");
+    const names = [
+      ...text.matchAll(/#\[(?:tokio::)?test[^\]]*\]\s*(?:#\[[^\]]*\]\s*)*(?:async\s+)?fn\s+(\w+)/g),
+    ].map((m) => m[1]);
+    if (names.length) rust.set(relative("crates", f), names);
+  }
+  const sorted = Object.fromEntries([...rust].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  writeFileSync(SNAPSHOT, `${JSON.stringify(sorted, null, 2)}\n`);
+} else {
+  for (const [f, names] of Object.entries(JSON.parse(readFileSync(SNAPSHOT, "utf8")))) {
+    rust.set(f, names);
+  }
 }
 const ported = new Set();
 const todo = new Set();
