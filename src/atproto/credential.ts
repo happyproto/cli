@@ -15,10 +15,23 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { inspect } from "node:util";
+import { readToString } from "../core/io.ts";
 import type { Json } from "../core/output.ts";
-import { debugStr } from "../core/serde-json.ts";
+import { trim } from "../core/rust-str.ts";
+import {
+  debugStr,
+  fromSlice,
+  fromStr,
+  node,
+  optional,
+  str,
+  struct,
+  u8,
+  withDefault,
+} from "../core/serde-json.ts";
 import { DpopKey } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
+import { nodeJson } from "./http.ts";
 import { type KeyStore, KeyStoreError } from "./keystore.ts";
 import { credentialsFile, type Settings } from "./settings.ts";
 
@@ -130,15 +143,34 @@ function toStored(c: Credential, dpopKey: Json): Stored {
   return s;
 }
 
-function parseStored(text: string | Buffer): Stored {
-  const v = JSON.parse(text.toString()) as Record<string, unknown>;
-  const need = ["registry", "client_key", "did", "pds", "scopes", "access_token"];
-  if (!v || typeof v !== "object" || typeof v.v !== "number" || !("dpop_key" in v))
-    throw new Error("bad");
-  for (const k of need) if (typeof v[k] !== "string") throw new Error("bad");
-  if (v.handle !== undefined && v.handle !== null && typeof v.handle !== "string")
-    throw new Error("bad");
-  return v as unknown as Stored;
+/** `Stored` as serde derives it: `v` a u8, no duplicate fields, `handle` optional. */
+const STORED = struct("Stored", {
+  v: u8,
+  registry: str,
+  client_key: str,
+  did: str,
+  handle: withDefault(optional(str), undefined),
+  pds: str,
+  scopes: str,
+  access_token: str,
+  dpop_key: node,
+});
+
+/** `serde_json::from_str::<Stored>` (or `from_slice` for bytes). */
+function parseStored(text: string | Uint8Array): Stored {
+  const raw = typeof text === "string" ? fromStr(text, STORED) : fromSlice(text, STORED);
+  const s: Stored = {
+    v: raw.v,
+    registry: raw.registry,
+    client_key: raw.client_key,
+    did: raw.did,
+    pds: raw.pds,
+    scopes: raw.scopes,
+    access_token: raw.access_token,
+    dpop_key: nodeJson(raw.dpop_key),
+  };
+  if (raw.handle !== undefined) s.handle = raw.handle;
+  return s;
 }
 
 const inKeychain = (s: Stored) =>
@@ -199,9 +231,9 @@ type ReadResult = null | { ok: Stored } | { err: string };
 function readFile(path: string): ReadResult {
   let text: string;
   try {
-    text = readFileSync(path, "utf8");
+    text = readToString(path);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if ((e as { code?: string }).code === "ENOENT") return null;
     throw AtprotoError.other(e);
   }
   try {
@@ -320,11 +352,11 @@ export async function importCredential(exported: string): Promise<Credential> {
     AtprotoError.loginRequired(
       `${ENV_VAR} is not a credential from \`hpy registry login --export\``,
     );
-  const text = exported.trim();
-  if (!/^[A-Za-z0-9_-]*$/.test(text)) throw bad();
+  const bytes = base64UrlNoPad(trim(exported));
+  if (bytes === null) throw bad();
   let stored: Stored;
   try {
-    stored = parseStored(Buffer.from(text, "base64url"));
+    stored = parseStored(bytes);
   } catch {
     throw bad();
   }
@@ -335,4 +367,15 @@ export async function importCredential(exported: string): Promise<Credential> {
     throw bad();
   }
   return intoCredential(stored, key);
+}
+
+/**
+ * The base64 crate's `URL_SAFE_NO_PAD.decode`: the URL-safe alphabet only, no padding, no
+ * length that leaves a lone symbol, and no stray bits in the last symbol. null when it refuses.
+ */
+export function base64UrlNoPad(text: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]*$/.test(text) || text.length % 4 === 1) return null;
+  const bytes = Buffer.from(text, "base64url");
+  // Node ignores stray bits; a canonical encoding has none, so it round-trips.
+  return bytes.toString("base64url") === text ? new Uint8Array(bytes) : null;
 }

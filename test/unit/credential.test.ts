@@ -7,6 +7,7 @@ import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   account,
+  base64UrlNoPad,
   type Credential,
   exportCredential,
   importCredential,
@@ -234,5 +235,51 @@ describe("credential.rs", () => {
     expect(fromFile?.dpopKey.thumbprint()).toBe(c.dpopKey.thumbprint());
     // And writes it back the same way: --export is byte-identical to Rust's.
     expect(exportCredential(c)).toBe(readFileSync(join(fixtures, "HPY_CREDENTIAL"), "utf8").trim());
+  });
+});
+
+// TS-only: what `import` refuses, as serde's derive and the base64 crate's URL_SAFE_NO_PAD do.
+describe("an exported credential is read as Rust reads it", () => {
+  const exported = (edit: (o: Record<string, unknown>) => string) => async () => {
+    const c = await cred("did:plc:abc");
+    const o = JSON.parse(Buffer.from(exportCredential(c), "base64url").toString());
+    return Buffer.from(edit(o)).toString("base64url");
+  };
+  const refused = async (text: string) => {
+    const err = await importCredential(text).catch((e) => e);
+    expect(err).toBeInstanceOf(AtprotoError);
+    expect(err.message).toBe(
+      "HPY_CREDENTIAL is not a credential from `hpy registry login --export`",
+    );
+  };
+
+  it("a_version_outside_u8_is_refused", async () => {
+    for (const v of [256, -1, 1.5]) {
+      await refused(await exported((o) => JSON.stringify({ ...o, v }))());
+    }
+    // Any u8 is read; the version is not checked further.
+    const two = await exported((o) => JSON.stringify({ ...o, v: 2 }))();
+    expect((await importCredential(two)).did).toBe("did:plc:abc");
+  });
+
+  it("a_duplicate_field_is_refused", async () => {
+    await refused(
+      await exported((o) => JSON.stringify(o).replace('"did":', '"did":"did:plc:x","did":'))(),
+    );
+  });
+
+  it("only_unpadded_canonical_base64url_is_read", async () => {
+    const good = exportCredential(await cred("did:plc:abc"));
+    expect(good.length % 4).not.toBe(0);
+    await refused(`${good}=`);
+    // The standard alphabet's `+` and `/` are not URL-safe.
+    await refused(`+${good.slice(1)}`);
+    await refused(`/${good.slice(1)}`);
+    await refused(good.slice(0, -1));
+    expect(base64UrlNoPad("e30")).toEqual(new Uint8Array(Buffer.from("{}")));
+    expect(base64UrlNoPad("e31")).toBeNull();
+    expect(base64UrlNoPad("e30=")).toBeNull();
+    expect(base64UrlNoPad("e")).toBeNull();
+    expect(base64UrlNoPad("")).toEqual(new Uint8Array());
   });
 });

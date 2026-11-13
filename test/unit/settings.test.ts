@@ -8,6 +8,7 @@ import {
   DEFAULT_OAUTH_RELAY,
   DEFAULT_REGISTRY_URL,
   DEFAULT_SCOPE,
+  processEnv,
   settingsFromSources,
 } from "../../src/atproto/settings.ts";
 
@@ -68,4 +69,20 @@ it("oauth_modes", () => {
   expect(() =>
     settingsFromSources(undefined, env({ HPY_OAUTH_CLIENT_AUTH: "secret" }), "/c"),
   ).toThrow();
+});
+
+// TS-only: `std::env::var` refuses a value that is not UTF-8, so Rust reads it as unset. The
+// runtime hands such a value over with U+FFFD in place of the bad bytes.
+it("an_env_value_that_was_not_utf8_reads_as_unset", () => {
+  const name = "HPY_TEST_PROCESS_ENV";
+  try {
+    process.env[name] = "a\uFFFDb";
+    expect(processEnv(name)).toBeUndefined();
+    process.env[name] = "";
+    expect(processEnv(name)).toBeUndefined();
+    process.env[name] = "ok";
+    expect(processEnv(name)).toBe("ok");
+  } finally {
+    delete process.env[name];
+  }
 });

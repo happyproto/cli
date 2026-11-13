@@ -53,9 +53,14 @@ export function parseStoreChoice(s: string): StoreChoice {
 
 type Env = (k: string) => string | undefined;
 
+/**
+ * `std::env::var(k).ok().filter(|v| !v.is_empty())`. Rust's `var` refuses a value that is not
+ * UTF-8, so it reads as unset. The runtime decodes such a value with U+FFFD in place of the bad
+ * bytes, so a value holding U+FFFD is taken to be one (a real U+FFFD reads as unset too).
+ */
 export const processEnv: Env = (k) => {
   const v = process.env[k];
-  return v !== undefined && v !== "" ? v : undefined;
+  return v !== undefined && v !== "" && !v.includes("\uFFFD") ? v : undefined;
 };
 
 // settings.rs `File` and its sections, with their Rust names (they appear in serde's errors).
