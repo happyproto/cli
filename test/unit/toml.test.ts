@@ -16,6 +16,8 @@ import {
   toTomlStringPretty,
   tryInto,
 } from "../../src/core/toml.ts";
+import { RAW_TOML } from "../../src/project/config.ts";
+import { encLockfile, LOCK_FORMAT, LOCKFILE, Lockfile } from "../../src/project/lock.ts";
 import * as d from "../support/toml/decoders.ts";
 import { corpus, expected, oracle, outcome } from "../support/toml/oracle-fixtures.ts";
 
@@ -106,9 +108,9 @@ function canon(v: unknown): unknown {
 
 const decoders: Record<string, Decoder<unknown>> = {
   HpyToml: d.hpyToml,
-  Lockfile: d.lockfile,
-  LockFormat: d.lockFormat,
-  RawToml: d.rawToml,
+  Lockfile: LOCKFILE,
+  LockFormat: LOCK_FORMAT,
+  RawToml: RAW_TOML,
   ModulesFile: d.modulesFile,
   SettingsFile: d.settingsFile,
   ChannelFile: d.channelFile,
@@ -124,7 +126,7 @@ const decoders: Record<string, Decoder<unknown>> = {
 
 /** Each type's encoder; its input is the oracle's JSON, read with serde-json.ts as Rust does. */
 const encoders: Record<string, Encoder<never>> = {
-  Lockfile: d.encLockfile as Encoder<never>,
+  Lockfile: encLockfile as Encoder<never>,
   ChannelFile: d.encChannelFile as Encoder<never>,
   UpdateState: d.encUpdateState as Encoder<never>,
   AccessRecord: d.encAccessRecord as Encoder<never>,
@@ -141,22 +143,6 @@ function fromJson<T>(input: string, decoder: Decoder<T>): T {
   } catch (e) {
     throw new Error(`json: ${(e as Error).message}`);
   }
-}
-
-/** hpy-project lock.rs `Lockfile::render`. */
-function renderLockfile(lock: d.Lockfile): string {
-  const cmp = json.compareKeys;
-  const sorted = {
-    ...lock,
-    plugins: [...lock.plugins]
-      .sort((a, b) => cmp(a.id, b.id))
-      .map((p) => ({
-        ...p,
-        keys: [...p.keys].sort(cmp),
-        dependencies: [...p.dependencies].sort(cmp),
-      })),
-  };
-  return `# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\n${toTomlString(sorted, d.encLockfile)}`;
 }
 
 function run(op: string, input: string): { ok: boolean; output?: string; error?: string } {
@@ -186,7 +172,7 @@ function run(op: string, input: string): { ok: boolean; output?: string; error?:
         return kind === "ser" ? toTomlString(value, enc) : toTomlStringPretty(value, enc);
       });
     case "render":
-      return outcome(() => renderLockfile(fromJson(input, d.lockfile) as d.Lockfile));
+      return outcome(() => new Lockfile(fromJson(input, LOCKFILE)).render());
     case "ser_table":
     case "ser_table_pretty":
       return outcome(() => {

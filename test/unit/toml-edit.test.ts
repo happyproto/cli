@@ -1,18 +1,12 @@
-// Compares toml-edit.ts (and the hpy call sites in hpy-sites.ts) against toml_edit 0.25.17 and
-// the real hpy functions (oracle/oracle-output.json; see toml.test.ts for how it is made).
+// Compares toml-edit.ts (and hpy's call sites in src/plugin/config.ts and src/project) against
+// toml_edit 0.25.17 and the real hpy functions (oracle/oracle-output.json; see toml.test.ts for how it is made).
 import { describe, expect, it } from "vitest";
 import * as json from "../../src/core/serde-json.ts";
 import { DocumentMut } from "../../src/core/toml-edit.ts";
-import * as d from "../support/toml/decoders.ts";
-import {
-  firstInterpreter,
-  happyviewToml,
-  type PluginEntry,
-  type PluginKind,
-  renderProjectFile,
-  setPlugin,
-  writeProject,
-} from "../support/toml/hpy-sites.ts";
+import { PROJECT_CONFIG, projectText } from "../../src/plugin/config.ts";
+import { Pin, type PluginEntry, type PluginKind, setPlugin } from "../../src/project/config.ts";
+import { firstInterpreter } from "../../src/project/handlers.ts";
+import { ProjectFile, renderScaffold } from "../../src/project/scaffold.ts";
 import { corpus, expected, oracle, outcome } from "../support/toml/oracle-fixtures.ts";
 
 type J = Record<string, unknown>;
@@ -21,7 +15,7 @@ function entry(j: J): PluginEntry {
   return {
     did: j.did as string,
     name: j.name as string,
-    pin: typeof j.channel === "string" ? { channel: j.channel } : { version: j.version as string },
+    pin: typeof j.channel === "string" ? Pin.channel(j.channel) : Pin.version(j.version as string),
   };
 }
 
@@ -39,7 +33,7 @@ function run(
       return outcome(() => DocumentMut.parse(input ?? "").toString());
     case "write_project":
       return outcome(() =>
-        writeProject(input, json.fromStr(JSON.stringify(args), d.projectConfig)),
+        projectText(input ?? "", json.fromStr(JSON.stringify(args), PROJECT_CONFIG)),
       );
     case "set_plugin":
       return outcome(() =>
@@ -48,14 +42,16 @@ function run(
     case "first_interpreter":
       return outcome(() => JSON.stringify(firstInterpreter(input ?? "") ?? null));
     case "scaffold":
-      return outcome(() =>
-        happyviewToml({
-          appName: args.app_name as string,
-          superadmin: args.superadmin as string,
-          happyviewVersion: args.happyview_version as string,
-          interpreters: entries(args.interpreters),
-          libraries: entries(args.libraries),
-        }),
+      return outcome(
+        () =>
+          renderScaffold({
+            appName: args.app_name as string,
+            superadmin: args.superadmin as string,
+            happyviewVersion: args.happyview_version as string,
+            interpreters: entries(args.interpreters),
+            libraries: entries(args.libraries),
+            handlerLanguage: args.handler_language as string | undefined,
+          })[0]![1],
       );
     case "render": {
       const obj = <T>(k: string, f: (v: J) => T): Map<string, T> =>
@@ -63,7 +59,7 @@ function run(
           Object.entries((args[k] ?? {}) as Record<string, J>).map(([key, v]) => [key, f(v)]),
         );
       return outcome(() =>
-        renderProjectFile({
+        new ProjectFile({
           happyviewVersion: args.happyview_version as string,
           appName: args.app_name as string | undefined,
           superadmin: args.superadmin as string | undefined,
@@ -84,7 +80,7 @@ function run(
             language: v.language as string,
             path: v.path as string,
           })),
-        }),
+        }).render(),
       );
     }
     default:

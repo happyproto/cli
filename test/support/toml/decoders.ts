@@ -1,7 +1,8 @@
 // The Rust types the oracle uses (oracle/src/main.rs, which copies or imports hpy's), as
-// serde-json.ts decoders and toml.ts encoders. The hpy ones mirror the structs in
-// crates/hpy-plugin/src/config.rs, crates/hpy-project/src/{config,lock}.rs,
-// crates/hpy-atproto/src/settings.rs and crates/hpy/src/{channel,update}.rs.
+// serde-json.ts decoders and toml.ts encoders, for the types not yet ported into src. The hpy
+// ones mirror the structs in crates/hpy-atproto/src/settings.rs and
+// crates/hpy/src/{channel,update,modules}.rs; hpy-plugin's config.rs and hpy-project's are in
+// src.
 import {
   array,
   bool,
@@ -119,83 +120,9 @@ export const encHpyToml = encStruct<HpyToml>("HpyToml", {
   },
 });
 
-// --- hpy-project lock.rs ---
+// --- hpy modules.rs, hpy-atproto settings.rs ---
+// (hpy-project config.rs RawToml and lock.rs are the real ones, in src/project.)
 
-export const pluginKind = unitEnum("PluginKind", ["interpreter", "library"]);
-export const lockedPlugin = struct("LockedPlugin", {
-  id: str,
-  kind: pluginKind,
-  keys: withDefault(array(str), []),
-  project: str,
-  version: str,
-  channel: opt(str),
-  version_uri: str,
-  manifest_cid: str,
-  package_cid: str,
-  manifest_blob_cid: str,
-  dependencies: withDefault(array(str), []),
-  capabilities: opt(array(str)),
-});
-export const lockfile = struct("Lockfile", {
-  version: u32,
-  happyview: struct("LockedHappyview", { version: str }),
-  plugins: withDefault(array(lockedPlugin), [], { rename: "plugin" }),
-});
-export const lockFormat = struct("LockFormat", { version: u32 });
-
-export type LockedPlugin = {
-  id: string;
-  kind: string;
-  keys: string[];
-  project: string;
-  version: string;
-  channel?: string | undefined;
-  version_uri: string;
-  manifest_cid: string;
-  package_cid: string;
-  manifest_blob_cid: string;
-  dependencies: string[];
-  capabilities?: string[] | undefined;
-};
-export type Lockfile = { version: number; happyview: { version: string }; plugins: LockedPlugin[] };
-
-export const encLockfile = encStruct<Lockfile>("Lockfile", {
-  version: encInt,
-  happyview: encStruct<{ version: string }>("LockedHappyview", { version: encStr }),
-  plugins: {
-    enc: encArray(
-      encStruct<LockedPlugin>("LockedPlugin", {
-        id: encStr,
-        kind: encUnitVariant,
-        keys: encArray(encStr),
-        project: encStr,
-        version: encStr,
-        channel: { enc: encOption(encStr), skipIf: isNone },
-        version_uri: encStr,
-        manifest_cid: encStr,
-        package_cid: encStr,
-        manifest_blob_cid: encStr,
-        dependencies: encArray(encStr),
-        capabilities: { enc: encOption(encArray(encStr)), skipIf: isNone },
-      }),
-    ),
-    rename: "plugin",
-    skipIf: isEmpty,
-  },
-});
-
-// --- hpy-project config.rs RawToml, hpy modules.rs, hpy-atproto settings.rs ---
-
-export const rawToml = struct("RawToml", {
-  happyview: withDefault(struct("HappyviewTable", { version: optional(str) }), () => ({
-    version: undefined,
-  })),
-  interpreters: withDefault(map(tomlValue), () => new Map()),
-  libraries: withDefault(map(tomlValue), () => new Map()),
-  dev: withDefault(struct("DevTable", { backfill: withDefault(bool, false) }), () => ({
-    backfill: false,
-  })),
-});
 export const modulesFile = struct("ModulesFile", {
   modules: withDefault(map(struct("ModuleEntry", { language: str, path: str })), () => new Map()),
 });
