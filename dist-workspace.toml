@@ -32,6 +32,11 @@ targets = [
 ]
 install-path = "CARGO_HOME"
 install-updater = false
+# release.yml has one hand-added step: packaging/patch-installer.sh, which adds
+# the musl runtime check to the shell installer. dist must not regenerate the
+# workflow over it; after a dist upgrade, regenerate (dist generate), re-add
+# that step, and run packaging/test-musl-guard.sh.
+allow-dirty = ["ci"]
 # Releases are started by semantic-release (ci.yml), which picks the version
 # and dispatches this workflow with the tag, rather than by a tag push.
 dispatch-releases = true

@@ -53,11 +53,11 @@ curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
 On Alpine, or another Linux without glibc 2.31 or newer, the installer picks
-the musl build, which needs the C++ runtime: `apk add libstdc++` first. The
-install script and `hpy update` stop and say so when it is missing. (hpy up to
-1.0.0-alpha.32 was a static Rust binary and needed nothing. Its own updater
-doesn't check, so add `libstdc++` before such a copy updates itself, or the new
-`hpy` won't start.)
+the musl build, which needs the C++ runtime: `apk add libstdc++` first. (hpy
+up to 1.0.0-alpha.32 was a static Rust binary and needed nothing.) The
+installers and `hpy update` stop and say so when it is missing, so an older
+copy that updates itself is left as it was until `libstdc++` is installed. On
+glibc older than 2.31 there is no build that runs: use npm, below.
 
 That installs the newest **stable** release, of which there is none until
 `1.0.0` is cut — for now use the `beta` channel's installer, below.
@@ -701,6 +701,14 @@ channel only: the `hpy`, `hpy-beta` or `hpy-alpha` formula, and the `stable`,
 `beta` or `alpha` apt suite and yum repository (`packaging/channel.sh` decides
 which). A prerelease no channel ships, such as `-rc.1`, gets packages attached
 to its release and is published nowhere else.
+
+`release.yml` is dist's generated workflow with one hand-added step:
+`packaging/patch-installer.sh` adds the musl runtime check (libstdc++, glibc
+2.31) to dist's shell installer before it is uploaded. `dist-workspace.toml`
+pins dist and sets `allow-dirty = ["ci"]` so dist leaves the workflow alone.
+After a dist upgrade, regenerate the workflow (`dist generate`), add that step
+back, and run `packaging/test-musl-guard.sh` (CI's `packaging` job does): the
+patch script fails if dist's installer template no longer has its anchors.
 
 Never edit the version by hand. If `main` is ever protected, add a
 `RELEASE_TOKEN` secret: a token that can push to it.

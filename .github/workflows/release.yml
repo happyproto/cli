@@ -220,6 +220,9 @@ jobs:
         run: |
           dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json "--artifacts=global" > dist-manifest.json
           echo "dist ran successfully"
+          # Not dist's: refuse the musl archive where it cannot start (no libstdc++, or glibc
+          # older than 2.31). Hand-added, so dist-workspace.toml has allow-dirty = ["ci"].
+          packaging/patch-installer.sh target/distrib/hpy-cli-installer.sh
 
           # Parse out what we just built and upload it to scratch storage
           echo "paths<<EOF" >> "$GITHUB_OUTPUT"

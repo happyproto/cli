@@ -124,6 +124,16 @@ jobs:
       # archive (built with dist) served locally, with a stand-in sudo: it
       # never runs the real one.
       - run: packaging/test-installer.sh --local
+      # The check packaging/patch-installer.sh adds to dist's installer (as
+      # release.yml does), in Alpine and Debian 10 containers: it refuses the
+      # musl build without libstdc++ or on glibc < 2.31, and installs it on
+      # Alpine with libstdc++.
+      - name: Musl runtime check in the installer
+        run: |
+          dist build --artifacts=local --target=x86_64-unknown-linux-musl >/dev/null
+          dist build --artifacts=global >/dev/null
+          packaging/patch-installer.sh target/distrib/hpy-cli-installer.sh
+          packaging/test-musl-guard.sh target/distrib
 
   # Fails on any advisory in the npm dependencies, which the bundle and the
   # binaries ship.

@@ -90,6 +90,8 @@ fetch_assets() { # dir os arch
     step "building $target and the installer with dist"
     (cd "$root" && dist build --artifacts=local --target="$target" >/dev/null \
       && dist build --artifacts=global >/dev/null) || fail "dist build failed"
+    # As release.yml does.
+    "$root/packaging/patch-installer.sh" "$root/target/distrib/hpy-cli-installer.sh" >/dev/null
     cp "$root/target/distrib/hpy-cli-installer.sh" "$root/target/distrib/hpy-cli-$target.tar.xz" "$1/"
     return
   fi
