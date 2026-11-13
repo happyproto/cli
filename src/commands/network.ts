@@ -1,8 +1,10 @@
 // crates/hpy/src/commands/happyview/network.rs: `dev --network local`: the project's HappyView
 // inside a private atproto network, with its logs in the foreground. Unix only; `dev` refuses
 // it elsewhere before calling `runLocal`.
+
 import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
+import { abandonWork } from "../core/abandon.ts";
 import type { Ctx } from "../core/ctx.ts";
 import { Failure } from "../core/failure.ts";
 import { createDirAll, ioErrorText, readToString } from "../core/io.ts";
@@ -279,7 +281,11 @@ async function abandonable<T>(interrupt: Interrupt, start: () => Promise<T>): Pr
   const fut = start();
   fut.catch(() => {});
   const raced = await race(interrupt, fut);
-  if (!raced.done) throw INTERRUPTED;
+  if (!raced.done) {
+    // `fut` keeps running; main ends the process instead of waiting for it.
+    abandonWork();
+    throw INTERRUPTED;
+  }
   return raced.value;
 }
 

@@ -5,6 +5,7 @@ import { loadSettings } from "./atproto/settings.ts";
 import { parse } from "./clap.ts";
 import { buildCli, checksForUpdates } from "./cli.ts";
 import { HANDLERS } from "./commands/index.ts";
+import { workWasAbandoned } from "./core/abandon.ts";
 import { Ctx } from "./core/ctx.ts";
 import { Failure } from "./core/failure.ts";
 import { Output } from "./core/output.ts";
@@ -64,10 +65,15 @@ async function main(): Promise<void> {
     code = f.code;
   }
   await update.finish(pending);
-  // Rust's process ends when `main` returns, whatever is still in flight; so does this one. A
-  // request a Ctrl-C abandoned would otherwise hold the event loop open until it gave up.
-  await flushStdio();
-  process.exit(code);
+  // Rust's process ends when `main` returns, whatever is still in flight. Here the process ends
+  // on its own once nothing is pending, which also writes out everything queued for stdout and
+  // stderr (Bun's `process.exit` drops output a slow pipe hasn't taken yet). Only when a command
+  // abandoned work (Ctrl-C during a download) does main end it at once.
+  if (workWasAbandoned()) {
+    await flushStdio();
+    process.exit(code);
+  }
+  process.exitCode = code;
 }
 
 await main();

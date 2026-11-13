@@ -1,6 +1,7 @@
 // crates/hpy/tests/instance.rs, against the built binary: `hpy hv login`,
 // `logout` and `whoami`, `deploy` and `env push`, against a stand-in for an
 // instance's admin API.
+import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { isDeepStrictEqual } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { projectUri, versionUri } from "../../src/plugin/validate.ts";
 import { type LockedPlugin, Lockfile } from "../../src/project/lock.ts";
-import { Home, hpy } from "../support/hpy.ts";
+import { Home, hpy, hpyCommand, hpyEnv } from "../support/hpy.ts";
 import { header, MockServer, query, type Recorded } from "../support/mock-server.ts";
 
 const KEY = "hv_0123456789abcdef0123456789abcdef";
@@ -652,4 +653,51 @@ describe("tests/instance.rs", () => {
     expect(pushed.stderr).toBe(deploy.stderr);
     expect(pushed.stderr).toContain("hpy hv login");
   });
+});
+
+// Not a Rust test: a reader that falls behind gets all of a large output, on stdout and on
+// stderr, and from the Bun binary too (HPY_TEST_BIN). Bun's `process.exit` once dropped what a
+// slow pipe hadn't taken yet; this reads nothing for a second, then everything.
+describe("a slow reader", () => {
+  const KEYS = 30_000;
+  const bigEnv = () => Array.from({ length: KEYS }, (_, i) => `KEY_${i}=value-${i}\n`).join("");
+
+  async function slowly(project: string, args: string[]) {
+    const [program, pre] = hpyCommand();
+    const child = spawn(program, [...pre, ...args], {
+      cwd: project,
+      env: hpyEnv(home) as NodeJS.ProcessEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.pause();
+    child.stderr.pause();
+    await new Promise((r) => setTimeout(r, 1_000));
+    const take = (s: NodeJS.ReadableStream) => {
+      const chunks: Buffer[] = [];
+      s.on("data", (c: Buffer) => chunks.push(c));
+      return () => Buffer.concat(chunks).toString();
+    };
+    const out = take(child.stdout);
+    const err = take(child.stderr);
+    child.stdout.resume();
+    child.stderr.resume();
+    const code = await new Promise<number | null>((r) => child.on("close", r));
+    return { code, stdout: out(), stderr: err() };
+  }
+
+  it("gets_all_of_a_large_output_on_stdout_and_stderr", async () => {
+    const project = envProject(bigEnv());
+    const s = await variablesInstance();
+    await login(s.url);
+    const json = await slowly(project, ["--json", "hv", "env", "push", "--dry-run"]);
+    expect(json.code, json.stderr.slice(-500)).toBe(0);
+    expect(json.stdout.length).toBeGreaterThan(1_000_000);
+    expect(json.stdout).toContain(`KEY_${KEYS - 1}`);
+    expect(() => JSON.parse(json.stdout)).not.toThrow();
+    const text = await slowly(project, ["hv", "env", "push", "--dry-run"]);
+    expect(text.code, text.stderr.slice(-500)).toBe(0);
+    // Without --json the listing is status text, on stderr.
+    expect(text.stderr.length).toBeGreaterThan(300_000);
+    expect(text.stderr).toContain(`KEY_${KEYS - 1}`);
+  }, 60_000);
 });
