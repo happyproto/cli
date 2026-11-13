@@ -81,6 +81,11 @@ export class Stack {
     return hpy(this.home, args, { cwd: this.project, env: { ...this.env(), ...env } });
   }
 
+  /** `hpy`, run in `cwd` rather than the stack's project (`.current_dir(...)` in Rust). */
+  hpyIn(cwd: string, args: string[], env: Record<string, string> = {}): Promise<Run> {
+    return hpy(this.home, args, { cwd, env: { ...this.env(), ...env } });
+  }
+
   readLog(): string {
     try {
       return readFileSync(this.log, "utf8");
