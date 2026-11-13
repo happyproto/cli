@@ -615,8 +615,12 @@ the key goes in `credentials.json` too, and `hpy registry login` tells you so. S
 skip the keychain entirely.
 
 On macOS, after `hpy` updates itself, Keychain may ask once whether the new
-`hpy` may use its key. Choose **Always Allow**. The binaries aren't
-code-signed, so macOS sees each update as a new app.
+`hpy` may use its key. Choose **Always Allow**. The macOS binaries are
+signed ad hoc (`codesign --sign -`, which Apple silicon requires to run them at
+all), not with a Developer ID, so macOS sees each update as a new app. The
+install script and Homebrew download them with `curl`, which sets no
+quarantine flag, so Gatekeeper doesn't stop them; a copy downloaded with a
+browser would need `xattr -d com.apple.quarantine hpy` first.
 
 ## Development
 
@@ -724,7 +728,10 @@ Repository setup:
 - **npm:** `publish-npm.yml` publishes with npm trusted publishing, so there
   is no token secret. Set it up once on npmjs.com: the `hpy` package's
   settings, Trusted publisher, GitHub Actions, repository `happyproto/cli`,
-  workflow `release.yml`.
+  with both `release.yml` (the workflow that runs) and `publish-npm.yml` (the
+  reusable one it calls) registered. If a publish fails with `E404`, the
+  trusted publisher didn't match: check it, then re-run the failed job; a
+  re-run skips a version npm already has.
 - **Depot:** the `happyproto` organization must be connected to Depot.
 - **Package signing key:** this is done. The key "HappyProto Packages
   <packages@happyproto.at>" has fingerprint

@@ -7,8 +7,9 @@
 #
 # Needs: npm trusted publishing for the package, set up once on npmjs.com (the
 # package's Settings, Trusted publisher: GitHub Actions, repository
-# happyproto/cli, workflow release.yml, the workflow that calls this one). No
-# token secret is used.
+# happyproto/cli, with both release.yml, the workflow that calls this one, and
+# publish-npm.yml registered). No token secret is used. An E404 from publish
+# means the trusted publisher didn't match: fix it and re-run this job.
 name: Publish npm package
 
 on:
@@ -49,17 +50,17 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
-      # Trusted publishing (OIDC) needs npm 11.5.1 or newer.
+      # Trusted publishing (OIDC) needs npm 11.5.1 or newer; pinned, as everything in this job is.
       - name: Update npm
         if: steps.channel.outputs.dist-tag != ''
-        run: npm install -g npm@11
+        run: npm install -g npm@11.21.1
 
       - name: Build
         if: steps.channel.outputs.dist-tag != ''
         run: |
           version=$(node -p 'require("./package.json").version')
           [ "v$version" = "$TAG" ] || { echo "::error::package.json is at $version, not $TAG"; exit 1; }
-          npm ci
+          npm ci --ignore-scripts
           npm run build
           HPY_NO_UPDATE_CHECK=1 node dist/hpy.mjs --version
 
