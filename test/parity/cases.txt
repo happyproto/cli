@@ -235,3 +235,22 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 @mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv env push --env-file proj/.env --dry-run
 @mock @project=badenv HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes
 @mock @project=basic HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes
+# hv pull against the mock instances in mock-pull.mjs.
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml @keep=~/pulled/happyview.lock @keep=~/pulled/.env.example @keep=~/pulled/src/lexicons/com/example/post.json @keep=~/pulled/src/lexicons/com/example/listPosts.lua HV_LOG=hv.log @keep=~/pulled/hv.log -- hv pull pulled ;; hv pull pulled ;; hv pull pulled --diff ;; --json hv pull pulled --diff
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- --json hv pull pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3nos HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml -- hv pull pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3mod HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml @keep=~/pulled/src/lib/format.lua -- hv pull pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pvdev HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv2 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=basic HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull proj ;; hv pull --diff nowhere
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=basic HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull proj --diff
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=codemod HPY_HAPPYVIEW_CODEMOD=proj/fake-codemod HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml @keep=~/pulled/src/jobs/cleanup.lua @keep=~/pulled/src/lexicons/com/example/listPosts.lua -- hv pull --legacy --url $MOCK/pv2 pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=codemod HPY_HAPPYVIEW_CODEMOD=proj/fake-codemod HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef -- --json hv pull --legacy --url $MOCK/pv2 --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HAPPYVIEW_API_KEY=hv_ffffffffffffffffffffffffffffffff -- hv pull --legacy --url $MOCK/pv2
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh MY_KEY=nope -- hv pull --legacy --url $MOCK/pv2 --api-key-env MY_KEY
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy --url $MOCK/pv2 --api-key-env MY_KEY
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy --url $MOCK/pv3
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --legacy --url ftp://x

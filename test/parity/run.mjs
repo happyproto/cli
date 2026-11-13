@@ -161,6 +161,8 @@ async function run(cmd, line, mock) {
     t
       .replaceAll(home, "$HOME")
       .replaceAll(basename(home), "hpy-parity-XXXXXX")
+      // …even where a report wrapped the name across its gutter.
+      .replace(/hpy-parity-(\n {2}│ )?[A-Za-z0-9]{6}/g, "hpy-parity-$1XXXXXX")
       .replaceAll(mock?.url ?? "\0", "$MOCK");
   return {
     code,

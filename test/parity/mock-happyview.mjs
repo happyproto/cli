@@ -14,16 +14,19 @@
 //   $MOCK/pending/…  only std installed, and the check needs lua first
 //   $MOCK/eol/…      nothing installed, and installing lua is refused
 //   $MOCK/noboot/…   the deployed project failed to build at the last boot
+// For `hv pull`, see mock-pull.mjs.
 // For `hv env push`:
 //   $MOCK/vars/…     B is set already; every set is accepted
 //   $MOCK/varsfail/… as vars, but setting A fails, quoting the value
 import { MockServer } from "../support/mock-server.ts";
+import { mountPull } from "./mock-pull.mjs";
 import { mountRegistry } from "./mock-registry.mjs";
 
 export async function startMock() {
   const s = await MockServer.start();
   const mode = (r) => r.path.split("/")[1];
   mountRegistry(s);
+  mountPull(s);
   s.given("GET", /\/config$/, { json: { cli_client_key: "hvc_hpy" } });
   s.given("DELETE", /\/oauth\/sessions\//, { status: 204 });
   s.given("*", /^\/refuse\/admin\//, { status: 401, json: { error: "Unauthorized" } });
