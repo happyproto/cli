@@ -10,10 +10,7 @@ import { Failure } from "../core/failure.ts";
 import { ioErrorText } from "../core/io.ts";
 import { rustJoin } from "../core/paths.ts";
 import { Header, TarBuilder, TarError } from "../core/tar.ts";
-
-// crates/hpy/src/project/modules.rs's BUILD_DIR. Defined here until modules.ts is ported;
-// the integrator dedupes it.
-const BUILD_DIR = ".happyview/build";
+import { BUILD_DIR } from "./modules.ts";
 
 export interface Bundle {
   /** The gzipped tar. */

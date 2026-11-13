@@ -2,6 +2,8 @@
 import type { Args } from "../cli.ts";
 import type { Ctx } from "../core/ctx.ts";
 import * as auth from "./auth.ts";
+import * as deploy from "./deploy.ts";
+import * as env from "./env.ts";
 import * as instance from "./instance.ts";
 import * as lifecycle from "./lifecycle.ts";
 import * as profile from "./profile.ts";
@@ -24,4 +26,6 @@ export const HANDLERS: Record<string, Handler> = {
   "hv.login": instance.login,
   "hv.logout": instance.logout,
   "hv.whoami": (ctx) => instance.whoami(ctx),
+  "hv.deploy": deploy.run,
+  "hv.env.push": env.push,
 };

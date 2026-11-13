@@ -2,6 +2,15 @@
 // to it: signed in with the session `hpy happyview login` registered, or with
 // an `hv_` API key (for CI) sent as a bearer token, and the calls a deploy makes.
 import { type Json, sortKeys } from "../core/output.ts";
+import {
+  array,
+  bool,
+  fromValue,
+  optional,
+  str as strDe,
+  struct,
+  withDefault,
+} from "../core/serde-json.ts";
 import type { Credential } from "./credential.ts";
 import { AtprotoError } from "./error.ts";
 import { request, statusText, transportError } from "./http.ts";
@@ -31,6 +40,25 @@ export interface InstalledFrom {
 
 export const declaredCapabilities = (p: InstalledPlugin): string[] =>
   p.capabilities.declared.map((c) => c.name);
+
+/**
+ * admin/script_variables.rs: a variable as `GET /admin/script-variables` lists it. The masked
+ * preview is left out: it is the same fixed mask for every variable.
+ */
+export interface ScriptVariable {
+  key: string;
+  /** The instance can't read the stored value with its current key, so setting it again is the only way to recover it. */
+  unreadable: boolean;
+  created_at: string | undefined;
+  updated_at: string | undefined;
+}
+
+const SCRIPT_VARIABLE = struct("ScriptVariable", {
+  key: strDe,
+  unreadable: withDefault(bool, false),
+  created_at: withDefault(optional(strDe), undefined),
+  updated_at: withDefault(optional(strDe), undefined),
+});
 
 /** Something wrong with a project file, as the instance's loader says it. */
 export interface ProjectProblem {
@@ -502,5 +530,26 @@ export class Admin {
   /** Uninstalls a plugin; refused while others depend on it. */
   async remove(id: string): Promise<void> {
     await this.#send(`removing ${id}`, "DELETE", `/plugins/${segment(id)}`);
+  }
+
+  // admin/script_variables.rs. A variable's value is a secret: it goes out in the body of the
+  // request that sets it and nowhere else, and the errors are built from the call's name and
+  // the instance's answer, never from what was sent.
+
+  /** Every variable the instance has, without its value. */
+  async scriptVariables(): Promise<ScriptVariable[]> {
+    const out = await this.#send("listing script variables", "GET", "/script-variables");
+    try {
+      return fromValue(out, array(SCRIPT_VARIABLE)) as ScriptVariable[];
+    } catch (e) {
+      throw AtprotoError.other(
+        `${this.base} listed its script variables unreadably: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /** Creates the variable `key`, or replaces its value. */
+  async setScriptVariable(key: string, value: string): Promise<void> {
+    await this.#send(`setting ${key}`, "POST", "/script-variables", { key, value });
   }
 }
