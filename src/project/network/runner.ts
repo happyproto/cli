@@ -15,6 +15,7 @@ import { constants } from "node:os";
 import { Failure } from "../../core/failure.ts";
 import { ioErrorText } from "../../core/io.ts";
 import { rustJoin } from "../../core/paths.ts";
+import { blockingStdio } from "../../core/stdio.ts";
 
 /** How a shown child ended. */
 export interface Exit {
@@ -153,6 +154,7 @@ function spawnAndWait(
     for (const [k, v] of env) childEnv[k] = v;
     let child: ChildProcess;
     try {
+      blockingStdio();
       child = detached(program, args, cwd, childEnv, [
         "ignore",
         stdoutToStderr ? 2 : "inherit",

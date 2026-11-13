@@ -13,6 +13,7 @@ import { ioErrorText } from "../core/io.ts";
 import { type Json, toJson } from "../core/output.ts";
 import { rustJoin } from "../core/paths.ts";
 import { array, debugStr, fromValue } from "../core/serde-json.ts";
+import { blockingStdio } from "../core/stdio.ts";
 import {
   artifactFromManifest,
   artifactFromValue,
@@ -712,6 +713,7 @@ class TerminalUi implements Ui {
 function runBuild(dir: string): (cmd: string) => void {
   return (cmd) => {
     process.stderr.write(`$ ${cmd}\n`);
+    blockingStdio();
     const r =
       process.platform === "win32"
         ? spawnSync("cmd", ["/C", cmd], { cwd: dir, stdio: "inherit" })

@@ -9,6 +9,7 @@ import { constants as osConstants } from "node:os";
 import { Failure } from "../core/failure.ts";
 import { ioErrorText } from "../core/io.ts";
 import { renderReport } from "../core/report.ts";
+import { blockingStdio } from "../core/stdio.ts";
 import {
   buildEach,
   buildModule,
@@ -111,6 +112,8 @@ export async function runForeground(
     throw couldNotStart(program, e);
   }
   await flushStdio();
+  // exec hands HappyView our stdout and stderr; they must not stay non-blocking.
+  blockingStdio();
   const here = process.cwd();
   try {
     process.chdir(cwd);
@@ -133,6 +136,7 @@ function spawnChild(
   envs: readonly (readonly [string, string])[],
   removeEnv: readonly string[],
 ) {
+  blockingStdio();
   return spawn(program, [...args], {
     cwd,
     env: childEnv(envs, removeEnv),

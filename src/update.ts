@@ -40,6 +40,7 @@ import { ioErrorText, readToString, toIoError, writeString } from "./core/io.ts"
 import { type Json, sortKeys } from "./core/output.ts";
 import { rustJoin } from "./core/paths.ts";
 import { array, fromStr as jsonFromStr, str, struct } from "./core/serde-json.ts";
+import { blockingStdio } from "./core/stdio.ts";
 import { encStr, encStruct, fromStr as tomlFromStr, toTomlString } from "./core/toml.ts";
 import { PACKAGE_NAME, VERSION } from "./core/version.ts";
 
@@ -635,6 +636,7 @@ export async function runJob(job: Job): Promise<void> {
     );
     // The only command run as root: the copy. stdin and stderr stay the terminal's, so sudo can
     // prompt; stdout stays clear for `--json`.
+    blockingStdio();
     const status = spawnSync(job.sudo, ["install", "-m", "0755", staged, job.exe], {
       stdio: ["inherit", "ignore", "inherit"],
     });

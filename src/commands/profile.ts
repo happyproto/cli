@@ -23,6 +23,7 @@ import {
   struct,
   withDefault,
 } from "../core/serde-json.ts";
+import { blockingStdio } from "../core/stdio.ts";
 import {
   type Encoder,
   encArray,
@@ -532,6 +533,7 @@ export function exitStatusText(status: number | null, signal: NodeJS.Signals | n
 function runEditor(path: string): void {
   const editor =
     process.env.VISUAL ?? process.env.EDITOR ?? (process.platform === "win32" ? "notepad" : "vi");
+  blockingStdio();
   const r =
     process.platform === "win32"
       ? spawnSync(editor, [path], { stdio: "inherit" })
