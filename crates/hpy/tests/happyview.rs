@@ -3825,11 +3825,11 @@ fi
             ],
         );
         stack.rt.block_on(async {
-            // The official project of a v2 plugin, on its alpha channel.
+            // The official project of a v2 plugin, on its beta channel.
             Mock::given(method("GET"))
                 .and(path("/xrpc/at.happyproto.registry.resolveChannel"))
                 .and(wiremock::matchers::query_param("name", "steam"))
-                .and(wiremock::matchers::query_param("channel", "alpha"))
+                .and(wiremock::matchers::query_param("channel", "beta"))
                 .respond_with(ResponseTemplate::new(200).set_body_json(steam_version))
                 .mount(&stack.server)
                 .await;
@@ -3979,7 +3979,7 @@ fi
             Some("happyview-db")
         );
         assert_eq!(t["libraries"]["steam"]["did"].as_str(), Some(OFFICIAL));
-        assert_eq!(t["libraries"]["steam"]["channel"].as_str(), Some("alpha"));
+        assert_eq!(t["libraries"]["steam"]["channel"].as_str(), Some("beta"));
         assert!(t["libraries"].get("homebrew-thing").is_none());
         // Backfill means something only for a record lexicon; v2 sets it on
         // every one.

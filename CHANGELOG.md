@@ -1,3 +1,10 @@
+# [1.0.0-alpha.32](https://github.com/happyproto/cli/compare/v1.0.0-alpha.31...v1.0.0-alpha.32) (2026-11-13)
+
+
+### Bug Fixes
+
+* **pull:** map v2 plugins to the official beta channel ([ff0e373](https://github.com/happyproto/cli/commit/ff0e373ce9167e68409dd029c7179c4580ff48e9))
+
 # [1.0.0-alpha.31](https://github.com/happyproto/cli/compare/v1.0.0-alpha.30...v1.0.0-alpha.31) (2026-11-05)
 
 

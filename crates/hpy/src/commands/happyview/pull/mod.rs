@@ -367,7 +367,7 @@ fn entry(c: &Candidate) -> PluginEntry {
 }
 
 /// A v2 instance's plugins in v3 terms: Lua, every v2 plugin the official
-/// publisher has a project for (on its alpha channel), and the libraries the
+/// publisher has a project for (on its beta channel), and the libraries the
 /// rewritten scripts require.
 async fn v2_plugins(
     ctx: &Ctx,
@@ -386,7 +386,7 @@ async fn v2_plugins(
     out.interpreters.insert("lua".into(), entry(&lua));
     for p in list {
         let view = reg
-            .resolve_channel(OFFICIAL_PUBLISHER_DID, &p.id, "alpha")
+            .resolve_channel(OFFICIAL_PUBLISHER_DID, &p.id, "beta")
             .await?;
         let a = artifact(view.as_ref());
         let kind = a.as_ref().and_then(|a| plugin_kind(&a.plugin_type));
@@ -405,7 +405,7 @@ async fn v2_plugins(
         let e = PluginEntry {
             did: OFFICIAL_PUBLISHER_DID.into(),
             name: p.id.clone(),
-            pin: Pin::Channel("alpha".into()),
+            pin: Pin::Channel("beta".into()),
         };
         out.add(kind, key, e, Some(&a));
     }
