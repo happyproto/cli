@@ -202,3 +202,36 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 -- registry plugin lifecycle --withdraw x --name n --project
 -- hv add --channel beta --interpreter --library
 -- hv add --library --channel beta --version 1.0.0 x
+# hv deploy against the mock HappyView (test/fixtures/hvproject; see mock-happyview.mjs).
+-- hv deploy
+-- hv deploy --dry-run
+@project=basic -- -C proj hv deploy --dry-run
+@project=basic -- -C proj hv deploy --dry-run --url https://nowhere.example.com
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run --prune-plugins
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --yes --prune-plugins
+@mock @project=basic HPY_HV_URL=$MOCK/same HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy ;; -C proj --json hv deploy
+@mock @project=basic HPY_HV_URL=$MOCK/invalid HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic HPY_HV_URL=$MOCK/pending HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/eol HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic HPY_HV_URL=$MOCK/noboot HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic HPY_HV_URL=$MOCK/forbid HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url $MOCK/dep --key-stdin ;; -C proj hv deploy --dry-run
+@mock @project=nolock HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run
+@mock @project=nocaps HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=drift HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+# hv env push against the mock HappyView.
+-- hv env push
+@project=basic -- -C proj hv env push --yes
+@project=basic -- -C proj hv env push --env-file missing.env --yes
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --yes
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --dry-run ;; -C proj --json hv env push --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push B A B --yes ;; -C proj hv env push A MISSING OTHER --yes ;; -C proj hv env push MY-KEY --yes
+@mock @project=basic HPY_HV_URL=$MOCK/varsfail HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --yes
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --env-file src/jobs/nightly.lua --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv env push --env-file proj/.env --dry-run
+@mock @project=badenv HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes
+@mock @project=basic HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes

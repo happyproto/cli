@@ -28,6 +28,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
 const fixtures = join(root, "test/fixtures/credentials");
 const plugins = join(root, "test/fixtures/plugin");
+const projects = join(root, "test/fixtures/hvproject");
 
 /** The fixture credential, signed in to the mock registry `$MOCK/reg-<mode>` with `scopes`. */
 function mockCredential(mockUrl, mode, scopes) {
@@ -55,7 +56,9 @@ const offline = flag("--offline");
 const strictStderr = flag("--strict-stderr");
 /** Print what each matching case printed (Rust's side), to see that a case tests something. */
 const show = flag("--show");
-const tsCmd = (opt("--ts") ?? `node ${join(root, "dist/hpy.mjs")}`).split(" ");
+// `node --`: Node 26 otherwise reads an `--env-file` anywhere in argv, even after the script,
+// and exits 9 when that file is missing. The npm bin needs the same (`#!/usr/bin/env -S node --`).
+const tsCmd = (opt("--ts") ?? `node -- ${join(root, "dist/hpy.mjs")}`).split(" ");
 const rust = process.env.RUST_HPY;
 if (!rust) {
   console.error("set RUST_HPY to a Rust hpy binary (see HANDOFF.md)");
@@ -87,7 +90,8 @@ function spawnStep(cmd, argv, env, cwd, input) {
  * (the file is compared after the last step, with its mode),
  * @mockcred=<mode>[:atproto] (HPY_CREDENTIAL signed in to $MOCK/reg-<mode>
  * with the default scope, or only `atproto`), @plugin=<fixture> (copies
- * test/fixtures/plugin/<fixture> to $HOME/p), and ENV=VALUE.
+ * test/fixtures/plugin/<fixture> to $HOME/p), @project=<fixture> (copies
+ * test/fixtures/hvproject/<fixture> to $HOME/proj), and ENV=VALUE.
  */
 async function run(cmd, line, mock) {
   const [pre, argvText] = line.startsWith("-- ") ? ["", line.slice(3)] : line.split(" -- ");
@@ -119,6 +123,8 @@ async function run(cmd, line, mock) {
       env.HPY_CREDENTIAL = mockCredential(mock.url, mode, scopes ?? DEFAULT_SCOPE);
     } else if (t.startsWith("@plugin="))
       cpSync(join(plugins, t.slice(8)), join(home, "p"), { recursive: true });
+    else if (t.startsWith("@project="))
+      cpSync(join(projects, t.slice(9)), join(home, "proj"), { recursive: true });
     else if (t.startsWith("STDIN=")) input = sub(t.slice(6)).replaceAll("\\n", "\n");
     else if (t.includes("=")) {
       const [k, ...v] = t.split("=");

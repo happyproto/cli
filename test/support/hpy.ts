@@ -53,6 +53,6 @@ export async function hpy(
   };
   const r = BIN
     ? await execa(BIN, args, options)
-    : await execa(process.execPath, [SCRIPT, ...args], options);
+    : await execa(process.execPath, ["--", SCRIPT, ...args], options);
   return { code: r.exitCode ?? -1, stdout: String(r.stdout), stderr: String(r.stderr) };
 }
