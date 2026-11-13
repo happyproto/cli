@@ -73,3 +73,14 @@ it("htu_keeps_percent_encoding_and_port", () => {
   );
   expect(htu("https://api.happyproto.at/xrpc/a.b#frag")).toBe("https://api.happyproto.at/xrpc/a.b");
 });
+
+// TS-only: Rust's `Option<&str>` keeps an empty value, so an empty nonce or token is still sent.
+it("an_empty_nonce_or_token_is_still_a_claim", async () => {
+  const key = await DpopKey.generate();
+  const [, claims] = await verify(await key.proof("get", "https://x.example/a", "", ""));
+  expect(claims.ath).toBe(sha256b64url(""));
+  expect(claims.nonce).toBe("");
+  // `to_ascii_uppercase` leaves non-ASCII letters alone.
+  const [, odd] = await verify(await key.proof("dél", "https://x.example/a"));
+  expect(odd.htm).toBe("DéL");
+});

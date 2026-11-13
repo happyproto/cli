@@ -1,7 +1,7 @@
 // hpy-atproto/src/oauth.rs tests, against MockServer.
 import { afterEach, expect, it } from "vitest";
 import { DpopKey } from "../../src/atproto/dpop.ts";
-import { exchange, listen, type ParParams, par } from "../../src/atproto/oauth.ts";
+import { callbackParams, exchange, listen, type ParParams, par } from "../../src/atproto/oauth.ts";
 import type { AuthServer } from "../../src/atproto/resolve.ts";
 import { bodyContains, MockServer, type Recorded } from "../support/mock-server.ts";
 
@@ -169,4 +169,64 @@ it("exchange_accepts_a_missing_refresh_token", async () => {
     null,
   );
   expect(tokens.refreshToken).toBeNull();
+});
+
+// TS-only: Rust's `ParParams.login_hint` is `Some` even when empty, so the field is sent.
+it("an_empty_login_hint_is_still_sent", async () => {
+  const s = await start();
+  s.given("POST", "/oauth/par", { status: 201, json: { request_uri: "urn:req:1" } });
+  await par(auth(s), { ...parParams(), loginHint: "" }, await DpopKey.generate());
+  expect((s.requests[0] as Recorded).body.toString()).toMatch(/(^|&)login_hint=(&|$)/);
+});
+
+it("a_repeated_callback_parameter_keeps_its_last_value", () => {
+  const p = callbackParams("code=a&state=s&code=b&error_description=x+y%21");
+  expect(p.get("code")).toBe("b");
+  expect(p.get("error_description")).toBe("x y!");
+  // Rust splits the target at its first `?`, so a second one is part of the first name.
+  expect([...callbackParams("?code=a").keys()]).toEqual(["?code"]);
+});
+
+it("an_empty_dpop_nonce_is_sent_back_on_the_retry", async () => {
+  const s = await start();
+  s.given("POST", "/oauth/par", {
+    status: 400,
+    headers: { "dpop-nonce": "" },
+    json: { error: "use_dpop_nonce" },
+  }).times(1);
+  s.given("POST", "/oauth/par", { status: 201, json: { request_uri: "urn:req:2" } });
+  const { nonce } = await par(auth(s), parParams(), await DpopKey.generate());
+  expect(nonce).toBe("");
+  expect(proofClaims(s.requests[1] as Recorded).nonce).toBe("");
+});
+
+it("expires_in_is_read_only_as_a_whole_number", async () => {
+  for (const [given, read] of [
+    [3600, 3600],
+    ["3600.0", null],
+    [-1, null],
+    ['"3600"', null],
+  ] as const) {
+    const s = await start();
+    s.given("POST", "/oauth/token", {
+      headers: { "content-type": "application/json" },
+      body: `{"access_token":"at","scope":"atproto","sub":"did:plc:abc","expires_in":${given}}`,
+    });
+    const tokens = await exchange(
+      auth(s),
+      {
+        clientId: "c",
+        redirectUri: "http://127.0.0.1:1/oauth/callback",
+        code: "c",
+        codeVerifier: "v",
+        clientAssertion: null,
+      },
+      await DpopKey.generate(),
+      null,
+    );
+    expect(tokens.expiresIn, String(given)).toBe(read);
+    s.verify();
+    await s.stop();
+    server = undefined;
+  }
 });

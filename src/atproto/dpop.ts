@@ -106,12 +106,14 @@ export class DpopKey {
     const header = { typ: "dpop+jwt", alg: "ES256", jwk: this.publicJwk() };
     const claims: Record<string, Json> = {
       jti: randomToken(16),
-      htm: method.toUpperCase(),
+      // `to_ascii_uppercase`: only ASCII letters change.
+      htm: method.replace(/[a-z]+/g, (m) => m.toUpperCase()),
       htu: htu(url),
       iat: Math.floor(Date.now() / 1000),
     };
-    if (accessToken) claims.ath = sha256b64url(accessToken);
-    if (nonce) claims.nonce = nonce;
+    // `Some("")` is still a value: an empty nonce the server sent goes back as one.
+    if (accessToken !== undefined && accessToken !== null) claims.ath = sha256b64url(accessToken);
+    if (nonce !== undefined && nonce !== null) claims.nonce = nonce;
     return this.signJwt(header, claims);
   }
 

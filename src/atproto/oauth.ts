@@ -165,6 +165,15 @@ export async function exchange(
   };
 }
 
+/**
+ * The callback's query as Rust collects `form_urlencoded::parse` into a HashMap: a name given
+ * more than once keeps its last value.
+ */
+export function callbackParams(query: string): Map<string, string> {
+  // A leading `&` keeps URLSearchParams from dropping a leading `?`, which Rust keeps.
+  return new Map(new URLSearchParams(`&${query}`));
+}
+
 const PAGE =
   '<!doctype html><meta charset=utf-8><title>hpy</title><body style="font:16px system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem">';
 
@@ -190,10 +199,10 @@ export async function listen(): Promise<{
       res.writeHead(404, { "Content-Length": "0", Connection: "close" }).end();
       return;
     }
-    const params = new URLSearchParams(query);
-    const error = params.get("error");
-    const code = params.get("code");
-    const state = params.get("state");
+    const params = callbackParams(query);
+    const error = params.get("error") ?? null;
+    const code = params.get("code") ?? null;
+    const state = params.get("state") ?? null;
     let result: { ok: Callback } | { err: AtprotoError };
     let message: string;
     if (error !== null) {
@@ -201,7 +210,7 @@ export async function listen(): Promise<{
       result = { err: AtprotoError.other(`sign-in was not completed: ${why}`) };
       message = `Sign-in was not completed: ${why}.`;
     } else if (code !== null && state !== null) {
-      result = { ok: { code, state, iss: params.get("iss") } };
+      result = { ok: { code, state, iss: params.get("iss") ?? null } };
       message = "You're signed in to hpy.";
     } else {
       result = { err: AtprotoError.other("the sign-in response had no code") };
