@@ -1,7 +1,8 @@
 // How `main` prints a failure: miette's graphical report as `eprintln!("{:?}",
 // report)` renders it without colour. The first line starts `  × `, every
 // following line (wrapped, or from a newline in the message) starts `  │ `.
-// Lines wrap at the terminal's width less two (78 without a terminal).
+// Lines wrap at the terminal's width less two (78 without a terminal); the terminal is
+// stdout's, else stderr's, else stdin's, as terminal_size finds it.
 //
 // miette 7.6 wraps with textwrap 0.16.4 (features unicode-linebreak and
 // unicode-width, no smawk): words end at Unicode line-break opportunities
@@ -13,9 +14,10 @@
 // follows. Known gap: a closing curly quote (`”`, `’`) followed by punctuation can break where
 // ICU does not (its Pi/Pf quotation rules); hpy's messages quote with backticks.
 
+import { terminalWidth } from "./terminal.ts";
+
 export function reportWidth(): number {
-  const cols = process.stderr.isTTY ? process.stderr.columns : undefined;
-  return (cols && cols > 0 ? cols : 80) - 2;
+  return (terminalWidth() ?? 80) - 2;
 }
 
 type Cls =

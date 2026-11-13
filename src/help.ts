@@ -1,8 +1,9 @@
 // clap's help, as the Rust hpy printed it: `-h` is the summary and `--help` the
 // long form, which differs only for commands with a long description or an
 // argument with long help (then every argument's help goes on its own line).
-// Text wraps at the terminal's width, at most 100 (100 without a terminal).
+// Text wraps at the terminal's width (COLUMNS, else 100, without a terminal).
 import type { Argument, Command, Option } from "commander";
+import { terminalWidth } from "./core/terminal.ts";
 import ORDER from "./help-order.json" with { type: "json" };
 
 /** cli.rs doc comments beyond their first line: clap's `long_about`. */
@@ -28,9 +29,16 @@ const POSSIBLE_VALUE_HELP: Record<string, [string, string][]> = {
   ],
 };
 
+/**
+ * clap's `term_w` with `wrap_help` and no `max_term_width`: the terminal's
+ * width, else `COLUMNS`, else 100. There is no upper bound.
+ */
 export function helpWidth(): number {
-  const cols = process.stdout.isTTY ? process.stdout.columns : undefined;
-  return cols && cols > 0 ? Math.min(cols, 100) : 100;
+  const cols = terminalWidth();
+  if (cols !== undefined) return cols;
+  const env = process.env.COLUMNS;
+  if (env !== undefined && /^\+?[0-9]+$/.test(env) && Number(env) > 0) return Number(env);
+  return 100;
 }
 
 /** clap drops a one-paragraph doc comment's final period. */
