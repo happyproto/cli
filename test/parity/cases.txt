@@ -78,3 +78,86 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 -- hv whoami
 -- --json hv whoami
 -- hv logout --url ftp://x
+# registry plugin init/show/edit/pull/publish against the mock registry ($MOCK/reg-<mode>, see
+# mock-registry.mjs). @plugin=<fixture> copies test/fixtures/plugin/<fixture> to $HOME/p.
+@plugin=bare @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --local-only
+@plugin=bare @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --local-only --author Ada<ada@example.com> --security security@example.com --keyword one --keyword two --description Things.
+@plugin=bare @keep=~/p/hpy.toml -- --json --no-input -C p registry plugin init --local-only --author Ada --security https://example.com/security --name other-name --display-name Other
+@plugin=bare -- --no-input -C p registry plugin init --local-only --author Ada --security nope
+@plugin=bare -- --no-input -C p registry plugin init --local-only --author <ada@example.com> --security s@example.com
+@plugin=bare -- --no-input -C p registry plugin init --local-only --name Bad:Name --author Ada --security s@example.com
+@plugin=bare @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com
+@mock @plugin=bare @mockcred=new @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com
+@mock @plugin=bare @mockcred=new @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com --yes
+@mock @plugin=bare @mockcred=new -- --json --no-input -C p registry plugin init --author Ada --security s@example.com -y ;; --json -C p registry plugin show
+@mock @plugin=initicon @mockcred=new @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com --yes
+@mock @plugin=initicon @mockcred=new:atproto -- --no-input -C p registry plugin init --author Ada --security s@example.com --yes
+@mock @plugin=basic @mockcred=has -- --no-input -C p registry plugin init --yes
+@mock @mockcred=has -- registry plugin show --name my-plugin
+@mock @mockcred=has -- --json registry plugin show --name my-plugin
+@mock @mockcred=changed -- registry plugin show --name my-plugin
+@mock @mockcred=new -- registry plugin show --name my-plugin
+@mock @plugin=basic @mockcred=has -- -C p registry plugin show
+-- registry plugin show --name my-plugin
+-- registry plugin show --name Bad
+-- registry plugin show
+@plugin=bad -- -C p registry plugin show
+@mock @mockcred=has -- --no-input registry plugin edit --name my-plugin
+@mock @mockcred=has -- registry plugin edit --name my-plugin --author Bea --security https://x.example/sec --keyword more
+@mock @mockcred=has -- --json registry plugin edit --name my-plugin --display-name Renamed --description New. --remove-keyword demo
+@mock @plugin=basic @mockcred=changed @keep=~/p/hpy.toml -- -C p registry plugin edit --display-name Renamed --keyword new --remove-keyword demo
+@mock @plugin=basic @mockcred=has @keep=~/p/hpy.toml -- -C p registry plugin edit --name other --display-name Renamed
+@mock @mockcred=swap -- registry plugin edit --name my-plugin --display-name X
+@mock @mockcred=has -- registry plugin edit --name my-plugin --author <a@example.com>
+@mock @mockcred=has -- registry plugin edit --name my-plugin --security nope
+@mock @mockcred=has -- registry plugin edit --name my-plugin --keyword aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+@mock @mockcred=has:atproto -- registry plugin edit --name my-plugin --keyword x
+@mock @mockcred=new -- registry plugin edit --name my-plugin --keyword x
+-- registry plugin edit --name my-plugin --keyword x
+@mock @plugin=bare @mockcred=has @keep=~/p/hpy.toml -- -C p registry plugin pull
+@mock @plugin=initicon @mockcred=has @keep=~/p/hpy.toml -- --json -C p registry plugin pull
+@mock @plugin=basic @mockcred=changed @keep=~/p/hpy.toml -- -C p registry plugin pull ;; -C p registry plugin pull --name my-plugin
+@mock @mockcred=new -- registry plugin pull --name my-plugin
+-- registry plugin pull --name my-plugin
+@plugin=basic -- -C p registry plugin publish --dry-run
+@plugin=bad -- -C p registry plugin publish
+@plugin=bad -- --json -C p registry plugin publish --version 1.0.0
+@plugin=notwasm -- -C p registry plugin publish
+@plugin=rc -- -C p registry plugin publish
+@plugin=basic -- -C p registry plugin publish --track stable
+@plugin=basic -- -C p registry plugin publish --wasm nope.wasm
+@plugin=bare -- -C p registry plugin publish
+-- registry plugin publish
+@mock @plugin=build @mockcred=new -- -C p registry plugin publish --dry-run
+@mock @plugin=build @mockcred=new -- -C p registry plugin publish --dry-run --no-build
+@mock @plugin=basic @mockcred=new -- -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=new -- --json -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --dry-run --version 1.0.1
+@mock @plugin=basic @mockcred=changed -- --json -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=new -- --no-input -C p registry plugin publish
+@mock @plugin=basic @mockcred=new -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=new -- --json -C p registry plugin publish --yes --wait
+@mock @plugin=basic @mockcred=new -- -C p registry plugin publish --yes ;; -C p registry plugin publish --yes ;; --json -C p registry plugin publish -y
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=changed -- --json -C p registry plugin publish --yes
+@mock @plugin=noproject @mockcred=new -- -C p registry plugin publish --yes
+@mock @plugin=noproject @mockcred=has -- -C p registry plugin publish --yes
+@mock @plugin=noproject @mockcred=changed -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=refuse -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=dup -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=badcid -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=flaky -- -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=new:atproto -- -C p registry plugin publish --yes
+@mock @plugin=beta @mockcred=has -- -C p registry plugin publish --dry-run
+@mock @plugin=rc @mockcred=has -- -C p registry plugin publish --dry-run --track beta
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --promote 0.9.0 --dry-run
+@mock @plugin=basic @mockcred=has -- --json -C p registry plugin publish --promote 0.9.0 --version 1.0.0-beta.1 --dry-run
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --promote 0.9.0 --yes
+@mock @plugin=basic @mockcred=has -- --json -C p registry plugin publish --promote 0.9.0 --version 1.1.0 --track alpha -y --wait
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --promote 0.8.0 --yes
+@mock @plugin=basic @mockcred=has -- --no-input -C p registry plugin publish --promote 0.9.0
+@mock @plugin=basic @mockcred=has:atproto -- -C p registry plugin publish --promote 0.9.0 --yes
+@plugin=basic -- -C p registry plugin publish --promote 0.9.0 --version v1
+@plugin=basic -- -C p registry plugin publish --promote 0.9.0 --version 1.0.0-rc.1
+@plugin=basic -- -C p registry plugin publish --promote 0.9.0
+-- registry plugin publish --promote 0.9.0

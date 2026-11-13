@@ -10,6 +10,7 @@
 import { spawn } from "node:child_process";
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -18,13 +19,24 @@ import {
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_SCOPE } from "../../src/atproto/settings.ts";
 import { describeRequest, startMock } from "./mock-happyview.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
 const fixtures = join(root, "test/fixtures/credentials");
+const plugins = join(root, "test/fixtures/plugin");
+
+/** The fixture credential, signed in to the mock registry `$MOCK/reg-<mode>` with `scopes`. */
+function mockCredential(mockUrl, mode, scopes) {
+  const stored = JSON.parse(readFileSync(join(fixtures, "credentials.file.json"), "utf8"));
+  stored.registry = `${mockUrl}/reg-${mode}`;
+  stored.pds = `${mockUrl}/reg-${mode}/pds`;
+  stored.scopes = scopes;
+  return Buffer.from(JSON.stringify(stored)).toString("base64url");
+}
 const args = process.argv.slice(2);
 const flag = (f) => {
   const i = args.indexOf(f);
@@ -69,8 +81,11 @@ function spawnStep(cmd, argv, env, cwd, input) {
 /**
  * One case: `[tags] -- argv [;; argv ...]`, every step in the same fresh HOME.
  * Tags: @cred, @file, @net, @mock (a mock HappyView at $MOCK), STDIN=text
- * (for every step), @keep=<path under the config dir> (the file is compared
- * after the last step, with its mode), and ENV=VALUE.
+ * (for every step), @keep=<path under the config dir, or ~/path under HOME>
+ * (the file is compared after the last step, with its mode),
+ * @mockcred=<mode>[:atproto] (HPY_CREDENTIAL signed in to $MOCK/reg-<mode>
+ * with the default scope, or only `atproto`), @plugin=<fixture> (copies
+ * test/fixtures/plugin/<fixture> to $HOME/p), and ENV=VALUE.
  */
 async function run(cmd, line, mock) {
   const [pre, argvText] = line.startsWith("-- ") ? ["", line.slice(3)] : line.split(" -- ");
@@ -97,13 +112,21 @@ async function run(cmd, line, mock) {
       copyFileSync(join(fixtures, "credentials.file.json"), join(config, "hpy/credentials.json"));
     } else if (t === "@net" || t === "@mock") {
     } else if (t.startsWith("@keep=")) keep.push(t.slice(6));
+    else if (t.startsWith("@mockcred=")) {
+      const [mode, scopes] = t.slice(10).split(":");
+      env.HPY_CREDENTIAL = mockCredential(mock.url, mode, scopes ?? DEFAULT_SCOPE);
+    } else if (t.startsWith("@plugin="))
+      cpSync(join(plugins, t.slice(8)), join(home, "p"), { recursive: true });
     else if (t.startsWith("STDIN=")) input = sub(t.slice(6)).replaceAll("\\n", "\n");
     else if (t.includes("=")) {
       const [k, ...v] = t.split("=");
       env[k] = sub(v.join("="));
     }
   }
-  if (mock) mock.requests.length = 0;
+  if (mock) {
+    mock.requests.length = 0;
+    mock.reset?.();
+  }
   let code = null;
   let stdout = "";
   let stderr = "";
@@ -116,7 +139,7 @@ async function run(cmd, line, mock) {
   }
   const files = keep
     .map((k) => {
-      const p = join(config, k);
+      const p = k.startsWith("~/") ? join(home, k.slice(2)) : join(config, k);
       if (!existsSync(p)) return `${k}: absent\n`;
       const mode = (statSync(p).mode & 0o777).toString(8);
       return `${k} (${mode}):\n${readFileSync(p, "utf8")}\n`;
@@ -124,7 +147,13 @@ async function run(cmd, line, mock) {
     .join("");
   const requests = mock ? mock.requests.map(describeRequest).join("\n") : "";
   rmSync(home, { recursive: true, force: true });
-  const clean = (t) => t.replaceAll(home, "$HOME").replaceAll(mock?.url ?? "\0", "$MOCK");
+  // macOS prints the temporary HOME through /private, which `home` is not; its random name is
+  // blanked so a message that wraps inside the path still compares.
+  const clean = (t) =>
+    t
+      .replaceAll(home, "$HOME")
+      .replaceAll(basename(home), "hpy-parity-XXXXXX")
+      .replaceAll(mock?.url ?? "\0", "$MOCK");
   return {
     code,
     stdout: clean(stdout),

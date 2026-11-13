@@ -6,11 +6,14 @@
 //   $MOCK/refuse/…   every admin call answers 401
 //   $MOCK/forbid/…   every admin call answers 403 Missing permission
 //   $MOCK/old/…      no /admin/project route (an old HappyView)
+//   $MOCK/reg-<mode>/… the plugin registry (see mock-registry.mjs)
 import { MockServer } from "../support/mock-server.ts";
+import { mountRegistry } from "./mock-registry.mjs";
 
 export async function startMock() {
   const s = await MockServer.start();
   const mode = (r) => r.path.split("/")[1];
+  mountRegistry(s);
   s.given("GET", /\/config$/, { json: { cli_client_key: "hvc_hpy" } });
   s.given("DELETE", /\/oauth\/sessions\//, { status: 204 });
   s.given("*", /^\/refuse\/admin\//, { status: 401, json: { error: "Unauthorized" } });
