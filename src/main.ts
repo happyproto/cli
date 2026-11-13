@@ -11,6 +11,7 @@ import { Output } from "./core/output.ts";
 import { configDir } from "./core/paths.ts";
 import { Prompter } from "./core/prompt.ts";
 import { renderReport } from "./core/report.ts";
+import { flushStdio } from "./core/stdio.ts";
 import { VERSION } from "./core/version.ts";
 import { renderHelp, renderHelpHelp } from "./help.ts";
 import * as update from "./update.ts";
@@ -62,7 +63,10 @@ async function main(): Promise<void> {
     code = f.code;
   }
   await update.finish(pending);
-  process.exitCode = code;
+  // Rust's process ends when `main` returns, whatever is still in flight; so does this one. A
+  // request a Ctrl-C abandoned would otherwise hold the event loop open until it gave up.
+  await flushStdio();
+  process.exit(code);
 }
 
 await main();

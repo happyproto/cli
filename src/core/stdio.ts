@@ -65,3 +65,13 @@ export function blockingStdio(): void {
     if (flags >= 0 && flags & O_NONBLOCK) f(fd, F_SETFL, flags & ~O_NONBLOCK);
   }
 }
+
+/** Waits until everything written to stdout and stderr has reached the kernel. */
+export function flushStdio(): Promise<void> {
+  const drain = (s: NodeJS.WriteStream) =>
+    new Promise<void>((resolve) => {
+      if (s.writableLength === 0 || s.destroyed) resolve();
+      else s.write("", () => resolve());
+    });
+  return Promise.all([drain(process.stdout), drain(process.stderr)]).then(() => undefined);
+}

@@ -61,13 +61,84 @@ export const ReleaseSource = {
   },
 };
 
-/** reqwest's `Client`: hpy's user agent, no timeout. */
+/** reqwest's `Client`: hpy's user agent, and no overall timeout, so a large download on a slow line is never cut off. */
 export interface HttpClient {
   request(url: string, o?: RequestOptions): Promise<Response>;
 }
 
-export function httpClient(): HttpClient {
-  return { request: (url, o = {}) => request(url, { timeout: null, ...o }) };
+/**
+ * How long a download may go without a byte before it fails: no response within this long, or
+ * a gap this long in its body. Rust's client sets no timeout at all, so a server that accepts a
+ * connection and never answers held it forever; this is a generous bound on that alone.
+ */
+export const STALL_MS = 60_000;
+
+/** A request with a per-call `timeout` keeps that overall timeout; any other gets the stall bound. */
+export function httpClient(stallMs: number = STALL_MS): HttpClient {
+  return {
+    request: (url, o = {}) =>
+      o.timeout !== undefined && o.timeout !== null
+        ? request(url, o)
+        : requestUnlessStalled(url, o, stallMs),
+  };
+}
+
+/** Statuses whose response has no body, which `new Response` refuses one for. */
+const NULL_BODY = [101, 103, 204, 205, 304];
+
+/**
+ * `request`, aborted once `stallMs` pass with nothing arriving: first the response, then each
+ * chunk of its body. The answer is a copy of the response whose body re-arms the timer as it
+ * is read.
+ */
+async function requestUnlessStalled(
+  url: string,
+  o: RequestOptions,
+  stallMs: number,
+): Promise<Response> {
+  const stall = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const disarm = () => clearTimeout(timer);
+  const arm = () => {
+    disarm();
+    timer = setTimeout(
+      () => stall.abort(new DOMException("no data for too long", "TimeoutError")),
+      stallMs,
+    );
+    // The open connection keeps the process alive while it waits; the timer alone never does.
+    timer.unref?.();
+  };
+  arm();
+  const signal = o.signal ? AbortSignal.any([o.signal, stall.signal]) : stall.signal;
+  let resp: Response;
+  try {
+    resp = await request(url, { ...o, timeout: null, signal });
+  } catch (e) {
+    disarm();
+    throw e;
+  }
+  if (resp.body === null || NULL_BODY.includes(resp.status)) {
+    disarm();
+    return resp;
+  }
+  arm();
+  const body = resp.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        arm();
+        out.enqueue(chunk);
+      },
+      flush: disarm,
+    }),
+  );
+  const copy = new Response(body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: resp.headers,
+  });
+  // `statusError` names the URL the response came from, after any redirect.
+  Object.defineProperty(copy, "url", { value: resp.url });
+  return copy;
 }
 
 /** reqwest's Display for an `error_for_status` error. */

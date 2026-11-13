@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { type AddressInfo, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -331,4 +332,66 @@ it("the_next_page_is_read_from_the_link_header", () => {
   const link = `<https://a/r?page=1>; rel="prev", <https://a/r?page=3>; rel="next", <https://a/r?page=9>; rel="last"`;
   expect(nextPage(link)).toBe("https://a/r?page=3");
   expect(nextPage(`<https://a/r?page=9>; rel="last"`)).toBeUndefined();
+});
+
+/**
+ * A raw HTTP server answering each request with `reply`, which writes to the socket itself.
+ * Not a Rust test: Rust's client has no timeout, and the stall bound is this port's own.
+ */
+async function rawServer(reply: (socket: Socket) => void): Promise<string> {
+  const sockets: Socket[] = [];
+  const s = createServer((socket) => {
+    sockets.push(socket);
+    socket.once("data", () => reply(socket));
+  });
+  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+  rawCleanups.push(
+    () =>
+      new Promise<void>((r) => {
+        for (const socket of sockets) socket.destroy();
+        s.close(() => r());
+      }),
+  );
+  return `http://127.0.0.1:${(s.address() as AddressInfo).port}/dl`;
+}
+const rawCleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const c of rawCleanups.splice(0)) await c();
+});
+
+const head = (length: number) =>
+  `HTTP/1.1 200 OK\r\ncontent-length: ${length}\r\ncontent-type: application/octet-stream\r\n\r\n`;
+
+it("a_download_with_no_response_fails_once_it_stalls", async () => {
+  const url = await rawServer(() => {});
+  const started = Date.now();
+  await expect(httpClient(300).request(url)).rejects.toThrow();
+  expect(Date.now() - started).toBeLessThan(5_000);
+});
+
+it("a_download_whose_body_stops_fails_once_it_stalls", async () => {
+  const url = await rawServer((socket) => socket.write(`${head(10)}abc`));
+  const resp = await httpClient(300).request(url);
+  expect(resp.status).toBe(200);
+  expect(resp.url).toBe(url);
+  await expect(resp.arrayBuffer()).rejects.toThrow();
+});
+
+it("a_slow_download_that_keeps_coming_is_never_cut_off", async () => {
+  // Eight chunks 100ms apart: longer than the stall bound in all, never that long between two.
+  const url = await rawServer((socket) => {
+    socket.write(head(8));
+    let sent = 0;
+    const tick = setInterval(() => {
+      socket.write("x");
+      if (++sent === 8) clearInterval(tick);
+    }, 100);
+  });
+  const resp = await httpClient(300).request(url);
+  expect(Buffer.from(await resp.arrayBuffer()).toString()).toBe("xxxxxxxx");
+});
+
+it("a_request_with_its_own_timeout_keeps_it", async () => {
+  const url = await rawServer(() => {});
+  await expect(httpClient(60_000).request(url, { timeout: 0.3 })).rejects.toThrow();
 });

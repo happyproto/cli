@@ -9,7 +9,7 @@ import { constants as osConstants } from "node:os";
 import { Failure } from "../core/failure.ts";
 import { ioErrorText } from "../core/io.ts";
 import { renderReport } from "../core/report.ts";
-import { blockingStdio } from "../core/stdio.ts";
+import { blockingStdio, flushStdio } from "../core/stdio.ts";
 import {
   buildEach,
   buildModule,
@@ -38,16 +38,6 @@ function childEnv(
 
 function couldNotStart(program: string, e: unknown): Failure {
   return Failure.runtime(`could not start ${program}: ${ioErrorText(e)}`);
-}
-
-/** Waits until everything written to stdout and stderr has reached the kernel. */
-function flushStdio(): Promise<void> {
-  const drain = (s: NodeJS.WriteStream) =>
-    new Promise<void>((resolve) => {
-      if (s.writableLength === 0) resolve();
-      else s.write("", () => resolve());
-    });
-  return Promise.all([drain(process.stdout), drain(process.stderr)]).then(() => undefined);
 }
 
 /**

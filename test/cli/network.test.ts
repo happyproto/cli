@@ -497,6 +497,55 @@ it.skipIf(windows)(
   T,
 );
 
+/** A server that accepts every connection and never answers, resolving `connected` on the first. */
+async function silentServer(): Promise<{ url: string; connected: Promise<void> }> {
+  const sockets: import("node:net").Socket[] = [];
+  let first!: () => void;
+  const connected = new Promise<void>((r) => {
+    first = r;
+  });
+  const s: Server = createServer((socket) => {
+    sockets.push(socket);
+    first();
+  });
+  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+  cleanups.push(
+    () =>
+      new Promise<void>((r) => {
+        for (const socket of sockets) socket.destroy();
+        s.close(() => r());
+      }),
+  );
+  const addr = s.address();
+  if (addr === null || typeof addr === "string") throw new Error("no port");
+  return { url: `http://127.0.0.1:${addr.port}`, connected };
+}
+
+it.skipIf(windows)(
+  "ctrl_c_during_a_download_that_never_answers_exits_at_once",
+  async () => {
+    // Not a Rust test: Rust drops the abandoned request with the runtime when `main` returns.
+    // Here an abandoned request must not hold the process open after the run has ended.
+    const net = await LocalNet.start();
+    const silent = await silentServer();
+    const child = spawnGroup(net, {
+      HPY_HAPPYVIEW_DOWNLOAD: `${silent.url}/dl`,
+      HPY_GITHUB_API: silent.url,
+    });
+    const first = await Promise.race([silent.connected, exitOf(child)]);
+    if (first !== undefined) throw new Error(`hpy exited (${first}) before downloading`);
+    const sent = Date.now();
+    process.kill(-child.pid!, "SIGINT");
+    const code = await Promise.race([exitOf(child), sleep(10_000).then(() => "hung" as const)]);
+    if (code === "hung") process.kill(-child.pid!, "SIGKILL");
+    expect(code, net.calls()).toBe(130);
+    expect(Date.now() - sent).toBeLessThan(10_000);
+    // Nothing had started, so there was nothing to stop.
+    expect(net.sandboxCalls()).toEqual([]);
+  },
+  T,
+);
+
 it.skipIf(windows)(
   "without_a_terminal_a_missing_hosts_entry_stops_before_the_relay",
   async () => {
