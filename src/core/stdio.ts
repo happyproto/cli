@@ -75,3 +75,18 @@ export function flushStdio(): Promise<void> {
     });
   return Promise.all([drain(process.stdout), drain(process.stderr)]).then(() => undefined);
 }
+
+/**
+ * Ends the process quietly once a reader has closed stdout or stderr (`hpy … | head`), as a
+ * program killed by SIGPIPE ends, instead of Node's unhandled-error stack trace. Rust ignores
+ * SIGPIPE too, and its `println!` then panics with exit 101; nothing is left to read the
+ * output either way, so `hpy` exits 0. Any other write error is rethrown.
+ */
+export function quietOnClosedPipe(): void {
+  for (const s of [process.stdout, process.stderr]) {
+    s.on("error", (e: NodeJS.ErrnoException) => {
+      if (e.code === "EPIPE") process.exit(0);
+      throw e;
+    });
+  }
+}

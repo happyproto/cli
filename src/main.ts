@@ -11,7 +11,7 @@ import { Output } from "./core/output.ts";
 import { configDir } from "./core/paths.ts";
 import { Prompter } from "./core/prompt.ts";
 import { renderReport } from "./core/report.ts";
-import { flushStdio } from "./core/stdio.ts";
+import { flushStdio, quietOnClosedPipe } from "./core/stdio.ts";
 import { VERSION } from "./core/version.ts";
 import { renderHelp, renderHelpHelp } from "./help.ts";
 import * as update from "./update.ts";
@@ -53,6 +53,7 @@ async function run(argv: string[]): Promise<number> {
 }
 
 async function main(): Promise<void> {
+  quietOnClosedPipe();
   useEnvProxy();
   let code: number;
   try {

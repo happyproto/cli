@@ -1,11 +1,12 @@
 // crates/hpy/tests/cli.rs, against the built binary. Tests for commands not
 // ported yet are `it.todo` with the Rust test's name, so the ledger stays whole.
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { exportedCredential } from "../support/credential.ts";
-import { Home, hpy } from "../support/hpy.ts";
+import { Home, hpy, hpyCommand, hpyEnv } from "../support/hpy.ts";
 import { MockServer } from "../support/mock-server.ts";
 
 let home: Home;
@@ -342,4 +343,28 @@ describe.skipIf(!!process.env.HPY_TEST_BIN)("the keychain a spawned hpy sees", (
     expect(r.stdout).toContain(`Logged out ${did}`);
     expect(JSON.parse(readFileSync(items, "utf8"))).toEqual({});
   });
+});
+
+// Not a Rust test: Rust ignores SIGPIPE and its `println!` panics; Node's default is a stack
+// trace from an unhandled `error` event.
+describe("a reader that has gone away", () => {
+  for (const args of [["--version"], ["--help"], ["channel", "--json"]]) {
+    it(`ends_${args.join("_").replace(/-/g, "")}_quietly`, async () => {
+      const [program, lead] = hpyCommand();
+      const child = spawn(program, [...lead, ...args], {
+        env: hpyEnv(home),
+        cwd: home.dir,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      // Closed before hpy has started, so its first write meets a closed pipe.
+      child.stdout.destroy();
+      let stderr = "";
+      child.stderr.on("data", (d) => {
+        stderr += d;
+      });
+      const code = await new Promise<number | null>((r) => child.once("close", (c) => r(c)));
+      expect(stderr).toBe("");
+      expect(code).toBe(0);
+    });
+  }
 });
