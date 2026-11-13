@@ -1,0 +1,5 @@
+#!/bin/sh
+if [ "$1" = --version ]; then exit 0; fi
+manifest=''; while [ $# -gt 0 ]; do [ "$1" = --manifest-path ] && manifest="$2"; shift; done
+built="$(cd "$(dirname "$0")" && pwd)/built.wasm"
+printf '{"reason":"compiler-artifact","manifest_path":"%s","target":{"crate_types":["cdylib"]},"filenames":["%s"]}\n' "$manifest" "$built"

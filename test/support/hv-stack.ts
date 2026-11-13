@@ -16,14 +16,41 @@ import { tarXz } from "./tar.ts";
 export const VERSION = "3.0.0-alpha.12";
 
 /**
- * Records its arguments, its working directory, and `PLUGIN_DIR` when it arrives, and exits
- * with `HV_EXIT` (the modes the dev tests use are left out until M4 ports them).
+ * Records its arguments, its working directory, and `PLUGIN_DIR` when it arrives. With
+ * `HV_MODE=trap` it runs until a SIGTERM, which it records. With `HV_MODE=signals` it records
+ * every SIGTERM, SIGHUP, SIGINT and SIGQUIT, one line each, and runs on until `$HV_LOG.quit`
+ * exists, so a second copy of a signal is recorded too; it then exits 7 if a SIGTERM came and
+ * 0 otherwise. Waiting on a background `sleep` lets a trap run as its signal arrives. With
+ * `HV_MODE=die` a signal ends it. Otherwise it exits with `HV_EXIT`. `HV_SAY` is printed to
+ * stdout and stderr first (for the parity harness, which compares what passes through).
  */
 export const FAKE_HAPPYVIEW = `#!/bin/sh
 echo "$*" >> "$HV_LOG"
 pwd -P > "$HV_LOG.cwd"
 if [ -n "\${PLUGIN_DIR+set}" ]; then
   echo "PLUGIN_DIR=$PLUGIN_DIR" >> "$HV_LOG"
+fi
+if [ -n "$HV_SAY" ]; then
+  echo "$HV_SAY"
+  echo "$HV_SAY" >&2
+fi
+if [ "$HV_MODE" = trap ]; then
+  trap 'echo got >> "$HV_LOG.term"; exit 7' TERM
+  echo $$ > "$HV_LOG.ready"
+  while :; do sleep 0.1; done
+fi
+if [ "$HV_MODE" = signals ]; then
+  code=0
+  trap 'echo TERM >> "$HV_LOG.sig"; code=7' TERM
+  trap 'echo HUP >> "$HV_LOG.sig"' HUP
+  trap 'echo INT >> "$HV_LOG.sig"' INT
+  trap 'echo QUIT >> "$HV_LOG.sig"' QUIT
+  echo $$ > "$HV_LOG.ready"
+  while [ ! -e "$HV_LOG.quit" ]; do sleep 0.1 & wait $!; done
+  exit $code
+fi
+if [ "$HV_MODE" = die ]; then
+  kill -KILL $$
 fi
 exit "\${HV_EXIT:-0}"
 `;

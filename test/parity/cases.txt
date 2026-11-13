@@ -385,3 +385,30 @@ HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channe
 @project=addlua -- --json -C proj hv scaffold
 @project=addold -- -C proj hv scaffold
 -- hv scaffold
+# hv check / test / types / build / dev (M4), against mock-pull.mjs's registry and release.
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_SAY=hello @keep=~/proj/hv.log @keep=~/proj/hv.log.cwd -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_EXIT=3 HV_SAY=failing -- -C proj hv check ;; -C proj happyview check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare @keep=~/proj/hv.log -- -C proj --json hv check ;; -C proj hv check --json
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare @keep=~/proj/hv.log -- -C proj/src/lexicons hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare PLUGIN_DIR=/elsewhere @keep=~/proj/hv.log -- -C proj hv check ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runwarn @keep=~/proj/hv.log -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runlua @keep=~/proj/happyview.lock @keep=~/proj/hv.log @keep=~/proj/.happyview/plugins/happyview-lua/manifest.json -- -C proj hv check ;; -C proj hv check --locked
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runluadrift @keep=~/proj/happyview.lock -- -C proj hv check --locked ;; -C proj hv test --locked ;; -C proj hv types --locked ;; -C proj hv dev --locked
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runoldlock -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbarever -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log -- hv check ;; hv test ;; hv types ;; hv dev ;; hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HPY_CACHE_DIR=proj -- -C proj hv check ;; hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare @keep=~/proj/hv.log -- -C proj hv test ;; -C proj hv test --watch getArtifact ;; -C proj hv test some/filter
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_EXIT=4 -- -C proj hv test ;; -C proj hv types ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runlua @keep=~/proj/hv.log @keep=~/proj/.luarc.json @keep=~/proj/tsconfig.json -- -C proj hv types ;; -C proj hv types ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runlua HV_EXIT=1 @keep=~/proj/.luarc.json -- -C proj hv types
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_SAY=dev @keep=~/proj/hv.log @keep=~/proj/hv.log.cwd -- -C proj hv dev ;; -C proj --json hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare -- -C proj hv build ;; -C proj --json hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup @keep=~/proj/.happyview/build/registry.wasm -- -C proj hv build ;; -C proj --json hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbroken HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup -- -C proj hv build ;; -C proj hv check ;; -C proj hv test ;; -C proj hv types ;; -C proj --json hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbroken HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup @keep=~/proj/hv.log -- -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup @keep=~/proj/hv.log @keep=~/proj/.happyview/build/registry.wasm -- -C proj hv check ;; -C proj hv test ;; -C proj hv types
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup HV_EXIT=3 HV_SAY=mod @keep=~/proj/hv.log -- -C proj hv dev ;; -C proj hv test --watch
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup HV_MODE=die -- -C proj hv dev ;; -C proj hv test --watch
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=/nonexistent/cargo HPY_RUSTUP=/nonexistent/rustup -- -C proj hv build ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare -- -C proj hv dev --reset ;; -C proj hv dev --subnet 10.40.0.0/24 ;; -C proj hv dev --network real --reset

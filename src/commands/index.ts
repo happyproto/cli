@@ -3,9 +3,12 @@ import type { Args } from "../cli.ts";
 import type { Ctx } from "../core/ctx.ts";
 import * as add from "./add.ts";
 import * as auth from "./auth.ts";
+import * as build from "./build.ts";
 import * as channel from "./channel.ts";
+import * as check from "./check.ts";
 import * as create from "./create.ts";
 import * as deploy from "./deploy.ts";
+import * as dev from "./dev.ts";
 import * as env from "./env.ts";
 import * as instance from "./instance.ts";
 import * as lifecycle from "./lifecycle.ts";
@@ -38,6 +41,11 @@ export const HANDLERS: Record<string, Handler> = {
   "hv.pull": pull.run,
   "hv.add": add.run,
   "hv.scaffold": scaffold.run,
+  "hv.dev": dev.run,
+  "hv.build": (ctx) => build.run(ctx),
+  "hv.check": check.check,
+  "hv.test": check.test,
+  "hv.types": check.types,
   update: (ctx) => update.run(ctx),
   channel: channel.run,
 };

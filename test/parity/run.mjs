@@ -91,7 +91,8 @@ function spawnStep(cmd, argv, env, cwd, input) {
  * @mockcred=<mode>[:atproto] (HPY_CREDENTIAL signed in to $MOCK/reg-<mode>
  * with the default scope, or only `atproto`), @plugin=<fixture> (copies
  * test/fixtures/plugin/<fixture> to $HOME/p), @project=<fixture> (copies
- * test/fixtures/hvproject/<fixture> to $HOME/proj), and ENV=VALUE.
+ * test/fixtures/hvproject/<fixture> to $HOME/proj), and ENV=VALUE ($HOME in VALUE is the
+ * case's HOME).
  */
 async function run(cmd, line, mock) {
   const [pre, argvText] = line.startsWith("-- ") ? ["", line.slice(3)] : line.split(" -- ");
@@ -128,7 +129,8 @@ async function run(cmd, line, mock) {
     else if (t.startsWith("STDIN=")) input = sub(t.slice(6)).replaceAll("\\n", "\n");
     else if (t.includes("=")) {
       const [k, ...v] = t.split("=");
-      env[k] = sub(v.join("="));
+      // `$HOME` in a value is the case's HOME, for variables that must name an absolute path.
+      env[k] = sub(v.join("=")).replaceAll("$HOME", home);
     }
   }
   if (mock) {

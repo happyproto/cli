@@ -25,12 +25,12 @@ export class Home {
   }
 }
 
-export async function hpy(
+/** The environment `hpy` runs with in `home`, plus `extra`. */
+export function hpyEnv(
   home: Home,
-  args: string[],
-  opts: { env?: Record<string, string>; cwd?: string; input?: string } = {},
-): Promise<Run> {
-  const env: Record<string, string | undefined> = {
+  extra: Record<string, string> = {},
+): Record<string, string | undefined> {
+  return {
     ...process.env,
     XDG_CONFIG_HOME: home.config,
     APPDATA: home.config,
@@ -41,8 +41,21 @@ export async function hpy(
     HPY_CREDENTIAL_STORE: "file",
     HPY_REGISTRY_URL: "http://127.0.0.1:9",
     HPY_NO_UPDATE_CHECK: "1",
-    ...(opts.env ?? {}),
+    ...extra,
   };
+}
+
+/** The program and leading arguments that run the built `hpy`. */
+export function hpyCommand(): [string, string[]] {
+  return BIN ? [BIN, []] : [process.execPath, ["--", SCRIPT]];
+}
+
+export async function hpy(
+  home: Home,
+  args: string[],
+  opts: { env?: Record<string, string>; cwd?: string; input?: string } = {},
+): Promise<Run> {
+  const env = hpyEnv(home, opts.env ?? {});
   const options: Options = {
     env,
     extendEnv: false,
