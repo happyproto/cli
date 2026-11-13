@@ -202,3 +202,21 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 -- registry plugin lifecycle --withdraw x --name n --project
 -- hv add --channel beta --interpreter --library
 -- hv add --library --channel beta --version 1.0.0 x
+# channel: show, choose the one already followed (no network), refuse an unknown one.
+-- channel
+-- --json channel
+@keep=hpy/channel.toml -- channel alpha
+@keep=hpy/channel.toml -- --json channel alpha
+@keep=hpy/channel.toml -- channel alpha ;; channel ;; --json channel
+-- channel nightly
+-- channel ''
+-- --json channel nightly
+-- channel alpha extra
+XDG_CONFIG_HOME=/dev/null/x -- channel alpha
+XDG_CONFIG_HOME=/dev/null/x -- channel
+# Switching channels lists the releases on GitHub; a prerelease channel always warns, so with no
+# terminal and no --yes these stop at the confirmation, before anything is recorded or installed.
+# Never add a networked `update`, `channel stable` or `--yes` case: when GitHub has a newer
+# release, the Rust binary would replace itself with it.
+@net @keep=hpy/channel.toml -- channel beta
+@net @keep=hpy/channel.toml -- --json --no-input channel beta

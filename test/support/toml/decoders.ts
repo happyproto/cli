@@ -218,17 +218,19 @@ export const settingsFile = struct("SettingsFile", {
 
 // --- hpy channel.rs, update.rs, network/access.rs, commands/profile.rs ---
 
-export const channel = unitEnum("Channel", ["stable", "beta", "alpha"]);
-export const channelFile = struct("ChannelFile", { channel });
-export const updateState = struct("UpdateState", { last_checked: str });
+// channel.rs `File` and update.rs `State` are the real ones (the oracle calls them ChannelFile
+// and UpdateState).
+export {
+  CHANNEL as channel,
+  CHANNEL_FILE as channelFile,
+  encChannelFile,
+} from "../../../src/channel.ts";
+export { encUpdateState, UPDATE_STATE as updateState } from "../../../src/update.ts";
+
+import { CHANNEL as channel } from "../../../src/channel.ts";
+
 export const accessRecord = struct("AccessRecord", { ca_sha256: str });
 
-export const encChannelFile = encStruct<{ channel: string }>("ChannelFile", {
-  channel: encUnitVariant,
-});
-export const encUpdateState = encStruct<{ last_checked: string }>("UpdateState", {
-  last_checked: encStr,
-});
 export const encAccessRecord = encStruct<{ ca_sha256: string }>("AccessRecord", {
   ca_sha256: encStr,
 });

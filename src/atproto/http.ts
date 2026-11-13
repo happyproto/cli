@@ -17,6 +17,8 @@ export interface RequestOptions {
   query?: [string, string][];
   /** Follow redirects (reqwest's default) or report them. */
   redirect?: "follow" | "manual";
+  /** Aborts the request early, on top of the timeout. */
+  signal?: AbortSignal;
 }
 
 export async function request(url: string, o: RequestOptions = {}): Promise<Response> {
@@ -27,7 +29,9 @@ export async function request(url: string, o: RequestOptions = {}): Promise<Resp
     headers: { "user-agent": USER_AGENT, ...(o.headers ?? {}) },
     ...(o.body !== undefined ? { body: o.body as BodyInit } : {}),
     redirect: o.redirect ?? "follow",
-    signal: AbortSignal.timeout((o.timeout ?? 30) * 1000),
+    signal: o.signal
+      ? AbortSignal.any([o.signal, AbortSignal.timeout((o.timeout ?? 30) * 1000)])
+      : AbortSignal.timeout((o.timeout ?? 30) * 1000),
   });
 }
 

@@ -4,16 +4,21 @@ import type { Command } from "commander";
 import { CommanderError } from "commander";
 import { loadSettings } from "./atproto/settings.ts";
 import { check, requiredBy } from "./checks.ts";
-import { buildCli, type Invocation, UsageExit } from "./cli.ts";
+import { buildCli, checksForUpdates, type Invocation, UsageExit } from "./cli.ts";
 import { HANDLERS } from "./commands/index.ts";
 import { Ctx } from "./core/ctx.ts";
 import { Failure } from "./core/failure.ts";
 import { Output } from "./core/output.ts";
+import { configDir } from "./core/paths.ts";
 import { Prompter } from "./core/prompt.ts";
 import { renderReport } from "./core/report.ts";
 import { VERSION } from "./core/version.ts";
 import { commandPath, renderHelp, usage } from "./help.ts";
+import * as update from "./update.ts";
 import { ValueError } from "./values.ts";
+
+/** The daily update check, started once the command line parsed and finished after the command. */
+let pending: update.Pending | undefined;
 
 /** commander's parse errors in clap's words: `error: …`, exit 2. */
 function clapMessage(e: CommanderError, extra?: string): string {
@@ -143,6 +148,7 @@ async function run(argv: string[]): Promise<number> {
     );
     return 2;
   }
+  if (checksForUpdates(invocation.route)) pending = update.start(configDir());
   const g = program.opts() as { json?: boolean; input?: boolean; C?: string };
   const settings = loadSettings();
   let dir = process.cwd();
@@ -228,6 +234,7 @@ async function main(): Promise<void> {
     if (!f.quiet) process.stderr.write(`${renderReport(f.message)}\n`);
     code = f.code;
   }
+  await update.finish(pending);
   process.exitCode = code;
 }
 

@@ -116,7 +116,31 @@ describe("tests/cli.rs", () => {
     for (const cmd of ["init", "show", "edit", "pull"])
       expect((await hpy(home, ["registry", "plugin", cmd, "--help"])).code).toBe(0);
   });
-  it.todo("channel_defaults_to_the_installed_versions");
-  it.todo("choosing_the_channel_already_followed_records_it_without_the_network");
-  it.todo("an_unknown_channel_is_a_usage_error");
+
+  it("channel_defaults_to_the_installed_versions", async () => {
+    const version = (await hpy(home, ["--version"])).stdout.trim().replace(/^hpy /, "");
+    const pre = version.split("-")[1];
+    const expected = pre !== undefined ? pre.split(".")[0] : "stable";
+    const r = await hpy(home, ["--json", "channel"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain(`"channel": "${expected}"`);
+    expect(r.stdout).toContain('"chosen": false');
+  });
+
+  it("choosing_the_channel_already_followed_records_it_without_the_network", async () => {
+    const shown = await hpy(home, ["--json", "channel"]);
+    const current = (JSON.parse(shown.stdout) as { channel: string }).channel;
+    const r = await hpy(home, ["channel", current]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("Already on");
+    const after = await hpy(home, ["--json", "channel"]);
+    expect(after.code).toBe(0);
+    expect(after.stdout).toContain('"chosen": true');
+  });
+
+  it("an_unknown_channel_is_a_usage_error", async () => {
+    const r = await hpy(home, ["channel", "nightly"]);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain("stable, beta or alpha");
+  });
 });
