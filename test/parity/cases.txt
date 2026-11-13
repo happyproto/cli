@@ -282,3 +282,24 @@ ALL_PROXY=127.0.0.1:9 -- update
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel beta
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- --json channel beta
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channel beta ;; channel
+# hv dev --network local against the fake deno and docker of test/support/fake-network.ts
+# (@netbin[=<mode>]; see netbin() in run.mjs) and the fake HappyView release for aarch64 Linux.
+-- hv dev --reset
+-- hv dev --subnet 10.40.0.0/24
+@netbin -- hv dev --network local
+@netbin=nodeno -- -C proj hv dev --network local
+@netbin=olddeno -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local ;; -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj --json hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=noaccess -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=locked -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=pending -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=stale -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_RELAY=hv-other-12345678 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_UP_FAILS=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_SEED_FAILS=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_UP_CRASHES=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_UP_CONTENDED=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local --reset
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local --reset --yes ;; -C proj hv dev --network local --reset --yes
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local --subnet 10.40.0.0/24 ;; -C proj hv dev --network local --subnet 10.41.0.0/24 ;; -C proj hv dev --network local --reset --yes ;; -C proj hv dev --network local --reset --yes --subnet 10.41.0.0/24
