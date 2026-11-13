@@ -614,6 +614,12 @@ the key goes in `credentials.json` too, and `hpy registry login` tells you so. S
 `HPY_CREDENTIAL_STORE=keychain` to make that an error instead, or `file` to
 skip the keychain entirely.
 
+With the npm package on macOS, the program that creates the keychain item is
+`node` itself, so the item trusts Node: any Node script you run can read the
+key without a prompt, and a Node upgrade makes Keychain ask again. The
+installed binaries don't share this, since each is its own program. If that
+matters to you, use a binary install, or `HPY_CREDENTIAL_STORE=file`.
+
 On macOS, after `hpy` updates itself, Keychain may ask once whether the new
 `hpy` may use its key. Choose **Always Allow**. The macOS binaries are
 signed ad hoc (`codesign --sign -`, which Apple silicon requires to run them at
