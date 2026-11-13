@@ -10,7 +10,8 @@ installers = ["shell", "powershell", "homebrew"]
 tap = "happyproto/homebrew-tap"
 # Homebrew publishing is our own job (publish-homebrew.yml): it pushes to the
 # tap as the happyproto-infra-bump GitHub App instead of with a static token.
-publish-jobs = ["./publish-homebrew"]
+# publish-npm.yml publishes the npm package under the channel's dist-tag.
+publish-jobs = ["./publish-homebrew", "./publish-npm"]
 # Prereleases publish too, each to its channel: the hpy-beta and hpy-alpha
 # formulae, and the beta and alpha apt suites and yum repositories.
 publish-prereleases = true
