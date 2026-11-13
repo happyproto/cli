@@ -1,7 +1,7 @@
 // hpy-atproto/src/login.rs: `hpy registry login`. Provision a DPoP key from
 // HappyView, sign in to the user's PDS with it, and hand the session to HappyView.
 import { spawn } from "node:child_process";
-import type { Credential } from "./credential.ts";
+import { type Credential, newCredential } from "./credential.ts";
 import { randomToken } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
 import { type HappyView, sessionRegistration } from "./happyview.ts";
@@ -130,7 +130,7 @@ export async function login(
       }),
     );
 
-    return {
+    return newCredential({
       registry: hv.base,
       clientKey: settings.clientKey,
       did: resolved.did,
@@ -139,7 +139,7 @@ export async function login(
       scopes: tokens.scope,
       accessToken: tokens.accessToken,
       dpopKey: key,
-    };
+    });
   } finally {
     listener.close();
   }

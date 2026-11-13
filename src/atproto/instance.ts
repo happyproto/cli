@@ -14,7 +14,7 @@
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { type Json, sortKeys } from "../core/output.ts";
-import { type Credential, type Saved, writeSecretFile } from "./credential.ts";
+import { type Credential, newCredential, type Saved, writeSecretFile } from "./credential.ts";
 import { DpopKey } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
 import { type KeyStore, KeyStoreError } from "./keystore.ts";
@@ -97,6 +97,13 @@ export function newLogin(url: string, auth: Auth): Login {
       return `Login { url: ${JSON.stringify(url)}, auth: ${JSON.stringify(a)} }`;
     },
   });
+  Object.defineProperty(login, "toJSON", {
+    enumerable: false,
+    value: () => ({
+      url,
+      auth: auth.kind === "apiKey" ? `api key ${prefix(auth.key)}` : `session for ${auth.cred.did}`,
+    }),
+  });
   return login;
 }
 
@@ -173,7 +180,7 @@ async function loginOf(i: StoredInstance, secret: Json): Promise<Login> {
   const s = i.signIn;
   return newLogin(i.url, {
     kind: "session",
-    cred: {
+    cred: newCredential({
       registry: i.url,
       clientKey: s.client_key,
       did: s.did,
@@ -182,7 +189,7 @@ async function loginOf(i: StoredInstance, secret: Json): Promise<Login> {
       scopes: s.scopes,
       accessToken: s.access_token,
       dpopKey: key,
-    },
+    }),
   });
 }
 

@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspect } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   account,
@@ -10,6 +11,7 @@ import {
   exportCredential,
   importCredential,
   load,
+  newCredential,
   peek,
   remove,
   save,
@@ -31,7 +33,7 @@ const tmp = () => mkdtempSync(join(tmpdir(), "hpy-cred-"));
 const noEnv = () => undefined;
 
 async function cred(did: string): Promise<Credential> {
-  return {
+  return newCredential({
     registry: "https://api.happyproto.at",
     clientKey: "hvc_test",
     did,
@@ -40,7 +42,7 @@ async function cred(did: string): Promise<Credential> {
     scopes: "atproto",
     accessToken: "secret-token",
     dpopKey: await DpopKey.generate(),
-  };
+  });
 }
 
 /** Credential equality as Rust's derived PartialEq (DpopKey compares by thumbprint). */
@@ -185,10 +187,26 @@ describe("credential.rs", () => {
     expect(err.isAuth() && err.message.includes("hpy registry login")).toBe(true);
   });
 
-  // Rust's Debug impl hid the token; TypeScript has no Debug, and no code path
-  // prints a Credential. The key's own toString shows only its thumbprint.
   it("debug_never_shows_secrets", async () => {
     const c = await cred("did:plc:abc");
+    const d = (c.dpopKey.toJwk() as { d: string }).d;
+    // Debug, then the other ways a value gets printed: console.log, a JSON dump, and the key
+    // on its own.
+    for (const shown of [
+      inspect(c),
+      inspect({ nested: { c } }, { depth: 5 }),
+      JSON.stringify(c),
+      inspect(c.dpopKey),
+      JSON.stringify({ key: c.dpopKey }),
+      String(c.dpopKey),
+    ]) {
+      expect(shown).not.toContain("token");
+      expect(shown).not.toContain(d);
+    }
+    expect(inspect(c)).toContain("did:plc:abc");
+    expect(inspect(c)).toBe(
+      `Credential { registry: "https://api.happyproto.at", did: "did:plc:abc", handle: Some("alice.test"), pds: "https://pds.test", scopes: "atproto", dpop_key: DpopKey(${c.dpopKey.thumbprint()}), .. }`,
+    );
     expect(String(c.dpopKey)).toBe(`DpopKey(${c.dpopKey.thumbprint()})`);
   });
 

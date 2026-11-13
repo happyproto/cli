@@ -14,7 +14,9 @@ import {
   writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
+import { inspect } from "node:util";
 import type { Json } from "../core/output.ts";
+import { debugStr } from "../core/serde-json.ts";
 import { DpopKey } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
 import { type KeyStore, KeyStoreError } from "./keystore.ts";
@@ -31,6 +33,31 @@ export interface Credential {
   scopes: string;
   accessToken: string;
   dpopKey: DpopKey;
+}
+
+/**
+ * A credential that `util.inspect` (console.log, test diffs) and `JSON.stringify` show
+ * without its access token or private key, as Rust's hand-written `Debug` does.
+ */
+export function newCredential(c: Credential): Credential {
+  const out = { ...c };
+  const shown = () => ({
+    registry: c.registry,
+    did: c.did,
+    handle: c.handle,
+    pds: c.pds,
+    scopes: c.scopes,
+    dpop_key: c.dpopKey.toString(),
+  });
+  Object.defineProperty(out, inspect.custom, {
+    enumerable: false,
+    value: () =>
+      `Credential { registry: ${debugStr(c.registry)}, did: ${debugStr(c.did)}, handle: ${
+        c.handle === null ? "None" : `Some(${debugStr(c.handle)})`
+      }, pds: ${debugStr(c.pds)}, scopes: ${debugStr(c.scopes)}, dpop_key: ${c.dpopKey}, .. }`,
+  });
+  Object.defineProperty(out, "toJSON", { enumerable: false, value: shown });
+  return out;
 }
 
 export type Storage = "keychain" | "file" | "environment";
@@ -120,7 +147,7 @@ const inKeychain = (s: Stored) =>
   (s.dpop_key as Record<string, Json>).keychain === true;
 
 function intoCredential(s: Stored, key: DpopKey): Credential {
-  return {
+  return newCredential({
     registry: s.registry,
     clientKey: s.client_key,
     did: s.did,
@@ -129,7 +156,7 @@ function intoCredential(s: Stored, key: DpopKey): Credential {
     scopes: s.scopes,
     accessToken: s.access_token,
     dpopKey: key,
-  };
+  });
 }
 
 const identityOf = (s: Stored, storage: Storage): Identity => ({

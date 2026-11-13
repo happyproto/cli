@@ -204,7 +204,13 @@ it("debug_never_shows_the_key", async () => {
   const c = await session("https://api.example.com");
   const shown = inspect(newLogin("https://api.example.com", { kind: "session", cred: c }));
   expect(shown).not.toContain("token");
-  expect(shown).not.toContain(c.dpopKey.jwk.d);
+  expect(shown).not.toContain((c.dpopKey.toJwk() as { d: string }).d);
+  expect(
+    JSON.stringify(newLogin("https://api.example.com", { kind: "session", cred: c })),
+  ).not.toContain("token");
+  expect(
+    JSON.stringify(newLogin("https://api.example.com", { kind: "apiKey", key: KEY })),
+  ).not.toContain(KEY);
 });
 
 it("a_session_keeps_its_key_in_the_keychain_and_the_rest_in_the_file", async () => {

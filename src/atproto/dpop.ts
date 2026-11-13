@@ -2,6 +2,7 @@
 // and the proofs signed with it for every request to the PDS's authorization
 // server and to HappyView.
 import { createHash, randomBytes, webcrypto } from "node:crypto";
+import { inspect } from "node:util";
 import { type Json, sortKeys } from "../core/output.ts";
 import { AtprotoError } from "./error.ts";
 
@@ -33,12 +34,16 @@ export interface PrivateJwk {
   d: string;
 }
 
+/**
+ * The key's private half lives only in private fields, so `util.inspect`, `console.log` and
+ * `JSON.stringify` show its thumbprint and never `d`, as Rust's hand-written `Debug` does.
+ */
 export class DpopKey {
-  readonly jwk: PrivateJwk;
+  readonly #jwk: PrivateJwk;
   readonly #key: webcrypto.CryptoKey;
 
   private constructor(jwk: PrivateJwk, key: webcrypto.CryptoKey) {
-    this.jwk = jwk;
+    this.#jwk = jwk;
     this.#key = key;
   }
 
@@ -79,17 +84,17 @@ export class DpopKey {
 
   /** The private JWK, `d` included, as a serde_json `Value` (keys sorted when printed). */
   toJwk(): Json {
-    return { ...this.jwk };
+    return { ...this.#jwk };
   }
 
   /** The public JWK: exactly `kty`, `crv`, `x`, `y`. */
   publicJwk(): { kty: "EC"; crv: "P-256"; x: string; y: string } {
-    return { kty: "EC", crv: "P-256", x: this.jwk.x, y: this.jwk.y };
+    return { kty: "EC", crv: "P-256", x: this.#jwk.x, y: this.#jwk.y };
   }
 
   /** RFC 7638 thumbprint: SHA-256 of the required members in lexical order. */
   thumbprint(): string {
-    return sha256b64url(`{"crv":"P-256","kty":"EC","x":"${this.jwk.x}","y":"${this.jwk.y}"}`);
+    return sha256b64url(`{"crv":"P-256","kty":"EC","x":"${this.#jwk.x}","y":"${this.#jwk.y}"}`);
   }
 
   equals(other: DpopKey): boolean {
@@ -125,5 +130,13 @@ export class DpopKey {
   /** Never print the private key. */
   toString(): string {
     return `DpopKey(${this.thumbprint()})`;
+  }
+
+  [inspect.custom](): string {
+    return this.toString();
+  }
+
+  toJSON(): string {
+    return this.toString();
   }
 }
