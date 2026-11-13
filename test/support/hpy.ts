@@ -8,7 +8,8 @@ import { execa, type Options } from "execa";
 
 const BIN = process.env.HPY_TEST_BIN;
 const SCRIPT = fileURLToPath(new URL("../../dist/hpy.mjs", import.meta.url));
-const KEYRING_HOOK = fileURLToPath(new URL("./keyring-hook.mjs", import.meta.url));
+// A file: URL, not a path: on Windows `--import C:\...` is not a valid specifier.
+const KEYRING_HOOK = new URL("./keyring-hook.mjs", import.meta.url).href;
 
 /**
  * Node's arguments for running dist/hpy.mjs with the OS keychain swapped for
