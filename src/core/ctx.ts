@@ -1,8 +1,9 @@
 // crates/hpy/src/ctx.rs: what every command gets.
-import type { Credential } from "../atproto/credential.ts";
-import * as credential from "../atproto/credential.ts";
 import { Keychain, type KeyStore, loadKeychain } from "../atproto/keystore.ts";
-import { processEnv, type Settings } from "../atproto/settings.ts";
+import { HttpRegistry } from "../atproto/registry.ts";
+import type { Session } from "../atproto/session.ts";
+import * as session from "../atproto/session.ts";
+import type { Settings } from "../atproto/settings.ts";
 import { Failure } from "./failure.ts";
 import type { Output } from "./output.ts";
 import type { Prompter } from "./prompt.ts";
@@ -37,9 +38,14 @@ export class Ctx {
     return this.#keystore;
   }
 
-  async session(): Promise<Credential> {
-    const c = await credential.load(this.settings, await this.keystore(), processEnv);
-    if (!c) throw Failure.notLoggedIn();
-    return c;
+  async session(): Promise<Session> {
+    const s = await session.current(this.settings, await this.keystore());
+    if (!s) throw Failure.notLoggedIn();
+    return s;
+  }
+
+  /** The registry, for reads; publishing goes through `Session.registry`. */
+  registry(): HttpRegistry {
+    return new HttpRegistry(this.settings.registryUrl);
   }
 }
