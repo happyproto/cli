@@ -19,6 +19,10 @@ type ProxyEnv = Record<string, string | undefined>;
  * this does nothing.
  */
 export function useEnvProxy(env: ProxyEnv = process.env): void {
+  if ("Bun" in globalThis) {
+    useEnvProxyUnderBun(env);
+    return;
+  }
   const set = (nodeHttp as { setGlobalProxyFromEnv?: (e: ProxyEnv) => unknown })
     .setGlobalProxyFromEnv;
   if (typeof set !== "function" || env.REQUEST_METHOD !== undefined) return;
@@ -28,6 +32,21 @@ export function useEnvProxy(env: ProxyEnv = process.env): void {
     set(proxies);
   } catch {
     // A proxy Node cannot use (a socks:// one) is left to fail as no proxy would.
+  }
+}
+
+/**
+ * Bun's fetch reads HTTP_PROXY, HTTPS_PROXY and NO_PROXY itself, but not ALL_PROXY, nor a bare
+ * `host:port`. Writing reqwest's reading of them back into the environment makes Bun use the
+ * same proxies. (Children see the normalised values; reqwest's reading is the one hpy means.)
+ */
+function useEnvProxyUnderBun(env: ProxyEnv): void {
+  if (env.REQUEST_METHOD !== undefined) return;
+  const proxies = proxyEnv(env);
+  if (proxies === undefined) return;
+  for (const k of ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"] as const) {
+    const v = proxies[k];
+    if (v !== undefined && v !== "") env[k] = v;
   }
 }
 
