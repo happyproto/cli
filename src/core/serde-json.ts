@@ -1754,6 +1754,17 @@ export function fromStr<T>(text: string, decoder: Decoder<T>): T {
   return value;
 }
 
+/**
+ * `serde_json::from_slice::<T>`. Invalid UTF-8 inside a string is decoded lossily rather than
+ * refused as serde_json does; positions count bytes, as serde_json's do.
+ */
+export function fromSlice<T>(bytes: Uint8Array, decoder: Decoder<T>): T {
+  const de = new JsonDeserializer(bytes);
+  const value = jsonErrors(() => decoder(de));
+  de.end();
+  return value;
+}
+
 /** Runs `body`, turning a `DeError` that no deserializer positioned into a `SerdeJsonError`. */
 function jsonErrors<T>(body: () => T): T {
   try {
