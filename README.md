@@ -53,9 +53,11 @@ curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
 On Alpine, or another Linux without glibc 2.31 or newer, the installer picks
-the musl build, which needs the C++ runtime: `apk add libstdc++` first. (hpy
-up to 1.0.0-alpha.32 was a static binary and needed nothing; updating such a
-copy to a newer release needs `libstdc++` too, or the new `hpy` won't start.)
+the musl build, which needs the C++ runtime: `apk add libstdc++` first. The
+install script and `hpy update` stop and say so when it is missing. (hpy up to
+1.0.0-alpha.32 was a static Rust binary and needed nothing. Its own updater
+doesn't check, so add `libstdc++` before such a copy updates itself, or the new
+`hpy` won't start.)
 
 That installs the newest **stable** release, of which there is none until
 `1.0.0` is cut — for now use the `beta` channel's installer, below.

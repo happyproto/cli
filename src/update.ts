@@ -467,10 +467,11 @@ export class SelfUpdateError extends Error {
    * `failed`: the download or the installer failed. `needsRoot`: this copy is in a directory
    * only root can write to, and sudo could not be used: there is no terminal for its password
    * prompt, it failed, or the caller does not allow it. The message says exactly what to run.
-   * This copy of hpy is untouched.
+   * This copy of hpy is untouched. `missingLibrary` (TS-only): the new build would not start
+   * here (see `missingLibrary`), so nothing was downloaded.
    */
-  readonly kind: "failed" | "needsRoot";
-  constructor(kind: "failed" | "needsRoot", message: string) {
+  readonly kind: "failed" | "needsRoot" | "missingLibrary";
+  constructor(kind: "failed" | "needsRoot" | "missingLibrary", message: string) {
     super(message);
     this.kind = kind;
   }
@@ -478,6 +479,37 @@ export class SelfUpdateError extends Error {
 
 const failed = (m: string) => new SelfUpdateError("failed", m);
 const needsRoot = (m: string) => new SelfUpdateError("needsRoot", m);
+
+/** TS-only: what `missingLibrary` looks at, so tests can stand in for the host. */
+export interface HostProbe {
+  platform: NodeJS.Platform;
+  arch: string;
+  exists: (path: string) => boolean;
+}
+
+const hostProbe: HostProbe = {
+  platform: process.platform,
+  arch: process.arch,
+  exists: existsSync,
+};
+
+const MUSL_ARCH: Record<string, string> = { x64: "x86_64", arm64: "aarch64" };
+const LIBSTDCXX_DIRS = ["/usr/lib", "/lib", "/usr/local/lib", "/usr/lib64", "/lib64"];
+
+/**
+ * TS-only: why the release's build for this host would not start here, if it would not.
+ * Rust's musl build was static; Bun's is dynamically linked and needs libstdc++ (and libgcc,
+ * which Alpine's libstdc++ package depends on). dist's installer picks the musl archive on a
+ * musl system without checking for it, so a self-update would leave an hpy that cannot run.
+ */
+export function missingLibrary(latest: Version, probe: HostProbe = hostProbe): string | undefined {
+  if (probe.platform !== "linux") return undefined;
+  const arch = MUSL_ARCH[probe.arch];
+  if (arch === undefined || !probe.exists(`/lib/ld-musl-${arch}.so.1`)) return undefined;
+  const dirs = [...LIBSTDCXX_DIRS, `/usr/lib/${arch}-linux-musl`];
+  if (dirs.some((d) => probe.exists(`${d}/libstdc++.so.6`))) return undefined;
+  return `hpy ${latest} for musl Linux needs libstdc++, which this system does not have. Install it (on Alpine: \`apk add libstdc++\`), then run \`hpy update\`. This copy of hpy was left as it was.`;
+}
 
 /**
  * Where the binary sits relative to the install prefix: dist's installer puts it in
@@ -522,7 +554,10 @@ export async function selfUpdate(
   latest: Version,
   prefix: string,
   escalate: Escalate,
+  probe: HostProbe = hostProbe,
 ): Promise<void> {
+  const missing = missingLibrary(latest, probe);
+  if (missing !== undefined) throw new SelfUpdateError("missingLibrary", missing);
   let exe: string;
   try {
     exe = realpathSync.native(process.execPath);
@@ -844,7 +879,7 @@ function asSelfUpdateError(e: unknown): SelfUpdateError {
 }
 
 export function selfUpdateFailed(latest: Version, error: SelfUpdateError): string {
-  if (error.kind === "needsRoot") return `Could not update hpy: ${error.message}`;
+  if (error.kind !== "failed") return `Could not update hpy: ${error.message}`;
   return `Could not update hpy automatically (${error.message}). To update by hand: curl -fsSL ${installScriptUrl(latest)} | sh`;
 }
 

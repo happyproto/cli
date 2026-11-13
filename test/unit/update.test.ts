@@ -43,11 +43,13 @@ import {
   isCompiledBinary,
   layout,
   listReleases,
+  missingLibrary,
   readLastChecked,
   receiptPath as receiptPathOf,
   receiptPrefix,
   runJob,
   SelfUpdateError,
+  selfUpdate,
   selfUpdateFailed,
   selfUpdatePrefix,
   shellQuote,
@@ -816,6 +818,52 @@ describe("update.rs messages", () => {
     );
     expect(selfUpdateFailed(v("1.0.0"), new SelfUpdateError("needsRoot", "y"))).toBe(
       "Could not update hpy: y",
+    );
+  });
+});
+
+// TS-only: Bun's musl build is dynamically linked against libstdc++, where Rust's was static, so
+// an update on a musl system without it would leave an hpy that cannot start (Alpine).
+describe("a self-update checks the new build can run here", () => {
+  const host = (platform: NodeJS.Platform, arch: string, files: string[]) => ({
+    platform,
+    arch,
+    exists: (p: string) => files.includes(p),
+  });
+  const latest = v("1.0.0-alpha.40");
+
+  it("refuses on musl without libstdc++, and says what to install", () => {
+    const why = missingLibrary(latest, host("linux", "x64", ["/lib/ld-musl-x86_64.so.1"]));
+    expect(why).toBe(
+      "hpy 1.0.0-alpha.40 for musl Linux needs libstdc++, which this system does not have. Install it (on Alpine: `apk add libstdc++`), then run `hpy update`. This copy of hpy was left as it was.",
+    );
+    expect(
+      missingLibrary(latest, host("linux", "arm64", ["/lib/ld-musl-aarch64.so.1"])),
+    ).toBeDefined();
+  });
+
+  it("goes ahead on musl with libstdc++, on glibc, and off Linux", () => {
+    const musl = "/lib/ld-musl-x86_64.so.1";
+    expect(missingLibrary(latest, host("linux", "x64", [musl, "/usr/lib/libstdc++.so.6"]))).toBe(
+      undefined,
+    );
+    expect(missingLibrary(latest, host("linux", "x64", ["/lib64/ld-linux-x86-64.so.2"]))).toBe(
+      undefined,
+    );
+    expect(missingLibrary(latest, host("darwin", "arm64", [musl]))).toBeUndefined();
+  });
+
+  it("stops before downloading anything, and the failure stands alone", async () => {
+    const probe = host("linux", "x64", ["/lib/ld-musl-x86_64.so.1"]);
+    const err = await selfUpdate(latest, "/nowhere", "never", probe).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(SelfUpdateError);
+    expect((err as SelfUpdateError).kind).toBe("missingLibrary");
+    // No "update by hand" installer line: it would install the same build.
+    expect(selfUpdateFailed(latest, err as SelfUpdateError)).toBe(
+      `Could not update hpy: ${missingLibrary(latest, probe)}`,
     );
   });
 });
