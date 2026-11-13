@@ -4,6 +4,7 @@ import type { Ctx } from "../core/ctx.ts";
 import * as auth from "./auth.ts";
 import * as channel from "./channel.ts";
 import * as deploy from "./deploy.ts";
+import * as dev from "./dev.ts";
 import * as env from "./env.ts";
 import * as instance from "./instance.ts";
 import * as lifecycle from "./lifecycle.ts";
@@ -30,6 +31,7 @@ export const HANDLERS: Record<string, Handler> = {
   "hv.logout": instance.logout,
   "hv.whoami": (ctx) => instance.whoami(ctx),
   "hv.deploy": deploy.run,
+  "hv.dev": dev.run,
   "hv.env.push": env.push,
   "hv.pull": pull.run,
   update: (ctx) => update.run(ctx),
