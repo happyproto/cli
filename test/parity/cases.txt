@@ -282,3 +282,52 @@ ALL_PROXY=127.0.0.1:9 -- update
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel beta
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- --json channel beta
 HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channel beta ;; channel
+# hv create (M4), against the registries and release lists in mock-create.mjs.
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock @keep=~/app/.gitignore @keep=~/app/.env.example @keep=~/app/.luarc.json @keep=~/app/tsconfig.json @keep=~/app/src/lexicons/com/example/hello.json @keep=~/app/src/lexicons/com/example/hello.lua @keep=~/app/src/lexicons/com/example/hello.ts @keep=~/app/src/lexicons/com/example/hello.js -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock @keep=~/app/.gitignore @keep=~/app/.env.example @keep=~/app/.luarc.json @keep=~/app/tsconfig.json @keep=~/app/src/lexicons/com/example/hello.json @keep=~/app/src/lexicons/com/example/hello.lua @keep=~/app/src/lexicons/com/example/hello.ts @keep=~/app/src/lexicons/com/example/hello.js -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --app-name MyApp ;; hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/happyview.toml @keep=~/happyview.lock -- hv create --name . --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/happyview.toml -- hv create --name ./ --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --app-name Here
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file @keep=~/.config/app/happyview.toml -- -C .config hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crghpre @keep=~/app/happyview.toml -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh0 -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh5 -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version nope
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version v3.0.0
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @cred @keep=~/app/happyview.toml -- hv create --name app --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @cred -- --json hv create --name app --happyview-version 3.0.0-alpha.12 --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @cred -- hv create --name app --happyview-version 3.0.0-alpha.12 --superadmin did:PLC:x
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- --no-input hv create --name app
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:PLC:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:x%
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --app-name=
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name . --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name .config --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name .config/hpy/credentials.json --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name .config/hpy/credentials.json/x --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project nope
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/app.bsky.feed.post/x
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter python
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library happyview.nope
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter lua --library happyview.nope ;; hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crold HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh -- hv create --name asked --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh @keep=~/pinned/happyview.toml @keep=~/pinned/happyview.lock -- hv create --name pinned --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/other-lua
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name pinned --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh @keep=~/stray/happyview.toml -- hv create --name stray --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/nobody
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh -- hv create --name both --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/other-lua --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh @keep=~/ns/happyview.toml @keep=~/ns/happyview.lock -- hv create --name ns --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library happyview.http
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh @keep=~/byname/happyview.toml @keep=~/byname/happyview.lock -- --json hv create --name byname --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library http-lib
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh -- hv create --name neither --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library happyview.nope
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh -- hv create --name x --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library http-lib --project at://did:plc:hv/software.release.project/http-lib --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock @keep=~/app/.gitignore @keep=~/app/.env.example @keep=~/app/.luarc.json @keep=~/app/tsconfig.json @keep=~/app/src/lexicons/com/example/hello.json @keep=~/app/src/lexicons/com/example/hello.lua @keep=~/app/src/lexicons/com/example/hello.ts @keep=~/app/src/lexicons/com/example/hello.js -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter typescript --interpreter lua --library http-lib
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter python
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter luau --interpreter lua
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter luau --interpreter lua
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter ruby
+@mock HPY_REGISTRY_URL=$MOCK/crempty HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crempty HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library anything
+@mock HPY_REGISTRY_URL=$MOCK/crnone HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
