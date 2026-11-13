@@ -57,10 +57,32 @@ const UNEXPECTED_END_OF_HEX_ESCAPE = "unexpected end of hex escape";
 const RECURSION_LIMIT_EXCEEDED = "recursion limit exceeded";
 
 /**
- * `de::Error::custom`. Like serde_json's `make_error`, a message that already ends in
- * ` at line L column C` has that suffix parsed back into a position.
+ * An error raised by a decoder or visitor (serde's `de::Error::custom`, `invalid_type`, ...)
+ * before any format has rendered it. Each format's error type renders serde's `Unexpected`
+ * its own way (serde_json shows unit as `null`, toml as `unit value`), so the error keeps a
+ * renderer and the deserializer that catches it turns it into its own error type, with a
+ * position: `SerdeJsonError` here, `TomlError` in toml.ts.
  */
-function custom(message: string): SerdeJsonError {
+export class DeError extends Error {
+  readonly render: (show: (u: Unexpected) => string) => string;
+
+  constructor(render: (show: (u: Unexpected) => string) => string) {
+    super(render(showUnexpected));
+    this.name = "DeError";
+    this.render = render;
+  }
+}
+
+/** `de::Error::custom`. */
+export function custom(message: string): DeError {
+  return new DeError(() => message);
+}
+
+/**
+ * serde_json's `make_error`: a message that already ends in ` at line L column C` has that
+ * suffix parsed back into a position.
+ */
+function makeError(message: string): SerdeJsonError {
   const suffix = message.lastIndexOf(" at line ");
   if (suffix >= 0) {
     const match = /^ at line (\d+) column (\d+)$/.exec(message.slice(suffix));
@@ -71,20 +93,26 @@ function custom(message: string): SerdeJsonError {
   return new SerdeJsonError(message, 0, 0);
 }
 
-function fail(error: SerdeJsonError): never {
+/** A `DeError` as serde_json's error (position-less until a deserializer fixes it). */
+function toJsonError(e: unknown): unknown {
+  return e instanceof DeError ? makeError(e.render(showUnexpected)) : e;
+}
+
+function fail(error: Error): never {
   throw error;
 }
 
-// serde's `Unexpected`, displayed as serde_json's `JsonUnexpected` (unit is `null`, floats use
-// serde_json's float formatting).
-type Unexpected =
+/** serde's `Unexpected`. `other` is `Unexpected::Other`, shown as given. */
+export type Unexpected =
   | { kind: "bool"; value: boolean }
   | { kind: "unsigned"; value: bigint }
   | { kind: "signed"; value: bigint }
   | { kind: "float"; value: number }
   | { kind: "str"; value: string }
+  | { kind: "other"; value: string }
   | { kind: "unit" | "option" | "seq" | "map" | "enum" | "unitVariant" };
 
+/** serde_json's `JsonUnexpected`: unit is `null`, floats use serde_json's float formatting. */
 function showUnexpected(u: Unexpected): string {
   switch (u.kind) {
     case "bool":
@@ -96,6 +124,8 @@ function showUnexpected(u: Unexpected): string {
       return `floating point \`${formatF64(u.value)}\``;
     case "str":
       return `string ${debugStr(u.value)}`;
+    case "other":
+      return u.value;
     case "unit":
       return "null";
     case "option":
@@ -111,15 +141,66 @@ function showUnexpected(u: Unexpected): string {
   }
 }
 
-function invalidType(u: Unexpected, expected: string): SerdeJsonError {
-  return custom(`invalid type: ${showUnexpected(u)}, expected ${expected}`);
+/** serde's own `Display for Unexpected`, which formats without an override use (toml does). */
+export function serdeUnexpected(u: Unexpected): string {
+  switch (u.kind) {
+    case "bool":
+      return `boolean \`${u.value}\``;
+    case "unsigned":
+    case "signed":
+      return `integer \`${u.value}\``;
+    case "float":
+      return `floating point \`${rustDisplayF64WithPoint(u.value)}\``;
+    case "str":
+      return `string ${debugStr(u.value)}`;
+    case "other":
+      return u.value;
+    case "unit":
+      return "unit value";
+    case "option":
+      return "Option value";
+    case "seq":
+      return "sequence";
+    case "map":
+      return "map";
+    case "enum":
+      return "enum";
+    case "unitVariant":
+      return "unit variant";
+  }
 }
 
-function invalidValue(u: Unexpected, expected: string): SerdeJsonError {
-  return custom(`invalid value: ${showUnexpected(u)}, expected ${expected}`);
+/**
+ * Rust's `Display for f64` (shortest round-trip digits, never an exponent), then serde's
+ * `WithDecimalPoint`: `.0` is added to a finite value printed without a `.`.
+ */
+export function rustDisplayF64WithPoint(value: number): string {
+  const s = rustDisplayF64(value);
+  return Number.isFinite(value) && !s.includes(".") ? `${s}.0` : s;
 }
 
-function invalidLength(length: number, expected: string): SerdeJsonError {
+/** Rust's `Display for f64`: `1e300` prints all 301 digits, `5e-324` as `0.000…5`. */
+export function rustDisplayF64(value: number): string {
+  if (Number.isNaN(value)) return "NaN";
+  if (!Number.isFinite(value)) return value > 0 ? "inf" : "-inf";
+  const sign = value < 0 || Object.is(value, -0) ? "-" : "";
+  const [mantissa, exp] = Math.abs(value).toExponential().split("e") as [string, string];
+  const digits = mantissa.replace(".", "");
+  const point = Number(exp) + 1;
+  if (point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+  if (point >= digits.length) return `${sign}${digits}${"0".repeat(point - digits.length)}`;
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}
+
+export function invalidType(u: Unexpected, expected: string): DeError {
+  return new DeError((show) => `invalid type: ${show(u)}, expected ${expected}`);
+}
+
+export function invalidValue(u: Unexpected, expected: string): DeError {
+  return new DeError((show) => `invalid value: ${show(u)}, expected ${expected}`);
+}
+
+export function invalidLength(length: number, expected: string): DeError {
   return custom(`invalid length ${length}, expected ${expected}`);
 }
 
@@ -129,23 +210,23 @@ function oneOf(names: readonly string[]): string {
   return `one of ${names.map((n) => `\`${n}\``).join(", ")}`;
 }
 
-function unknownVariant(variant: string, expected: readonly string[]): SerdeJsonError {
+export function unknownVariant(variant: string, expected: readonly string[]): DeError {
   return expected.length === 0
     ? custom(`unknown variant \`${variant}\`, there are no variants`)
     : custom(`unknown variant \`${variant}\`, expected ${oneOf(expected)}`);
 }
 
-function unknownField(field: string, expected: readonly string[]): SerdeJsonError {
+export function unknownField(field: string, expected: readonly string[]): DeError {
   return expected.length === 0
     ? custom(`unknown field \`${field}\`, there are no fields`)
     : custom(`unknown field \`${field}\`, expected ${oneOf(expected)}`);
 }
 
-function missingField(field: string): SerdeJsonError {
+export function missingField(field: string): DeError {
   return custom(`missing field \`${field}\``);
 }
 
-function duplicateField(field: string): SerdeJsonError {
+export function duplicateField(field: string): DeError {
   return custom(`duplicate field \`${field}\``);
 }
 
@@ -282,49 +363,49 @@ export interface Deserializer {
 /** serde's `Deserialize` (and `DeserializeSeed`): decode one value from a deserializer. */
 export type Decoder<T> = (de: Deserializer) => T;
 
-function visitBool<T>(v: Visitor<T>, value: boolean): T {
+export function visitBool<T>(v: Visitor<T>, value: boolean): T {
   return v.visitBool ? v.visitBool(value) : fail(invalidType({ kind: "bool", value }, v.expecting));
 }
 
-function visitU64<T>(v: Visitor<T>, value: bigint): T {
+export function visitU64<T>(v: Visitor<T>, value: bigint): T {
   return v.visitU64
     ? v.visitU64(value)
     : fail(invalidType({ kind: "unsigned", value }, v.expecting));
 }
 
-function visitI64<T>(v: Visitor<T>, value: bigint): T {
+export function visitI64<T>(v: Visitor<T>, value: bigint): T {
   return v.visitI64 ? v.visitI64(value) : fail(invalidType({ kind: "signed", value }, v.expecting));
 }
 
-function visitF64<T>(v: Visitor<T>, value: number): T {
+export function visitF64<T>(v: Visitor<T>, value: number): T {
   return v.visitF64 ? v.visitF64(value) : fail(invalidType({ kind: "float", value }, v.expecting));
 }
 
-function visitStr<T>(v: Visitor<T>, value: string): T {
+export function visitStr<T>(v: Visitor<T>, value: string): T {
   return v.visitStr ? v.visitStr(value) : fail(invalidType({ kind: "str", value }, v.expecting));
 }
 
-function visitUnit<T>(v: Visitor<T>): T {
+export function visitUnit<T>(v: Visitor<T>): T {
   return v.visitUnit ? v.visitUnit() : fail(invalidType({ kind: "unit" }, v.expecting));
 }
 
-function visitNone<T>(v: Visitor<T>): T {
+export function visitNone<T>(v: Visitor<T>): T {
   return v.visitNone ? v.visitNone() : fail(invalidType({ kind: "option" }, v.expecting));
 }
 
-function visitSome<T>(v: Visitor<T>, de: Deserializer): T {
+export function visitSome<T>(v: Visitor<T>, de: Deserializer): T {
   return v.visitSome ? v.visitSome(de) : fail(invalidType({ kind: "option" }, v.expecting));
 }
 
-function visitSeq<T>(v: Visitor<T>, seq: SeqAccess): T {
+export function visitSeq<T>(v: Visitor<T>, seq: SeqAccess): T {
   return v.visitSeq ? v.visitSeq(seq) : fail(invalidType({ kind: "seq" }, v.expecting));
 }
 
-function visitMap<T>(v: Visitor<T>, map: MapAccess): T {
+export function visitMap<T>(v: Visitor<T>, map: MapAccess): T {
   return v.visitMap ? v.visitMap(map) : fail(invalidType({ kind: "map" }, v.expecting));
 }
 
-function visitEnum<T>(v: Visitor<T>, data: EnumAccess): T {
+export function visitEnum<T>(v: Visitor<T>, data: EnumAccess): T {
   return v.visitEnum ? v.visitEnum(data) : fail(invalidType({ kind: "enum" }, v.expecting));
 }
 
@@ -457,7 +538,8 @@ class JsonDeserializer implements Deserializer {
 
   /** serde_json's `fix_position`: give a position-less error the current position. */
   fixPosition(e: unknown): unknown {
-    return e instanceof SerdeJsonError && e.line === 0 ? this.error(e.code) : e;
+    const j = toJsonError(e);
+    return j instanceof SerdeJsonError && j.line === 0 ? this.error(j.code) : j;
   }
 
   private fixing<T>(body: () => T): T {
@@ -920,7 +1002,7 @@ class JsonDeserializer implements Deserializer {
 
   /** de.rs `peek_invalid_type`: consume the offending scalar and describe it. */
   private peekInvalidType(expected: string): unknown {
-    let err: SerdeJsonError;
+    let err: Error;
     const b = this.peek();
     try {
       switch (b) {
@@ -1505,7 +1587,7 @@ class ContentDeserializer implements Deserializer {
     this.content = content;
   }
 
-  private invalidType(v: Visitor<unknown>): SerdeJsonError {
+  private invalidType(v: Visitor<unknown>): DeError {
     return invalidType(nodeUnexpected(this.content), v.expecting);
   }
 
@@ -1667,9 +1749,18 @@ const encoder = new TextEncoder();
 /** `serde_json::from_str::<T>`: decode the whole document, then reject trailing characters. */
 export function fromStr<T>(text: string, decoder: Decoder<T>): T {
   const de = new JsonDeserializer(encoder.encode(text));
-  const value = decoder(de);
+  const value = jsonErrors(() => decoder(de));
   de.end();
   return value;
+}
+
+/** Runs `body`, turning a `DeError` that no deserializer positioned into a `SerdeJsonError`. */
+function jsonErrors<T>(body: () => T): T {
+  try {
+    return body();
+  } catch (e) {
+    throw toJsonError(e);
+  }
 }
 
 /** `serde_json::from_str::<Value>`, keeping each value's byte offsets. */
@@ -1685,7 +1776,9 @@ export function parseValue(text: string): Node {
  */
 export function decode<T>(n: Node, decoder: Decoder<T>): T {
   const source = SOURCES.get(n);
-  return decoder(source ? new JsonDeserializer(source, n.start) : new ContentDeserializer(n));
+  return jsonErrors(() =>
+    decoder(source ? new JsonDeserializer(source, n.start) : new ContentDeserializer(n)),
+  );
 }
 
 /** The last entry for `key` (serde_json's `Value` keeps the last of duplicate keys). */
@@ -2138,6 +2231,29 @@ export function taggedEnum<Tag extends string, V extends Record<string, TaggedVa
     }
     const fields = cd.deserializeAny(c.visitor);
     return { [tag]: c.variantName, ...fields } as TaggedDecoded<Tag, V>;
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// #[serde(untagged)] enums
+
+/**
+ * An untagged enum, `#[serde(untagged)]`: the value is buffered (serde's `Content`), then each
+ * variant decoder is tried in order against the buffer; the first that succeeds wins. Errors
+ * from the attempts are discarded, as in serde, and the failure is the derive's
+ * `data did not match any variant of untagged enum Name`.
+ */
+export function untagged<T>(name: string, variants: readonly Decoder<T>[]): Decoder<T> {
+  return (de) => {
+    const content = node(de);
+    for (const variant of variants) {
+      try {
+        return variant(new ContentDeserializer(content));
+      } catch {
+        // serde tries the next variant.
+      }
+    }
+    throw custom(`data did not match any variant of untagged enum ${name}`);
   };
 }
 

@@ -2,8 +2,9 @@
 // config.toml, then the defaults.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse as parseToml } from "smol-toml";
 import { configDir } from "../core/paths.ts";
+import { optional, str as strDecoder, struct, withDefault } from "../core/serde-json.ts";
+import { fromStr } from "../core/toml.ts";
 import { AtprotoError } from "./error.ts";
 
 export const DEFAULT_REGISTRY_URL = "https://api.happyproto.at";
@@ -57,35 +58,59 @@ export const processEnv: Env = (k) => {
   return v !== undefined && v !== "" ? v : undefined;
 };
 
-const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+// settings.rs `File` and its sections, with their Rust names (they appear in serde's errors).
+const registrySection = struct("RegistrySection", {
+  url: optional(strDecoder),
+  client_key: optional(strDecoder),
+});
+const oauthSection = struct("OAuthSection", {
+  client_id: optional(strDecoder),
+  scope: optional(strDecoder),
+  redirect: optional(strDecoder),
+  client_auth: optional(strDecoder),
+});
+const credentialsSection = struct("CredentialsSection", { store: optional(strDecoder) });
+const noRegistry = () => ({ url: undefined, client_key: undefined });
+const noOauth = () => ({
+  client_id: undefined,
+  scope: undefined,
+  redirect: undefined,
+  client_auth: undefined,
+});
+const noCredentials = () => ({ store: undefined });
+const settingsFile = struct("File", {
+  registry: withDefault(registrySection, noRegistry),
+  oauth: withDefault(oauthSection, noOauth),
+  credentials: withDefault(credentialsSection, noCredentials),
+});
+
+type SettingsFile = ReturnType<typeof settingsFile>;
 
 export function settingsFromSources(file: string | undefined, env: Env, dir: string): Settings {
-  let parsed: Record<string, Record<string, unknown>> = {};
+  let parsed: SettingsFile = {
+    registry: noRegistry(),
+    oauth: noOauth(),
+    credentials: noCredentials(),
+  };
   if (file !== undefined) {
     try {
-      parsed = parseToml(file) as typeof parsed;
+      parsed = fromStr(file, settingsFile);
     } catch (e) {
       throw AtprotoError.other(`config.toml is not valid: ${(e as Error).message}`);
     }
   }
-  const section = (name: string) => {
-    const s = parsed[name];
-    return s && typeof s === "object" ? s : {};
-  };
-  const registry = section("registry");
-  const oauth = section("oauth");
-  const credentials = section("credentials");
-  const redirect = env("HPY_OAUTH_REDIRECT") ?? str(oauth.redirect);
-  const auth = env("HPY_OAUTH_CLIENT_AUTH") ?? str(oauth.client_auth);
-  const store = env("HPY_CREDENTIAL_STORE") ?? str(credentials.store);
+  const { registry, oauth, credentials } = parsed;
+  const redirect = env("HPY_OAUTH_REDIRECT") ?? oauth.redirect;
+  const auth = env("HPY_OAUTH_CLIENT_AUTH") ?? oauth.client_auth;
+  const store = env("HPY_CREDENTIAL_STORE") ?? credentials.store;
   return {
-    registryUrl: (env("HPY_REGISTRY_URL") ?? str(registry.url) ?? DEFAULT_REGISTRY_URL).replace(
+    registryUrl: (env("HPY_REGISTRY_URL") ?? registry.url ?? DEFAULT_REGISTRY_URL).replace(
       /\/+$/,
       "",
     ),
-    clientKey: env("HPY_CLIENT_KEY") ?? str(registry.client_key) ?? DEFAULT_CLIENT_KEY,
-    oauthClientId: env("HPY_OAUTH_CLIENT_ID") ?? str(oauth.client_id) ?? DEFAULT_OAUTH_CLIENT_ID,
-    oauthScope: env("HPY_OAUTH_SCOPE") ?? str(oauth.scope) ?? DEFAULT_SCOPE,
+    clientKey: env("HPY_CLIENT_KEY") ?? registry.client_key ?? DEFAULT_CLIENT_KEY,
+    oauthClientId: env("HPY_OAUTH_CLIENT_ID") ?? oauth.client_id ?? DEFAULT_OAUTH_CLIENT_ID,
+    oauthScope: env("HPY_OAUTH_SCOPE") ?? oauth.scope ?? DEFAULT_SCOPE,
     oauthRedirect:
       redirect !== undefined
         ? parseRedirect(redirect)
