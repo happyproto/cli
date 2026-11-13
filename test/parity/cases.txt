@@ -220,3 +220,13 @@ XDG_CONFIG_HOME=/dev/null/x -- channel
 # release, the Rust binary would replace itself with it.
 @net @keep=hpy/channel.toml -- channel beta
 @net @keep=hpy/channel.toml -- --json --no-input channel beta
+# update and switching channels need GitHub's release list; through a proxy that refuses, both
+# fail before anything is recorded or installed. reqwest honours these variables; so does the TS.
+# Only beta here: should the proxy ever be skipped, a prerelease channel still stops at its
+# confirmation, where stable (newer than this alpha) would install.
+HTTPS_PROXY=http://127.0.0.1:9 -- update
+https_proxy=http://127.0.0.1:9 -- --json update
+ALL_PROXY=127.0.0.1:9 -- update
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel beta
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- --json channel beta
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channel beta ;; channel

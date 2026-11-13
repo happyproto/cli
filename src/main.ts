@@ -2,6 +2,7 @@
 
 import type { Command } from "commander";
 import { CommanderError } from "commander";
+import { useEnvProxy } from "./atproto/http.ts";
 import { loadSettings } from "./atproto/settings.ts";
 import { check, requiredBy } from "./checks.ts";
 import { buildCli, checksForUpdates, type Invocation, UsageExit } from "./cli.ts";
@@ -226,6 +227,7 @@ function* allCommands(c: import("commander").Command): Generator<import("command
 }
 
 async function main(): Promise<void> {
+  useEnvProxy();
   let code: number;
   try {
     code = await run(process.argv.slice(2));
