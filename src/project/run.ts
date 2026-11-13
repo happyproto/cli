@@ -32,15 +32,32 @@ const UNIX = process.platform !== "win32";
 
 type Execve = (file: string, args: string[], env: Record<string, string>) => never;
 
-/** The environment the binary gets: `hpy`'s, plus `envs`, less `removeEnv`. */
-function childEnv(
+/**
+ * The environment the binary gets: `hpy`'s, plus `envs`, less `removeEnv`. Windows names are
+ * case-insensitive, as `Command::env_remove` and `env` treat them there, so `Plugin_Dir` is
+ * removed or replaced along with `PLUGIN_DIR`.
+ */
+export function childEnv(
   envs: readonly (readonly [string, string])[],
   removeEnv: readonly string[],
+  windows: boolean = !UNIX,
+  from: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
-  for (const k of removeEnv) delete env[k];
-  for (const [k, v] of envs) env[k] = v;
+  for (const [k, v] of Object.entries(from)) if (v !== undefined) env[k] = v;
+  const drop = (name: string) => {
+    if (!windows) {
+      delete env[name];
+      return;
+    }
+    const upper = name.toUpperCase();
+    for (const k of Object.keys(env)) if (k.toUpperCase() === upper) delete env[k];
+  };
+  for (const k of removeEnv) drop(k);
+  for (const [k, v] of envs) {
+    drop(k);
+    env[k] = v;
+  }
   return env;
 }
 

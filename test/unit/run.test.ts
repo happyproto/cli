@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { Failure } from "../../src/core/failure.ts";
-import { finish, runForeground } from "../../src/project/run.ts";
+import { childEnv, finish, runForeground } from "../../src/project/run.ts";
 
 describe("project/run.rs", () => {
   // The rest of this path ends in `exec`, which would replace the test process;
@@ -24,6 +24,17 @@ describe("project/run.rs", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  // Not a Rust test: `Command::env_remove` matches Windows names case-insensitively for free.
+  it("windows_env_names_are_removed_and_replaced_whatever_their_case", () => {
+    const from = { Plugin_Dir: "/elsewhere", Path: "C:\\bin", keep: "1" };
+    expect(childEnv([["PATH", "D:\\bin"]], ["PLUGIN_DIR"], true, from)).toEqual({
+      keep: "1",
+      PATH: "D:\\bin",
+    });
+    // On unix names are exact.
+    expect(childEnv([], ["PLUGIN_DIR"], false, from)).toEqual(from);
   });
 
   it("finish_maps_codes", () => {
