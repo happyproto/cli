@@ -19,8 +19,8 @@
 //   $MOCK/vars/…     B is set already; every set is accepted
 //   $MOCK/varsfail/… as vars, but setting A fails, quoting the value
 import { MockServer } from "../support/mock-server.ts";
-import { mountCreate } from "./mock-create.mjs";
 import { mountAdd } from "./mock-add.mjs";
+import { mountCreate } from "./mock-create.mjs";
 import { mountPull } from "./mock-pull.mjs";
 import { mountRegistry } from "./mock-registry.mjs";
 
