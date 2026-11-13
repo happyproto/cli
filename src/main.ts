@@ -137,7 +137,8 @@ async function run(argv: string[]): Promise<number> {
   const g = program.opts() as { json?: boolean; input?: boolean; C?: string };
   const settings = loadSettings();
   let dir = process.cwd();
-  if (g.C !== undefined) dir = (await import("node:path")).resolve(g.C);
+  // As given, like clap's PathBuf: messages print `-C`'s path the way it was written.
+  if (g.C !== undefined) dir = g.C;
   const ctx = new Ctx(settings, new Prompter(g.input === false), new Output(!!g.json), dir);
   const handler = HANDLERS[invocation.route];
   if (!handler) throw Failure.runtime(`\`${invocation.route}\` is not ported to TypeScript yet`);
