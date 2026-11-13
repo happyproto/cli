@@ -45,7 +45,8 @@ it("reads_come_from_the_pds_and_not_found_is_none", async () => {
   );
   const r = await repo(hv, pds);
   const got = await r.getRecord("c", "x");
-  expect([got?.cid, (got?.value as { a: number }).a]).toEqual(["bafy", 1]);
+  if (got === null) throw new Error("expected the record");
+  expect([got.cid, (got.value as { a: number }).a]).toEqual(["bafy", 1]);
   expect(await r.getRecord("c", "missing")).toBeNull();
   expect(hv.requests.length).toBe(0);
 });
