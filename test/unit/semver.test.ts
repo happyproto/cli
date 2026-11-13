@@ -642,3 +642,21 @@ describe("test_identifier", () => {
     assertToString(err, "unexpected character in pre-release identifier");
   });
 });
+
+// Not in the crate's tests: how error.rs's QuotedChar (`<char as Debug>`) prints the offending
+// character. Which code points take `\u{…}` follows Rust's Unicode tables
+// (test/fixtures/serde-json/escapes.txt), not the JavaScript engine's.
+describe("quoted characters use Rust's Debug escaping", () => {
+  const after = (ch: string) => versionErr(`8${ch}`).message.replace(/^unexpected character /, "");
+  it.each([
+    ["'", "'\\'' after major version number"],
+    ['"', `'"' after major version number`],
+    ["̀", "'\\u{300}' after major version number"],
+    ["ㅤ", "'\\u{3164}' after major version number"],
+    ["ﾞ", "'ﾞ' after major version number"],
+    ["͸", "'\\u{378}' after major version number"],
+    ["é", "'é' after major version number"],
+  ])("%j", (ch, want) => {
+    expect(after(ch)).toBe(want);
+  });
+});

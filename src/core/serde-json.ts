@@ -15,6 +15,8 @@
 // computed with serde_json's own significand-times-power-of-ten algorithm, so they are
 // bit-identical to Rust's.
 
+import { rustEscapesUnicode } from "./rust-str.ts";
+
 // ---------------------------------------------------------------------------------------------
 // Errors (src/error.rs)
 
@@ -230,15 +232,6 @@ export function duplicateField(field: string): DeError {
   return custom(`duplicate field \`${field}\``);
 }
 
-const GRAPHEME_EXTEND = /\p{Grapheme_Extend}/u;
-// Rust's `is_printable` is false for these general categories (except U+0020).
-const NOT_PRINTABLE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Zs}]/u;
-// Where Rust 1.99's tables and V8's disagree with the two classes above, checked over every
-// code point (oracle/src/bin/escapes.rs): Rust also escapes the Hangul fillers, and does not
-// treat the halfwidth sound marks U+FF9E-FF9F as grapheme extenders.
-const ALSO_ESCAPED = /[\u115f\u1160\u3164\uffa0]/u;
-const NOT_ESCAPED = /[\uff9e\uff9f]/u;
-
 /** Rust's `<str as Debug>::fmt`: `"a\"b\n\u{7}"`. */
 export function debugStr(s: string): string {
   let out = '"';
@@ -263,11 +256,7 @@ export function debugStr(s: string): string {
         out += '\\"';
         break;
       default:
-        if (
-          ALSO_ESCAPED.test(ch) ||
-          (!NOT_ESCAPED.test(ch) &&
-            (GRAPHEME_EXTEND.test(ch) || (ch !== " " && NOT_PRINTABLE.test(ch))))
-        ) {
+        if (rustEscapesUnicode(ch.codePointAt(0)!)) {
           out += `\\u{${ch.codePointAt(0)!.toString(16)}}`;
         } else {
           out += ch;

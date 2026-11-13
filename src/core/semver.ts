@@ -13,6 +13,8 @@
 //
 // Not ported: serde.rs, Hash, Debug, Send/Sync.
 
+import { rustEscapesUnicode } from "./rust-str.ts";
+
 const U64_MAX = 0xffff_ffff_ffff_ffffn;
 
 export type Ordering = -1 | 0 | 1;
@@ -131,9 +133,7 @@ function quotedChar(ch: string): string {
 
 // `char::escape_debug_ext` with escape_grapheme_extended and escape_single_quote set, and
 // escape_double_quote unset, which is what `<char as Debug>::fmt` uses.
-const GRAPHEME_EXTEND = /^\p{Grapheme_Extend}$/u;
-// core::unicode::printable treats these general categories as non-printable, except U+0020.
-const NON_PRINTABLE = /^[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}\p{Zs}]$/u;
+// Which code points take `\u{…}` comes from Rust's tables (rust-escape-table.ts).
 
 function charEscapeDebug(ch: string): string {
   switch (ch) {
@@ -151,7 +151,7 @@ function charEscapeDebug(ch: string): string {
       return "\\'";
   }
   const cp = ch.codePointAt(0)!;
-  if (GRAPHEME_EXTEND.test(ch) || (cp !== 0x20 && NON_PRINTABLE.test(ch))) {
+  if (rustEscapesUnicode(cp)) {
     return `\\u{${cp.toString(16)}}`;
   }
   return ch;
