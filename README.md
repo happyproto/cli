@@ -52,6 +52,11 @@ without the repository.
 curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
+On Alpine, or another Linux without glibc 2.31 or newer, the installer picks
+the musl build, which needs the C++ runtime: `apk add libstdc++` first. (hpy
+up to 1.0.0-alpha.32 was a static binary and needed nothing; updating such a
+copy to a newer release needs `libstdc++` too, or the new `hpy` won't start.)
+
 That installs the newest **stable** release, of which there is none until
 `1.0.0` is cut — for now use the `beta` channel's installer, below.
 
@@ -89,7 +94,7 @@ That installs the newest **beta** release. Once `1.0.0` is cut,
 With Node 22.20 or newer (or 24.12 or newer):
 
 ```sh
-npm install -g @happyproto/cli@beta
+npm install -g hpy@beta
 ```
 
 npm keeps that copy up to date, so `hpy update` tells you the `npm` command
@@ -530,7 +535,7 @@ seconds.
   copy `cargo install` built, cargo still records the version it compiled, so
   installing hpy with cargo again rebuilds from source over it.
 - **Installed with npm:** npm owns that copy, so `hpy` prints the command to
-  run instead, e.g. `npm i -g @happyproto/cli@beta`.
+  run instead, e.g. `npm i -g hpy@beta`.
 - **Installed with Homebrew, apt or dnf:** those track the files they own, and
   their next upgrade would revert a binary swapped underneath them, so `hpy`
   prints the command to run instead, e.g. `brew upgrade hpy`. Each channel has
@@ -614,7 +619,7 @@ code-signed, so macOS sees each update as a new app.
 ## Development
 
 hpy is TypeScript. It is developed and tested on Node, and ships two ways:
-as the npm package `@happyproto/cli`, and as single-file binaries compiled
+as the npm package `hpy`, and as single-file binaries compiled
 with [Bun](https://bun.sh) for the install script, Homebrew, apt and dnf.
 
 ```sh
@@ -706,10 +711,10 @@ Repository setup:
   tap with Contents: read and write. This repository needs the
   `INFRA_APP_CLIENT_ID` variable and the `INFRA_APP_PRIVATE_KEY` secret, the
   same pair `happyproto/provisioner` uses.
-- **npm:** `publish-npm.yml` needs an `NPM_TOKEN` secret, a publish token for
-  `@happyproto/cli`; without it the job warns and publishes nothing. Once the
-  package exists, an npm trusted publisher (this repository, `release.yml`)
-  can replace the token.
+- **npm:** `publish-npm.yml` publishes with npm trusted publishing, so there
+  is no token secret. Set it up once on npmjs.com: the `hpy` package's
+  settings, Trusted publisher, GitHub Actions, repository `happyproto/cli`,
+  workflow `release.yml`.
 - **Depot:** the `happyproto` organization must be connected to Depot.
 - **Package signing key:** this is done. The key "HappyProto Packages
   <packages@happyproto.at>" has fingerprint
