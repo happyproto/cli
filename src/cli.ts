@@ -1,6 +1,8 @@
-// crates/hpy/src/cli.rs: the command tree, with clap's help text, conflicts and
-// requirements, in commander. Each leaf names its handler in `route`; main.ts
-// dispatches on it. Positional arguments land in `args` under their clap names.
+// crates/hpy/src/cli.rs: the command tree, with clap's help text, in
+// commander. clap.ts parses argv against it the way clap does (commander's own
+// parser runs only in tests, as the oracle for the shape of `args`). Each leaf
+// names its handler in `route`; main.ts dispatches on it. Positional arguments
+// land in `args` under their clap names.
 import { Argument, Command, Option } from "commander";
 import { parseChannel, parseSubnet, valueParser } from "./values.ts";
 
@@ -42,12 +44,9 @@ function leaf(
 
 /** A command that only groups others: without a subcommand it prints its help to stderr, exit 2. */
 function group(parent: Command, name: string, about: string): Command {
-  // No action: commander prints the help to stderr and fails (`commander.help`),
-  // and an unknown word is `commander.unknownCommand`, as clap does.
+  // No action, so commander (in the tests) takes an unknown word as an unknown command.
   return parent.command(name).description(about);
 }
-
-export class UsageExit extends Error {}
 
 const yes = () => new Option("-y, --yes", "Do not ask for confirmation.");
 const nameOpt = () =>
@@ -61,6 +60,9 @@ const urlOpt = () =>
     "The instance, e.g. https://api.example.com (default: HPY_HV_URL, else the only one you are signed in to).",
   );
 const collect = (v: string, prev: string[] = []) => [...prev, v];
+
+/** clap's `ArgAction::Append`: a `Vec` option, which may be given more than once. */
+export const isRepeatable = (o: Option): boolean => o.parseArg === collect;
 
 function profileFields(c: Command): Command {
   return c

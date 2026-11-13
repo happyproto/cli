@@ -1,13 +1,29 @@
 // crates/hpy/src/cli.rs and main.rs tests: the command tree and its value parsers.
-import { type Command, CommanderError } from "commander";
+import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
 import { CHECKED_ROUTES } from "../../src/checks.ts";
+import { parse as clapParse, didYouMean, jaro, type Outcome } from "../../src/clap.ts";
 import { buildCli, checksForUpdates, type Invocation, ROUTES } from "../../src/cli.ts";
 import { HANDLERS } from "../../src/commands/index.ts";
 import { parseChannel, parseSubnet } from "../../src/values.ts";
 
-/** Parses argv (without `hpy`) the way main does, answering the invocation or the commander error. */
+/** Parses argv (without `hpy`) the way main does. */
+function outcome(argv: string[]): Outcome {
+  return clapParse(
+    buildCli("0.0.0", () => {}),
+    argv,
+  );
+}
+
+/** The invocation argv names; throws clap's error text for anything else. */
 async function parse(argv: string[]): Promise<Invocation> {
+  const o = outcome(argv);
+  if (o.kind !== "run") throw new Error(o.kind === "error" ? o.text : o.kind);
+  return { route: o.route, args: o.args };
+}
+
+/** What commander makes of a valid command line: the shape `args` must keep. */
+async function commanderParse(argv: string[]): Promise<Invocation> {
   let got: Invocation | undefined;
   const program = buildCli("0.0.0", (i) => {
     got = i;
@@ -84,9 +100,8 @@ describe("main.rs", () => {
   // itself, so neither command is kept as an alias.
   it("withdraw_and_retry_are_gone", async () => {
     for (const gone of ["withdraw", "retry"]) {
-      const err = await parse(["registry", "plugin", gone, "1.0.0"]).catch((e) => e);
-      expect(err, gone).toBeInstanceOf(CommanderError);
-      expect((err as CommanderError).code, gone).toBe("commander.unknownCommand");
+      const o = outcome(["registry", "plugin", gone, "1.0.0"]);
+      expect(o.kind === "error" && o.text, gone).toContain(`unrecognized subcommand '${gone}'`);
     }
   });
 
@@ -97,6 +112,95 @@ describe("main.rs", () => {
     expect([a.VERSION, !!a.project]).toEqual(["endOfLife", true]);
     a = (await parse(["registry", "plugin", "lifecycle", "--withdraw", "at://x"])).args;
     expect(a.withdraw).toBe("at://x");
+  });
+});
+
+describe("clap", () => {
+  // The leaf's args keep the shape commander gave them (defaults, `--no-*`, repeatable
+  // options, variadic and parsed positionals), which the handlers read.
+  it("args_match_what_commander_made_of_them", async () => {
+    const lines = [
+      ["registry", "whoami"],
+      ["registry", "login", "alice.test", "--no-browser"],
+      ["registry", "login", "--export"],
+      [
+        "--json",
+        "registry",
+        "plugin",
+        "init",
+        "--name",
+        "x",
+        "--author",
+        "A",
+        "--author",
+        "B",
+        "-y",
+      ],
+      ["registry", "plugin", "edit", "--keyword", "k", "--remove-keyword", "j", "--name=x"],
+      ["registry", "plugin", "publish", "--version", "1.0.0", "--no-build", "--dry-run", "--wait"],
+      ["registry", "plugin", "status", "1.0.0"],
+      ["registry", "plugin", "lifecycle", "1.0.0", "endOfLife", "--reason", "r", "--kind", "k"],
+      ["channel"],
+      ["channel", "main", "--yes"],
+      [
+        "hv",
+        "create",
+        "--name",
+        "d",
+        "--interpreter",
+        "lua",
+        "--interpreter",
+        "js",
+        "--library",
+        "l",
+      ],
+      ["hv", "dev"],
+      ["hv", "dev", "--network", "local", "--reset", "--subnet", "10.40.0.0/24", "--locked"],
+      ["hv", "add"],
+      ["hv", "install", "lua", "js", "--channel", "beta", "--interpreter"],
+      ["hv", "scaffold", "a.b.c", "--collection", "x.y.z"],
+      ["hv", "test", "--watch", "f"],
+      ["hv", "login", "--url", "https://x", "--no-browser"],
+      ["hv", "deploy", "--dry-run", "--prune-plugins", "-y"],
+      ["hv", "env", "push", "A", "B", "--env-file", ".env.x"],
+      ["hv", "env", "push", "--", "--dry-run"],
+      ["hv", "pull", "out", "--legacy", "--api-key-env", "K", "--diff"],
+      ["-C", "dir", "--no-input", "hv", "whoami"],
+    ];
+    for (const argv of lines)
+      expect(await parse(argv), argv.join(" ")).toEqual(await commanderParse(argv));
+  });
+
+  it("globals_take_the_deepest_occurrence", () => {
+    const o = outcome(["-C", "a", "--json", "registry", "whoami", "-C", "b", "--no-input"]);
+    expect(o.kind === "run" && o.globals).toEqual({ C: "b", json: true, input: false });
+    const bare = outcome(["registry", "whoami"]);
+    expect(bare.kind === "run" && bare.globals).toEqual({ input: true });
+  });
+
+  it("jaro_matches_strsim", () => {
+    expect(jaro("", "")).toBe(1);
+    expect(jaro("", "a")).toBe(0);
+    expect(jaro("martha", "marhta")).toBeCloseTo(0.944, 3);
+    expect(jaro("dixon", "dicksonx")).toBeCloseTo(0.767, 3);
+    expect(didYouMean("publ", ["pull", "publish", "status"])).toEqual(["pull", "publish"]);
+    expect(didYouMean("tst", ["test", "possible", "values"])).toEqual(["test"]);
+  });
+
+  it("errors_and_help_are_clap_s", () => {
+    const err = (argv: string[]) => {
+      const o = outcome(argv);
+      return o.kind === "error" ? o.text : o.kind;
+    };
+    expect(err(["hv", "deploy", "--url", "a", "--url", "b"])).toBe(
+      "error: the argument '--url <URL>' cannot be used multiple times\n\nUsage: hpy happyview deploy [OPTIONS]\n\nFor more information, try '--help'.\n",
+    );
+    expect(err(["help", "nope"])).toContain("error: unrecognized subcommand 'nope'");
+    expect(err(["-hV"])).toBe("help");
+    expect(err(["-Vh"])).toBe("version");
+    expect(err(["help", "help"])).toBe("helpHelp");
+    expect(err(["registry"])).toBe("helpError");
+    expect(err(["hv", "who"])).toContain("tip: a similar subcommand exists: 'whoami'");
   });
 });
 

@@ -208,3 +208,14 @@ export function renderHelp(c: Command, long: boolean, width = helpWidth()): stri
   out.push("Options:", ...(nextLine ? rowsLong(merged, width) : rowsShort(merged, width)));
   return `${out.join("\n")}\n`;
 }
+
+/** The help of clap's `help` subcommand (`hpy help help`). */
+export function renderHelpHelp(parent: Command): string {
+  return `Print this message or the help of the given subcommand(s)
+
+Usage: ${commandPath(parent)} help [COMMAND]...
+
+Arguments:
+  [COMMAND]...  Print help for the subcommand(s)
+`;
+}
