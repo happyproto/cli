@@ -13,10 +13,11 @@
     "hpy": "dist/hpy.mjs"
   },
   "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
+    "dist/hpy.mjs"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.15"
   },
