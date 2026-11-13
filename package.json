@@ -27,7 +27,8 @@
     "lint": "biome check .",
     "test": "vitest run",
     "test:cli": "npm run build && vitest run test/cli",
-    "parity": "node --experimental-strip-types test/parity/run.ts"
+    "parity": "node --experimental-strip-types test/parity/run.ts",
+    "check": "biome check . && tsc --noEmit && node scripts/build.mjs && vitest run"
   },
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",

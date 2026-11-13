@@ -1,7 +1,7 @@
 // etcetera's base strategy, as hpy uses it: XDG on every Unix (macOS included),
 // the Known Folders on Windows.
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, sep } from "node:path";
 
 const env = (k: string) => {
   const v = process.env[k];
@@ -33,4 +33,19 @@ export function dataBase(): string {
 /** `$XDG_CONFIG_HOME/hpy` or `~/.config/hpy` on every Unix, `%APPDATA%\hpy` on Windows. */
 export function configDir(): string {
   return join(configBase(), "hpy");
+}
+
+/**
+ * `Path::join` as Rust does it: an absolute `p` replaces `base`, nothing is
+ * normalized, and one separator is added unless `base` already ends in one.
+ * Messages print paths the Rust way, so `..` stays where the user wrote it.
+ */
+export function rustJoin(base: string, ...parts: string[]): string {
+  let out = base;
+  for (const p of parts) {
+    if (isAbsolute(p)) out = p;
+    else if (out === "" || out.endsWith(sep) || out.endsWith("/")) out += p;
+    else out += sep + p;
+  }
+  return out;
 }

@@ -2140,3 +2140,33 @@ export function taggedEnum<Tag extends string, V extends Record<string, TaggedVa
     return { [tag]: c.variantName, ...fields } as TaggedDecoded<Tag, V>;
   };
 }
+
+/** A node for a plain JS value, as `serde_json::to_value` would hold it (no source, so no positions). */
+export function fromPlain(v: unknown): Node {
+  const at = { start: 0, end: 0 };
+  if (v === null || v === undefined) return { kind: "null", value: null, ...at };
+  if (typeof v === "boolean") return { kind: "bool", value: v, ...at };
+  if (typeof v === "bigint")
+    return { kind: "number", type: v < 0n ? "i64" : "u64", value: v, ...at };
+  if (typeof v === "number") {
+    if (Number.isInteger(v))
+      return { kind: "number", type: v < 0 ? "i64" : "u64", value: BigInt(v), ...at };
+    return { kind: "number", type: "f64", value: v, ...at };
+  }
+  if (typeof v === "string") return { kind: "string", value: v, ...at };
+  if (Array.isArray(v)) return { kind: "array", children: v.map(fromPlain), ...at };
+  const o = v as Record<string, unknown>;
+  return {
+    kind: "object",
+    // A `Value` object is a BTreeMap: its keys come out sorted.
+    entries: Object.keys(o)
+      .sort(compareKeys)
+      .map((key) => ({ key, keyStart: 0, keyEnd: 0, value: fromPlain(o[key]) })),
+    ...at,
+  };
+}
+
+/** `serde_json::from_value::<T>`: errors carry no position. */
+export function fromValue<T>(v: unknown, decoder: Decoder<T>): T {
+  return decode(fromPlain(v), decoder);
+}
