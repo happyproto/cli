@@ -28,7 +28,8 @@ export function valueParser<T>(arg: string, parse: (value: string) => T): (value
 
 const EXAMPLE = "an IPv4 network such as 10.40.0.0/24";
 
-function ipv4(s: string): number | undefined {
+/** `std::net::Ipv4Addr`'s `FromStr`, as a number. */
+export function ipv4(s: string): number | undefined {
   // std::net::Ipv4Addr's parser: exactly four decimal octets, no leading zeros.
   const parts = s.split(".");
   if (parts.length !== 4) return undefined;

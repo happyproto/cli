@@ -167,10 +167,18 @@ function checkEntry(entry: Entry, want: string): boolean {
 // The tar crate's reader (0.4), as far as `Archive::entries` goes: ustar, GNU and old headers,
 // GNU long names and pax `path` records.
 
-interface TarEntry {
+export interface TarEntry {
   path: string;
   type: number;
   data: Uint8Array;
+  /** The header's mode bits. */
+  mode: number;
+  /** The header's modification time, in seconds. */
+  mtime: number;
+  /** A link's target: a GNU long link, a pax `linkpath`, or the header's own field. */
+  link: string;
+  /** Whether the header is ustar or GNU, rather than an old (v7) one. */
+  modern: boolean;
 }
 
 const lossy = new TextDecoder("utf-8", { ignoreBOM: true });
@@ -192,7 +200,7 @@ function octal(field: Uint8Array): number {
   return text === "" ? 0 : Number.parseInt(text, 8);
 }
 
-function paxPath(data: Uint8Array): Uint8Array | undefined {
+function paxPath(data: Uint8Array, key = "path"): Uint8Array | undefined {
   let found: Uint8Array | undefined;
   let off = 0;
   while (off < data.length) {
@@ -202,16 +210,16 @@ function paxPath(data: Uint8Array): Uint8Array | undefined {
     if (!Number.isFinite(len) || len <= 0) break;
     const record = data.subarray(space + 1, off + len - 1);
     const eq = record.indexOf(0x3d);
-    if (eq !== -1 && lossy.decode(record.subarray(0, eq)) === "path")
-      found = record.subarray(eq + 1);
+    if (eq !== -1 && lossy.decode(record.subarray(0, eq)) === key) found = record.subarray(eq + 1);
     off += len;
   }
   return found;
 }
 
-function* tarEntries(bytes: Uint8Array): Generator<TarEntry> {
+export function* tarEntries(bytes: Uint8Array): Generator<TarEntry> {
   let off = 0;
   let longName: Uint8Array | undefined;
+  let longLink: Uint8Array | undefined;
   let pax: Uint8Array | undefined;
   while (off < bytes.length) {
     if (bytes.length - off < 512) throw new Error("failed to read entire block");
@@ -234,7 +242,11 @@ function* tarEntries(bytes: Uint8Array): Generator<TarEntry> {
       longName = data;
       continue;
     }
-    if ((ustar || gnu) && type === 0x4b /* K */) continue;
+    if ((ustar || gnu) && type === 0x4b /* K */) {
+      if (longLink) throw new Error("two long name entries describing the same member");
+      longLink = data;
+      continue;
+    }
     if ((ustar || gnu) && type === 0x78 /* x */) {
       if (pax) throw new Error("two pax extensions entries describing the same member");
       pax = data;
@@ -251,9 +263,23 @@ function* tarEntries(bytes: Uint8Array): Generator<TarEntry> {
       const prefix = ustar ? cstr(h.subarray(345, 500)) : new Uint8Array();
       path = prefix.length ? Buffer.concat([prefix, Buffer.from("/"), name]) : name;
     }
+    let link: Uint8Array;
+    const linkFromPax = pax ? paxPath(pax, "linkpath") : undefined;
+    if (longLink) link = longLink.at(-1) === 0 ? longLink.subarray(0, -1) : longLink;
+    else if (linkFromPax) link = linkFromPax;
+    else link = cstr(h.subarray(157, 257));
     longName = undefined;
+    longLink = undefined;
     pax = undefined;
-    yield { path: lossy.decode(path), type, data };
+    yield {
+      path: lossy.decode(path),
+      type,
+      data,
+      mode: octal(h.subarray(100, 108)),
+      mtime: octal(h.subarray(136, 148)),
+      link: lossy.decode(link),
+      modern: ustar || gnu,
+    };
   }
 }
 
