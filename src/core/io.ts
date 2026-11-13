@@ -1,7 +1,8 @@
 // std::io's error text, for messages that print an `io::Error` with `{e}`:
 // `No such file or directory (os error 2)`. Rust's Display is the C library's strerror for the
 // errno, then ` (os error N)`; Windows prints FormatMessage's text instead.
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { rustParent } from "./paths.ts";
 
 /** An I/O failure whose `message` is the Rust `io::Error`'s Display. */
 export class IoError extends Error {
@@ -81,4 +82,46 @@ export function writeString(path: string, text: string): void {
   } catch (e) {
     throw toIoError(e);
   }
+}
+
+const isDir = (path: string): boolean => {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * `std::fs::create_dir_all` (or `DirBuilder::new().recursive(true)` with `mode`, which every
+ * directory it creates gets, less the umask). Node's `mkdirSync({ recursive })` reports a
+ * file in the way differently, so this follows std's own walk: `mkdir`, then the parent and
+ * `mkdir` again when it was missing, and success whenever a directory ends up there.
+ */
+export function createDirAll(path: string, mode?: number): void {
+  const mkdir = (p: string): void => {
+    mkdirSync(p, mode === undefined ? undefined : { mode });
+  };
+  const walk = (p: string): void => {
+    if (p === "") return;
+    try {
+      mkdir(p);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        if (isDir(p)) return;
+        throw toIoError(e);
+      }
+    }
+    const parent = rustParent(p);
+    if (parent === undefined) throw new IoError("failed to create whole tree", "Uncategorized");
+    walk(parent);
+    try {
+      mkdir(p);
+    } catch (e) {
+      if (!isDir(p)) throw toIoError(e);
+    }
+  };
+  walk(path);
 }
