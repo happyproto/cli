@@ -16,6 +16,7 @@ import {
   peek,
   remove,
   save,
+  writeSecretFile,
 } from "../../src/atproto/credential.ts";
 import { DpopKey } from "../../src/atproto/dpop.ts";
 import { AtprotoError } from "../../src/atproto/error.ts";
@@ -281,5 +282,22 @@ describe("an exported credential is read as Rust reads it", () => {
     expect(base64UrlNoPad("e30=")).toBeNull();
     expect(base64UrlNoPad("e")).toBeNull();
     expect(base64UrlNoPad("")).toEqual(new Uint8Array());
+  });
+});
+
+// Not a Rust test: the Rust `Error::other(io::Error)` text came with std.
+describe("write_file", () => {
+  it.skipIf(process.platform === "win32")("a_failed_write_reads_as_rusts_io_error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hpy-cred-"));
+    const notADir = join(dir, "file");
+    writeFileSync(notADir, "");
+    let err: unknown;
+    try {
+      writeSecretFile(join(notADir, "credentials.json"), "{}");
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(AtprotoError);
+    expect((err as AtprotoError).message).toBe("File exists (os error 17)");
   });
 });

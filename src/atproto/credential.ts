@@ -6,7 +6,6 @@
 import {
   closeSync,
   fsyncSync,
-  mkdirSync,
   openSync,
   readFileSync,
   renameSync,
@@ -15,7 +14,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { inspect } from "node:util";
-import { readToString } from "../core/io.ts";
+import { createDirAll, ioErrorText, readToString } from "../core/io.ts";
 import type { Json } from "../core/output.ts";
 import { trim } from "../core/rust-str.ts";
 import {
@@ -211,19 +210,41 @@ export function account(registry: string, did: string): string {
 const loginAgain = (why: string) =>
   AtprotoError.loginRequired(`${why}; run \`hpy registry login\``);
 
-/** Writes a file of secrets owner-only, atomically. */
+/**
+ * Writes a file of secrets (`credentials.json`, `instances.json`) owner-only, atomically. A
+ * failure is `Error::other` of the `io::Error`: `No space left on device (os error 28)`.
+ */
 export function writeSecretFile(path: string, json: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = path.replace(/\.json$/, ".json.tmp");
-  rmSync(tmp, { force: true });
-  const fd = openSync(tmp, "wx", 0o600);
+  const io = (e: unknown) => AtprotoError.other(ioErrorText(e));
   try {
-    writeSync(fd, json);
+    createDirAll(dirname(path));
+  } catch (e) {
+    throw io(e);
+  }
+  const tmp = path.replace(/\.json$/, ".json.tmp");
+  try {
+    rmSync(tmp, { force: true });
+  } catch {}
+  let fd: number;
+  try {
+    fd = openSync(tmp, "wx", 0o600);
+  } catch (e) {
+    throw io(e);
+  }
+  try {
+    const bytes = Buffer.from(json);
+    for (let at = 0; at < bytes.length; ) at += writeSync(fd, bytes, at);
     fsyncSync(fd);
+  } catch (e) {
+    throw io(e);
   } finally {
     closeSync(fd);
   }
-  renameSync(tmp, path);
+  try {
+    renameSync(tmp, path);
+  } catch (e) {
+    throw io(e);
+  }
 }
 
 type ReadResult = null | { ok: Stored } | { err: string };
