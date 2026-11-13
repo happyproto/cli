@@ -583,7 +583,8 @@ describe("tests/instance.rs", () => {
     // A key the file doesn't set is refused, and nothing is sent.
     const m = await push(project, ["A", "MISSING", "--yes"]);
     expect(m.code).toBe(2);
-    expect(m.stderr).toContain("doesn't set MISSING");
+    // The report wraps at the terminal width, and a long temp path (Windows) moves the break.
+    expect(m.stderr.replace(/\s+│\s+/g, " ")).toContain("doesn't set MISSING, so nothing was sent");
     expect(sets(s).length).toBe(1);
   });
 
