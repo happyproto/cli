@@ -1,0 +1,17 @@
+# The dist package (D10): Bun-compiled binaries, built by
+# scripts/build-bun.mjs for the target in DIST_TARGET. The name stays
+# `hpy-cli`, so the installers (hpy-cli-installer.sh), archives and install
+# receipts keep the names the Rust releases used (D3); the npm package's name
+# is package.json's and is separate.
+#
+# `version` must equal package.json's: scripts/set-version.sh writes both, and
+# test/unit/packaging.test.ts checks them.
+[package]
+name = "hpy-cli"
+version = "1.0.0-alpha.32"
+description = "The HappyProto command line"
+license = "MIT"
+repository = "https://github.com/happyproto/cli"
+homepage = "https://happyproto.at"
+binaries = ["hpy"]
+build-command = ["node", "scripts/build-bun.mjs", "--dist"]

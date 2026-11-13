@@ -1,0 +1,11 @@
+Copy the plugin's project from the registry into hpy.toml's [project]
+
+Usage: hpy registry plugin pull [OPTIONS]
+
+Options:
+      --json         Print the result as JSON on stdout
+      --name <NAME>  Project name (default: hpy.toml [project] name, then manifest.json id)
+      --no-input     Never prompt; fail when a value is missing. Irreversible actions still need
+                     --yes. Implied without a terminal
+  -C <DIR>           Run as if started in DIR
+  -h, --help         Print help

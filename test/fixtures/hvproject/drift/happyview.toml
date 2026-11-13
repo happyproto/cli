@@ -1,0 +1,8 @@
+[happyview]
+version = "3.0.0"
+
+[interpreters]
+lua = { did = "did:plc:publisher", name = "lua", version = "1.2.0" }
+
+[libraries]
+std = { did = "did:plc:publisher", name = "std", version = "2.0.0" }

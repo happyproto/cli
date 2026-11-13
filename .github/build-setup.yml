@@ -1,0 +1,27 @@
+# Steps dist runs in release.yml's build-local-artifacts job before
+# `dist build` (dist-workspace.toml `github-build-setup`). dist's
+# build-command, scripts/build-bun.mjs --dist, needs Node, Bun and the npm
+# dependencies (every step needs a name, for dist's template); it compiles, re-signs (macOS) and smoke-tests the binary.
+- name: Set up Node
+  uses: actions/setup-node@v7
+  with:
+    node-version: lts/*
+    cache: npm
+- name: Set up Bun
+  uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+  with:
+    bun-version-file: .bun-version
+- name: Install npm dependencies
+  # No install scripts: this job holds contents: write.
+  run: npm ci --ignore-scripts
+- name: Install Rosetta
+  # The x86_64-apple-darwin build is smoke-tested under Rosetta.
+  if: runner.os == 'macOS'
+  run: /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null || sudo softwareupdate --install-rosetta --agree-to-license
+- name: Require the smoke test
+  # A release binary that cannot be run here fails the build instead of
+  # skipping its smoke test; the musl builds run in an Alpine container.
+  shell: bash
+  run: |
+    echo "HPY_SMOKE_REQUIRED=1" >> "$GITHUB_ENV"
+    if [ "$RUNNER_OS" = Linux ]; then echo "HPY_SMOKE_DOCKER=1" >> "$GITHUB_ENV"; fi

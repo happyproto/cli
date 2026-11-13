@@ -18,6 +18,11 @@
 #
 # Usage:
 #   packaging/test-installer.sh           here, with the stand-in sudo
+#   packaging/test-installer.sh --local   the same, against this checkout's
+#       release instead of a published one: `dist build` makes the installer
+#       and this machine's archive (the Bun binary) in target/distrib. Needs
+#       dist, Bun and `npm ci`. With --docker too (`--local --docker`), the
+#       archive is the container's Linux one, cross-compiled here.
 #   packaging/test-installer.sh --docker  in an ubuntu:24.04 container, as a
 #       non-root user with a NOPASSWD sudoers entry and the real sudo (and
 #       /usr/local/bin); then as root, and as a user whose sudo asks for a
@@ -25,7 +30,9 @@
 #
 # Environment:
 #   HPY_TEST_RELEASE   the release whose installer and archive are used
-#                      (default v1.0.0-alpha.30)
+#                      (default v1.0.0-alpha.30, the last Rust release; a
+#                      release's Linux archive is its gnu one when it has one,
+#                      as the installer itself chooses on glibc, else musl)
 #   HPY_TEST_ASSETS    a directory already holding them, instead of downloading
 #   HPY_TEST_WORK      where to work (default target/installer-test)
 #   HPY_TEST_ONLY      run only these cases (space-separated)
@@ -47,22 +54,53 @@ fail() {
   exit 1
 }
 
-target_for() { # uname -s, uname -m
+local_build=""
+if [[ "${1:-}" == --local ]]; then
+  local_build=1
+  shift
+fi
+
+target_for() { # uname -s, uname -m, installer
   case "$1/$2" in
     Darwin/arm64 | Darwin/aarch64) echo aarch64-apple-darwin ;;
     Darwin/x86_64) echo x86_64-apple-darwin ;;
-    Linux/arm64 | Linux/aarch64) echo aarch64-unknown-linux-musl ;;
-    Linux/x86_64) echo x86_64-unknown-linux-musl ;;
+    Linux/arm64 | Linux/aarch64) linux_target aarch64 "$3" ;;
+    Linux/x86_64) linux_target x86_64 "$3" ;;
     *) fail "no release archive for $1/$2" ;;
   esac
 }
+# The Bun releases have gnu and musl archives, and the installer picks gnu on
+# glibc (these cases run on macOS or ubuntu:24.04); the Rust ones had only a
+# static musl one.
+linux_target() { # arch installer
+  if [[ -n "$local_build" ]] || grep -qF "hpy-cli-$1-unknown-linux-gnu.tar.xz" "$2" 2>/dev/null; then
+    echo "$1-unknown-linux-gnu"
+  else
+    echo "$1-unknown-linux-musl"
+  fi
+}
 
-fetch_assets() { # dir target
+# Puts the installer and the archive for this OS and architecture in a
+# directory: from the release, or (--local) from `dist build` here.
+fetch_assets() { # dir os arch
   mkdir -p "$1"
+  local target
+  if [[ -n "$local_build" ]]; then
+    target="$(target_for "$2" "$3" "")"
+    step "building $target and the installer with dist"
+    (cd "$root" && dist build --artifacts=local --target="$target" >/dev/null \
+      && dist build --artifacts=global >/dev/null) || fail "dist build failed"
+    # As release.yml does.
+    "$root/packaging/patch-installer.sh" "$root/target/distrib/hpy-cli-installer.sh" >/dev/null
+    cp "$root/target/distrib/hpy-cli-installer.sh" "$root/target/distrib/hpy-cli-$target.tar.xz" "$1/"
+    return
+  fi
   local base="https://github.com/happyproto/cli/releases/download/$release"
-  for f in hpy-cli-installer.sh "hpy-cli-$2.tar.xz"; do
-    [[ -f "$1/$f" ]] || curl --proto '=https' --tlsv1.2 -fsSL "$base/$f" -o "$1/$f"
-  done
+  [[ -f "$1/hpy-cli-installer.sh" ]] \
+    || curl --proto '=https' --tlsv1.2 -fsSL "$base/hpy-cli-installer.sh" -o "$1/hpy-cli-installer.sh"
+  target="$(target_for "$2" "$3" "$1/hpy-cli-installer.sh")"
+  [[ -f "$1/hpy-cli-$target.tar.xz" ]] \
+    || curl --proto '=https' --tlsv1.2 -fsSL "$base/hpy-cli-$target.tar.xz" -o "$1/hpy-cli-$target.tar.xz"
 }
 
 # --- In a container ---------------------------------------------------------
@@ -71,11 +109,11 @@ if [[ "${1:-}" == --docker ]]; then
   container="${HPY_TEST_CONTAINER:-hpy-installer-test-$$}"
   arch="$(docker version --format '{{.Server.Arch}}')"
   case "$arch" in
-    arm64 | aarch64) linux_target=aarch64-unknown-linux-musl ;;
-    *) linux_target=x86_64-unknown-linux-musl ;;
+    arm64 | aarch64) arch=aarch64 ;;
+    *) arch=x86_64 ;;
   esac
-  assets="${HPY_TEST_ASSETS:-$work/assets-linux}"
-  fetch_assets "$assets" "$linux_target"
+  assets="${HPY_TEST_ASSETS:-$work/assets-linux${local_build:+-local}}"
+  [[ -n "${HPY_TEST_ASSETS:-}" ]] || fetch_assets "$assets" Linux "$arch"
   trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
   mounts=(-v "$root:/src:ro" -v "$assets:/assets:ro")
   if [[ -n "${HPY_TEST_UPDATE_BINARY:-}" ]]; then
@@ -127,9 +165,8 @@ if [[ "${HPY_TEST_REAL_SUDO:-}" == 1 ]]; then
   real_sudo="$(command -v sudo)" || fail "no sudo to hand commands to"
 fi
 
-target="$(target_for "$(uname -s)" "$(uname -m)")"
-assets="${HPY_TEST_ASSETS:-$work/assets}"
-fetch_assets "$assets" "$target"
+assets="${HPY_TEST_ASSETS:-$work/assets${local_build:+-local}}"
+[[ -n "${HPY_TEST_ASSETS:-}" ]] || fetch_assets "$assets" "$(uname -s)" "$(uname -m)"
 version="$(sed -n 's/^APP_VERSION="\(.*\)"$/\1/p' "$assets/hpy-cli-installer.sh")"
 [[ -n "$version" ]] || fail "$assets/hpy-cli-installer.sh has no APP_VERSION"
 
@@ -206,7 +243,7 @@ _, status = os.waitpid(pid, 0)
 sys.exit(os.waitstatus_to_exitcode(status))
 EOF
 
-step "serving $release's installer and archive"
+step "serving the $version installer and archive from $assets"
 python3 -I -u -m http.server --bind 127.0.0.1 --directory "$assets" 0 > "$work/server.log" 2>&1 &
 server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT

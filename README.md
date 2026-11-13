@@ -52,6 +52,13 @@ without the repository.
 curl -fsSL https://happyproto.github.io/cli/install.sh | sh
 ```
 
+On Alpine, or another Linux without glibc 2.31 or newer, the installer picks
+the musl build, which needs the C++ runtime: `apk add libstdc++` first. (hpy
+up to 1.0.0-alpha.32 was a static Rust binary and needed nothing.) The
+installers and `hpy update` stop and say so when it is missing, so an older
+copy that updates itself is left as it was until `libstdc++` is installed. On
+glibc older than 2.31 there is no build that runs: use npm, below.
+
 That installs the newest **stable** release, of which there is none until
 `1.0.0` is cut — for now use the `beta` channel's installer, below.
 
@@ -84,17 +91,25 @@ powershell -ExecutionPolicy Bypass -c "irm https://happyproto.github.io/cli/inst
 That installs the newest **beta** release. Once `1.0.0` is cut,
 `install.ps1` in its place installs the newest stable one.
 
+**With npm**
+
+With Node 22.20 or newer (or 24.12 or newer):
+
+```sh
+npm install -g hpy@beta
+```
+
+npm keeps that copy up to date, so `hpy update` tells you the `npm` command
+to run instead of replacing it. Prefer one of the options above when you
+don't otherwise need Node: they install a single prebuilt binary.
+
 **From source**
 
 ```sh
-cargo install --git https://github.com/happyproto/cli --locked hpy-cli
+git clone https://github.com/happyproto/cli && cd cli
+npm ci && npm run build
+node dist/hpy.mjs --help
 ```
-
-`--locked` builds the dependency versions this release was tested with.
-Without it cargo resolves them afresh, which builds something nobody tested
-and fails outright whenever one of them has been yanked. Prefer one of the
-options above: they install a prebuilt binary, and `hpy update` can then
-replace it in place.
 
 **Prereleases**
 
@@ -121,8 +136,10 @@ These install the stable channel. For the `beta` or `alpha` channel (see
 After installing, `hpy update` keeps you on the channel you installed from, and
 `hpy channel` moves you between them.
 
-The Linux packages contain a static (musl) binary, so they install on any
-glibc or musl distribution, on x86_64 and arm64.
+The Linux packages contain the glibc build, so they install on glibc
+distributions (Debian, Ubuntu, Fedora and the like), on x86_64 and arm64. On
+Alpine and other musl distributions, use the shell installer, which installs
+the musl build (it needs `libstdc++`: `apk add libstdc++`).
 
 ## How publishing works
 
@@ -519,6 +536,8 @@ seconds.
   to run `hpy update`. After replacing a
   copy `cargo install` built, cargo still records the version it compiled, so
   installing hpy with cargo again rebuilds from source over it.
+- **Installed with npm:** npm owns that copy, so `hpy` prints the command to
+  run instead, e.g. `npm i -g hpy@beta`.
 - **Installed with Homebrew, apt or dnf:** those track the files they own, and
   their next upgrade would revert a binary swapped underneath them, so `hpy`
   prints the command to run instead, e.g. `brew upgrade hpy`. Each channel has
@@ -595,23 +614,54 @@ the key goes in `credentials.json` too, and `hpy registry login` tells you so. S
 `HPY_CREDENTIAL_STORE=keychain` to make that an error instead, or `file` to
 skip the keychain entirely.
 
+With the npm package on macOS, the program that creates the keychain item is
+`node` itself, so the item trusts Node: any Node script you run can read the
+key without a prompt, and a Node upgrade makes Keychain ask again. The
+installed binaries don't share this, since each is its own program. If that
+matters to you, use a binary install, or `HPY_CREDENTIAL_STORE=file`.
+
 On macOS, after `hpy` updates itself, Keychain may ask once whether the new
-`hpy` may use its key. Choose **Always Allow**. The binaries aren't
-code-signed, so macOS sees each update as a new app.
+`hpy` may use its key. Choose **Always Allow**. The macOS binaries are
+signed ad hoc (`codesign --sign -`, which Apple silicon requires to run them at
+all), not with a Developer ID, so macOS sees each update as a new app. The
+install script and Homebrew download them with `curl`, which sets no
+quarantine flag, so Gatekeeper doesn't stop them; a copy downloaded with a
+browser would need `xattr -d com.apple.quarantine hpy` first.
 
 ## Development
 
+hpy is TypeScript. It is developed and tested on Node, and ships two ways:
+as the npm package `hpy`, and as single-file binaries compiled
+with [Bun](https://bun.sh) for the install script, Homebrew, apt and dnf.
+
 ```sh
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo run -p hpy-cli -- --help
+npm ci
+npm run check        # biome, tsc, the build and vitest; what CI runs
+npm run build        # dist/hpy.mjs, the npm package's bundle
+node dist/hpy.mjs --help
+npm run build:bun    # a Bun-compiled binary for this machine, in dist/bun
 ```
 
-| Crate | Responsibility |
+| Directory | Responsibility |
 | --- | --- |
-| `crates/hpy-plugin` | No network: reads `manifest.json` and `hpy.toml`, validates against the registry's rules, computes blob CIDs, builds what the gateway is sent. |
-| `crates/hpy-atproto` | Signing in through HappyView: DPoP keys, PKCE, atproto OAuth with HappyView-signed client assertions, identity resolution via [jacquard](https://crates.io/crates/jacquard). Also the credential and keychain storage, the `Repo` trait (reads from your PDS, writes through HappyView), and the `Registry` trait (queries and publish procedures). |
-| `crates/hpy` | The `hpy` binary: commands, prompts, output. |
+| `src/plugin` | No network: reads `manifest.json` and `hpy.toml`, validates against the registry's rules, computes blob CIDs, builds what the gateway is sent. |
+| `src/atproto` | Signing in through HappyView: DPoP keys, PKCE, atproto OAuth with HappyView-signed client assertions, identity resolution. Also the credential and keychain storage, the `Repo` (reads from your PDS, writes through HappyView), and the `Registry` (queries and publish procedures). |
+| `src/project` | HappyView app projects: `happyview.toml`, the lockfile, scaffolding, script modules, the HappyView binary, and the local network. |
+| `src/commands`, `src/cli.ts`, `src/main.ts` | The `hpy` command tree, prompts and output. |
+| `src/core` | Shared pieces, including ports of the Rust crates whose exact output hpy's messages and files depend on: serde_json, toml and toml_edit, semver, imagesize. |
+
+hpy was written in Rust up to 1.0.0-alpha.32. The TypeScript port keeps its
+output byte for byte: `test/parity` runs every case in `test/parity/cases.txt`
+through both the last Rust build and this one and compares exit codes,
+stdout, stderr, the files written and the requests sent. CI builds the Rust
+reference from the last `alpha` commit that has the crates.
+
+```sh
+RUST_HPY=/path/to/rust/hpy node test/parity/run.mjs --strict-stderr [--offline] [filter]
+```
+
+`test/LEDGER.md` maps each of the Rust tests to the TypeScript test that
+carries its name.
 
 ### Manual verification
 
@@ -647,18 +697,28 @@ the last release:
 - `feat!:` or a `BREAKING CHANGE:` footer makes a major release.
 - Anything else makes no release.
 
-semantic-release then sets the version in `Cargo.toml`, updates `Cargo.lock`
-and `CHANGELOG.md`, commits and tags `vX.Y.Z`, and dispatches `release.yml`.
+semantic-release then sets the version in `package.json` and
+`package-lock.json`, updates `CHANGELOG.md`, commits and tags `vX.Y.Z`, and
+dispatches `release.yml`.
 
-[dist](https://opensource.axo.dev/cargo-dist/) then builds every platform on
-[Depot](https://depot.dev) runners, creates the GitHub Release and updates the
+[dist](https://opensource.axo.dev/cargo-dist/) then compiles hpy with Bun for
+every platform on [Depot](https://depot.dev) runners, creates the GitHub Release and updates the
 Homebrew formula. After that, `publish-linux-packages.yml` builds the
 `.deb`/`.rpm` packages, attaches them to the release, and publishes them to the
-apt/yum repository on the `gh-pages` branch. Every release goes to its own
+apt/yum repository on the `gh-pages` branch, and `publish-npm.yml` publishes
+the npm package under its channel's dist-tag (`latest`, `beta` or `alpha`). Every release goes to its own
 channel only: the `hpy`, `hpy-beta` or `hpy-alpha` formula, and the `stable`,
 `beta` or `alpha` apt suite and yum repository (`packaging/channel.sh` decides
 which). A prerelease no channel ships, such as `-rc.1`, gets packages attached
 to its release and is published nowhere else.
+
+`release.yml` is dist's generated workflow with one hand-added step:
+`packaging/patch-installer.sh` adds the musl runtime check (libstdc++, glibc
+2.31) to dist's shell installer before it is uploaded. `dist-workspace.toml`
+pins dist and sets `allow-dirty = ["ci"]` so dist leaves the workflow alone.
+After a dist upgrade, regenerate the workflow (`dist generate`), add that step
+back, and run `packaging/test-musl-guard.sh` (CI's `packaging` job does): the
+patch script fails if dist's installer template no longer has its anchors.
 
 Never edit the version by hand. If `main` is ever protected, add a
 `RELEASE_TOKEN` secret: a token that can push to it.
@@ -671,6 +731,13 @@ Repository setup:
   tap with Contents: read and write. This repository needs the
   `INFRA_APP_CLIENT_ID` variable and the `INFRA_APP_PRIVATE_KEY` secret, the
   same pair `happyproto/provisioner` uses.
+- **npm:** `publish-npm.yml` publishes with npm trusted publishing, so there
+  is no token secret. Set it up once on npmjs.com: the `hpy` package's
+  settings, Trusted publisher, GitHub Actions, repository `happyproto/cli`,
+  with both `release.yml` (the workflow that runs) and `publish-npm.yml` (the
+  reusable one it calls) registered. If a publish fails with `E404`, the
+  trusted publisher didn't match: check it, then re-run the failed job; a
+  re-run skips a version npm already has.
 - **Depot:** the `happyproto` organization must be connected to Depot.
 - **Package signing key:** this is done. The key "HappyProto Packages
   <packages@happyproto.at>" has fingerprint
@@ -688,7 +755,7 @@ To re-publish packages for an existing release, run the *Publish Linux
 packages* workflow by hand with its tag.
 
 `packaging/test-repo.sh` tests the whole Linux path in Docker: it builds a
-static `hpy`, packages and publishes it to a local repository with a
+`hpy` with Bun, packages and publishes it to a local repository with a
 throwaway key, installs it with `apt` on Debian and `dnf` on Fedora, then
 publishes an alpha and a newer stable version and checks both upgrade within
 their channel, then switches both to the alpha channel with the commands

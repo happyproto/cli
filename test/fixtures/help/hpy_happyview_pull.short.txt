@@ -1,0 +1,24 @@
+Build a project from what an instance serves: its lexicons, scripts, plugins and settings
+
+Usage: hpy happyview pull [OPTIONS] [DIR]
+
+Arguments:
+  [DIR]  Directory to create, relative to the current one (default: one named after the instance's
+         host)
+
+Options:
+      --json                Print the result as JSON on stdout
+      --url <URL>           The instance, e.g. https://api.example.com (default: HPY_HV_URL, else
+                            the only one you are signed in to)
+      --legacy              The instance runs HappyView v2: sign in with an API key and rewrite each
+                            script for v3
+      --no-input            Never prompt; fail when a value is missing. Irreversible actions still
+                            need --yes. Implied without a terminal
+      --api-key-env <NAME>  With --legacy, the environment variable holding the v2 API key (default:
+                            HAPPYVIEW_API_KEY); without it, the key is asked for
+  -C <DIR>                  Run as if started in DIR
+      --diff                Compare the instance with the project in DIR and print a unified diff;
+                            writes nothing
+      --dry-run             Print the files and the happyview.toml a pull would write, and write
+                            nothing
+  -h, --help                Print help (see more with '--help')

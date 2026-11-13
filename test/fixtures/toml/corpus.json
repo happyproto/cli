@@ -1,0 +1,6365 @@
+[
+  {
+    "name": "table empty",
+    "op": "table",
+    "input": ""
+  },
+  {
+    "name": "value empty",
+    "op": "value",
+    "input": ""
+  },
+  {
+    "name": "doc empty",
+    "op": "doc",
+    "input": ""
+  },
+  {
+    "name": "table only newline",
+    "op": "table",
+    "input": "\n"
+  },
+  {
+    "name": "value only newline",
+    "op": "value",
+    "input": "\n"
+  },
+  {
+    "name": "doc only newline",
+    "op": "doc",
+    "input": "\n"
+  },
+  {
+    "name": "table only comment",
+    "op": "table",
+    "input": "# c"
+  },
+  {
+    "name": "value only comment",
+    "op": "value",
+    "input": "# c"
+  },
+  {
+    "name": "doc only comment",
+    "op": "doc",
+    "input": "# c"
+  },
+  {
+    "name": "table simple no newline",
+    "op": "table",
+    "input": "a = 1"
+  },
+  {
+    "name": "value simple no newline",
+    "op": "value",
+    "input": "a = 1"
+  },
+  {
+    "name": "doc simple no newline",
+    "op": "doc",
+    "input": "a = 1"
+  },
+  {
+    "name": "table simple",
+    "op": "table",
+    "input": "a = 1\n"
+  },
+  {
+    "name": "value simple",
+    "op": "value",
+    "input": "a = 1\n"
+  },
+  {
+    "name": "doc simple",
+    "op": "doc",
+    "input": "a = 1\n"
+  },
+  {
+    "name": "table crlf",
+    "op": "table",
+    "input": "a=1\r\nb = 'x'\r\n\r\n[t]\r\nc = true\r\n"
+  },
+  {
+    "name": "value crlf",
+    "op": "value",
+    "input": "a=1\r\nb = 'x'\r\n\r\n[t]\r\nc = true\r\n"
+  },
+  {
+    "name": "doc crlf",
+    "op": "doc",
+    "input": "a=1\r\nb = 'x'\r\n\r\n[t]\r\nc = true\r\n"
+  },
+  {
+    "name": "table lone cr",
+    "op": "table",
+    "input": "a = 1\r"
+  },
+  {
+    "name": "value lone cr",
+    "op": "value",
+    "input": "a = 1\r"
+  },
+  {
+    "name": "doc lone cr",
+    "op": "doc",
+    "input": "a = 1\r"
+  },
+  {
+    "name": "table lone cr mid",
+    "op": "table",
+    "input": "a = 1\rb = 2\n"
+  },
+  {
+    "name": "value lone cr mid",
+    "op": "value",
+    "input": "a = 1\rb = 2\n"
+  },
+  {
+    "name": "doc lone cr mid",
+    "op": "doc",
+    "input": "a = 1\rb = 2\n"
+  },
+  {
+    "name": "table bom",
+    "op": "table",
+    "input": "﻿a = 1\n"
+  },
+  {
+    "name": "value bom",
+    "op": "value",
+    "input": "﻿a = 1\n"
+  },
+  {
+    "name": "doc bom",
+    "op": "doc",
+    "input": "﻿a = 1\n"
+  },
+  {
+    "name": "table tabs",
+    "op": "table",
+    "input": "a\t=\t1\n[\tt\t]\nb =\t2\n"
+  },
+  {
+    "name": "value tabs",
+    "op": "value",
+    "input": "a\t=\t1\n[\tt\t]\nb =\t2\n"
+  },
+  {
+    "name": "doc tabs",
+    "op": "doc",
+    "input": "a\t=\t1\n[\tt\t]\nb =\t2\n"
+  },
+  {
+    "name": "table unclosed header",
+    "op": "table",
+    "input": "[a"
+  },
+  {
+    "name": "value unclosed header",
+    "op": "value",
+    "input": "[a"
+  },
+  {
+    "name": "doc unclosed header",
+    "op": "doc",
+    "input": "[a"
+  },
+  {
+    "name": "table unclosed header nl",
+    "op": "table",
+    "input": "[a\nb = 1\n"
+  },
+  {
+    "name": "value unclosed header nl",
+    "op": "value",
+    "input": "[a\nb = 1\n"
+  },
+  {
+    "name": "doc unclosed header nl",
+    "op": "doc",
+    "input": "[a\nb = 1\n"
+  },
+  {
+    "name": "table unclosed aot",
+    "op": "table",
+    "input": "[[a]\n"
+  },
+  {
+    "name": "value unclosed aot",
+    "op": "value",
+    "input": "[[a]\n"
+  },
+  {
+    "name": "doc unclosed aot",
+    "op": "doc",
+    "input": "[[a]\n"
+  },
+  {
+    "name": "table aot extra close",
+    "op": "table",
+    "input": "[[a]]]\n"
+  },
+  {
+    "name": "value aot extra close",
+    "op": "value",
+    "input": "[[a]]]\n"
+  },
+  {
+    "name": "doc aot extra close",
+    "op": "doc",
+    "input": "[[a]]]\n"
+  },
+  {
+    "name": "table empty header",
+    "op": "table",
+    "input": "[]\n"
+  },
+  {
+    "name": "value empty header",
+    "op": "value",
+    "input": "[]\n"
+  },
+  {
+    "name": "doc empty header",
+    "op": "doc",
+    "input": "[]\n"
+  },
+  {
+    "name": "table header trailing dot",
+    "op": "table",
+    "input": "[a.]\n"
+  },
+  {
+    "name": "value header trailing dot",
+    "op": "value",
+    "input": "[a.]\n"
+  },
+  {
+    "name": "doc header trailing dot",
+    "op": "doc",
+    "input": "[a.]\n"
+  },
+  {
+    "name": "table header leading dot",
+    "op": "table",
+    "input": "[.a]\n"
+  },
+  {
+    "name": "value header leading dot",
+    "op": "value",
+    "input": "[.a]\n"
+  },
+  {
+    "name": "doc header leading dot",
+    "op": "doc",
+    "input": "[.a]\n"
+  },
+  {
+    "name": "table header space key",
+    "op": "table",
+    "input": "[a b]\n"
+  },
+  {
+    "name": "value header space key",
+    "op": "value",
+    "input": "[a b]\n"
+  },
+  {
+    "name": "doc header space key",
+    "op": "doc",
+    "input": "[a b]\n"
+  },
+  {
+    "name": "table lone close bracket",
+    "op": "table",
+    "input": "]\n"
+  },
+  {
+    "name": "value lone close bracket",
+    "op": "value",
+    "input": "]\n"
+  },
+  {
+    "name": "doc lone close bracket",
+    "op": "doc",
+    "input": "]\n"
+  },
+  {
+    "name": "table header twice",
+    "op": "table",
+    "input": "[a]\n[a]\n"
+  },
+  {
+    "name": "value header twice",
+    "op": "value",
+    "input": "[a]\n[a]\n"
+  },
+  {
+    "name": "doc header twice",
+    "op": "doc",
+    "input": "[a]\n[a]\n"
+  },
+  {
+    "name": "table header twice with body",
+    "op": "table",
+    "input": "[a]\nb=1\n[a]\nc=2\n"
+  },
+  {
+    "name": "value header twice with body",
+    "op": "value",
+    "input": "[a]\nb=1\n[a]\nc=2\n"
+  },
+  {
+    "name": "doc header twice with body",
+    "op": "doc",
+    "input": "[a]\nb=1\n[a]\nc=2\n"
+  },
+  {
+    "name": "table missing value",
+    "op": "table",
+    "input": "a = \n"
+  },
+  {
+    "name": "value missing value",
+    "op": "value",
+    "input": "a = \n"
+  },
+  {
+    "name": "doc missing value",
+    "op": "doc",
+    "input": "a = \n"
+  },
+  {
+    "name": "table missing value eof",
+    "op": "table",
+    "input": "a ="
+  },
+  {
+    "name": "value missing value eof",
+    "op": "value",
+    "input": "a ="
+  },
+  {
+    "name": "doc missing value eof",
+    "op": "doc",
+    "input": "a ="
+  },
+  {
+    "name": "table key only",
+    "op": "table",
+    "input": "a\n"
+  },
+  {
+    "name": "value key only",
+    "op": "value",
+    "input": "a\n"
+  },
+  {
+    "name": "doc key only",
+    "op": "doc",
+    "input": "a\n"
+  },
+  {
+    "name": "table key only eof",
+    "op": "table",
+    "input": "a"
+  },
+  {
+    "name": "value key only eof",
+    "op": "value",
+    "input": "a"
+  },
+  {
+    "name": "doc key only eof",
+    "op": "doc",
+    "input": "a"
+  },
+  {
+    "name": "table equals only",
+    "op": "table",
+    "input": "= 1\n"
+  },
+  {
+    "name": "value equals only",
+    "op": "value",
+    "input": "= 1\n"
+  },
+  {
+    "name": "doc equals only",
+    "op": "doc",
+    "input": "= 1\n"
+  },
+  {
+    "name": "table two values",
+    "op": "table",
+    "input": "a = 1 2\n"
+  },
+  {
+    "name": "value two values",
+    "op": "value",
+    "input": "a = 1 2\n"
+  },
+  {
+    "name": "doc two values",
+    "op": "doc",
+    "input": "a = 1 2\n"
+  },
+  {
+    "name": "table after comment key",
+    "op": "table",
+    "input": "a = 1 # c\nb\n"
+  },
+  {
+    "name": "value after comment key",
+    "op": "value",
+    "input": "a = 1 # c\nb\n"
+  },
+  {
+    "name": "doc after comment key",
+    "op": "doc",
+    "input": "a = 1 # c\nb\n"
+  },
+  {
+    "name": "table unclosed literal",
+    "op": "table",
+    "input": "a = 'x\n"
+  },
+  {
+    "name": "value unclosed literal",
+    "op": "value",
+    "input": "a = 'x\n"
+  },
+  {
+    "name": "doc unclosed literal",
+    "op": "doc",
+    "input": "a = 'x\n"
+  },
+  {
+    "name": "table unclosed basic",
+    "op": "table",
+    "input": "a = \"x\n"
+  },
+  {
+    "name": "value unclosed basic",
+    "op": "value",
+    "input": "a = \"x\n"
+  },
+  {
+    "name": "doc unclosed basic",
+    "op": "doc",
+    "input": "a = \"x\n"
+  },
+  {
+    "name": "table unclosed basic eof",
+    "op": "table",
+    "input": "a = \"x"
+  },
+  {
+    "name": "value unclosed basic eof",
+    "op": "value",
+    "input": "a = \"x"
+  },
+  {
+    "name": "doc unclosed basic eof",
+    "op": "doc",
+    "input": "a = \"x"
+  },
+  {
+    "name": "table bad escape",
+    "op": "table",
+    "input": "a = \"\\q\"\n"
+  },
+  {
+    "name": "value bad escape",
+    "op": "value",
+    "input": "a = \"\\q\"\n"
+  },
+  {
+    "name": "doc bad escape",
+    "op": "doc",
+    "input": "a = \"\\q\"\n"
+  },
+  {
+    "name": "table short unicode escape",
+    "op": "table",
+    "input": "a = \"\\u12\"\n"
+  },
+  {
+    "name": "value short unicode escape",
+    "op": "value",
+    "input": "a = \"\\u12\"\n"
+  },
+  {
+    "name": "doc short unicode escape",
+    "op": "doc",
+    "input": "a = \"\\u12\"\n"
+  },
+  {
+    "name": "table surrogate escape",
+    "op": "table",
+    "input": "a = \"\\uD800\"\n"
+  },
+  {
+    "name": "value surrogate escape",
+    "op": "value",
+    "input": "a = \"\\uD800\"\n"
+  },
+  {
+    "name": "doc surrogate escape",
+    "op": "doc",
+    "input": "a = \"\\uD800\"\n"
+  },
+  {
+    "name": "table big unicode escape",
+    "op": "table",
+    "input": "a = \"\\U0011FFFF\"\n"
+  },
+  {
+    "name": "value big unicode escape",
+    "op": "value",
+    "input": "a = \"\\U0011FFFF\"\n"
+  },
+  {
+    "name": "doc big unicode escape",
+    "op": "doc",
+    "input": "a = \"\\U0011FFFF\"\n"
+  },
+  {
+    "name": "table x escape",
+    "op": "table",
+    "input": "a = \"\\x41\\e\"\n"
+  },
+  {
+    "name": "value x escape",
+    "op": "value",
+    "input": "a = \"\\x41\\e\"\n"
+  },
+  {
+    "name": "doc x escape",
+    "op": "doc",
+    "input": "a = \"\\x41\\e\"\n"
+  },
+  {
+    "name": "table tab in string",
+    "op": "table",
+    "input": "a = \"tab\there\"\n"
+  },
+  {
+    "name": "value tab in string",
+    "op": "value",
+    "input": "a = \"tab\there\"\n"
+  },
+  {
+    "name": "doc tab in string",
+    "op": "doc",
+    "input": "a = \"tab\there\"\n"
+  },
+  {
+    "name": "table control in string",
+    "op": "table",
+    "input": "a = \"ctrl\u0001x\"\n"
+  },
+  {
+    "name": "value control in string",
+    "op": "value",
+    "input": "a = \"ctrl\u0001x\"\n"
+  },
+  {
+    "name": "doc control in string",
+    "op": "doc",
+    "input": "a = \"ctrl\u0001x\"\n"
+  },
+  {
+    "name": "table del in string",
+    "op": "table",
+    "input": "a = \"delx\"\n"
+  },
+  {
+    "name": "value del in string",
+    "op": "value",
+    "input": "a = \"delx\"\n"
+  },
+  {
+    "name": "doc del in string",
+    "op": "doc",
+    "input": "a = \"delx\"\n"
+  },
+  {
+    "name": "table control in literal",
+    "op": "table",
+    "input": "a = 'ctrl\u0001x'\n"
+  },
+  {
+    "name": "value control in literal",
+    "op": "value",
+    "input": "a = 'ctrl\u0001x'\n"
+  },
+  {
+    "name": "doc control in literal",
+    "op": "doc",
+    "input": "a = 'ctrl\u0001x'\n"
+  },
+  {
+    "name": "table unclosed ml literal",
+    "op": "table",
+    "input": "a = '''x\n"
+  },
+  {
+    "name": "value unclosed ml literal",
+    "op": "value",
+    "input": "a = '''x\n"
+  },
+  {
+    "name": "doc unclosed ml literal",
+    "op": "doc",
+    "input": "a = '''x\n"
+  },
+  {
+    "name": "table unclosed ml basic",
+    "op": "table",
+    "input": "a = \"\"\"x\n"
+  },
+  {
+    "name": "value unclosed ml basic",
+    "op": "value",
+    "input": "a = \"\"\"x\n"
+  },
+  {
+    "name": "doc unclosed ml basic",
+    "op": "doc",
+    "input": "a = \"\"\"x\n"
+  },
+  {
+    "name": "table ml basic continuation",
+    "op": "table",
+    "input": "a = \"\"\"\nline \\\n   more\n  \"\"\"\n"
+  },
+  {
+    "name": "value ml basic continuation",
+    "op": "value",
+    "input": "a = \"\"\"\nline \\\n   more\n  \"\"\"\n"
+  },
+  {
+    "name": "doc ml basic continuation",
+    "op": "doc",
+    "input": "a = \"\"\"\nline \\\n   more\n  \"\"\"\n"
+  },
+  {
+    "name": "table ml basic quotes",
+    "op": "table",
+    "input": "a = \"\"\"a\"\"b\"\"\"\"\"\n"
+  },
+  {
+    "name": "value ml basic quotes",
+    "op": "value",
+    "input": "a = \"\"\"a\"\"b\"\"\"\"\"\n"
+  },
+  {
+    "name": "doc ml basic quotes",
+    "op": "doc",
+    "input": "a = \"\"\"a\"\"b\"\"\"\"\"\n"
+  },
+  {
+    "name": "table ml literal quotes",
+    "op": "table",
+    "input": "a = '''a''b'''''\n"
+  },
+  {
+    "name": "value ml literal quotes",
+    "op": "value",
+    "input": "a = '''a''b'''''\n"
+  },
+  {
+    "name": "doc ml literal quotes",
+    "op": "doc",
+    "input": "a = '''a''b'''''\n"
+  },
+  {
+    "name": "table ml basic cr",
+    "op": "table",
+    "input": "a = \"\"\"x\ry\"\"\"\n"
+  },
+  {
+    "name": "value ml basic cr",
+    "op": "value",
+    "input": "a = \"\"\"x\ry\"\"\"\n"
+  },
+  {
+    "name": "doc ml basic cr",
+    "op": "doc",
+    "input": "a = \"\"\"x\ry\"\"\"\n"
+  },
+  {
+    "name": "table ml basic crlf",
+    "op": "table",
+    "input": "a = \"\"\"\r\nx\r\ny\"\"\"\r\n"
+  },
+  {
+    "name": "value ml basic crlf",
+    "op": "value",
+    "input": "a = \"\"\"\r\nx\r\ny\"\"\"\r\n"
+  },
+  {
+    "name": "doc ml basic crlf",
+    "op": "doc",
+    "input": "a = \"\"\"\r\nx\r\ny\"\"\"\r\n"
+  },
+  {
+    "name": "table ml escaped nl bad",
+    "op": "table",
+    "input": "a = \"\"\"x\\  y\"\"\"\n"
+  },
+  {
+    "name": "value ml escaped nl bad",
+    "op": "value",
+    "input": "a = \"\"\"x\\  y\"\"\"\n"
+  },
+  {
+    "name": "doc ml escaped nl bad",
+    "op": "doc",
+    "input": "a = \"\"\"x\\  y\"\"\"\n"
+  },
+  {
+    "name": "table leading zero",
+    "op": "table",
+    "input": "a = 01\n"
+  },
+  {
+    "name": "value leading zero",
+    "op": "value",
+    "input": "a = 01\n"
+  },
+  {
+    "name": "doc leading zero",
+    "op": "doc",
+    "input": "a = 01\n"
+  },
+  {
+    "name": "table double underscore",
+    "op": "table",
+    "input": "a = 1__0\n"
+  },
+  {
+    "name": "value double underscore",
+    "op": "value",
+    "input": "a = 1__0\n"
+  },
+  {
+    "name": "doc double underscore",
+    "op": "doc",
+    "input": "a = 1__0\n"
+  },
+  {
+    "name": "table leading underscore",
+    "op": "table",
+    "input": "a = _1\n"
+  },
+  {
+    "name": "value leading underscore",
+    "op": "value",
+    "input": "a = _1\n"
+  },
+  {
+    "name": "doc leading underscore",
+    "op": "doc",
+    "input": "a = _1\n"
+  },
+  {
+    "name": "table trailing underscore",
+    "op": "table",
+    "input": "a = 1_\n"
+  },
+  {
+    "name": "value trailing underscore",
+    "op": "value",
+    "input": "a = 1_\n"
+  },
+  {
+    "name": "doc trailing underscore",
+    "op": "doc",
+    "input": "a = 1_\n"
+  },
+  {
+    "name": "table empty hex",
+    "op": "table",
+    "input": "a = 0x\n"
+  },
+  {
+    "name": "value empty hex",
+    "op": "value",
+    "input": "a = 0x\n"
+  },
+  {
+    "name": "doc empty hex",
+    "op": "doc",
+    "input": "a = 0x\n"
+  },
+  {
+    "name": "table bad hex",
+    "op": "table",
+    "input": "a = 0xG\n"
+  },
+  {
+    "name": "value bad hex",
+    "op": "value",
+    "input": "a = 0xG\n"
+  },
+  {
+    "name": "doc bad hex",
+    "op": "doc",
+    "input": "a = 0xG\n"
+  },
+  {
+    "name": "table upper hex prefix",
+    "op": "table",
+    "input": "a = 0X1\n"
+  },
+  {
+    "name": "value upper hex prefix",
+    "op": "value",
+    "input": "a = 0X1\n"
+  },
+  {
+    "name": "doc upper hex prefix",
+    "op": "doc",
+    "input": "a = 0X1\n"
+  },
+  {
+    "name": "table signed hex",
+    "op": "table",
+    "input": "a = +0x1\n"
+  },
+  {
+    "name": "value signed hex",
+    "op": "value",
+    "input": "a = +0x1\n"
+  },
+  {
+    "name": "doc signed hex",
+    "op": "doc",
+    "input": "a = +0x1\n"
+  },
+  {
+    "name": "table bad octal",
+    "op": "table",
+    "input": "a = 0o8\n"
+  },
+  {
+    "name": "value bad octal",
+    "op": "value",
+    "input": "a = 0o8\n"
+  },
+  {
+    "name": "doc bad octal",
+    "op": "doc",
+    "input": "a = 0o8\n"
+  },
+  {
+    "name": "table bad binary",
+    "op": "table",
+    "input": "a = 0b2\n"
+  },
+  {
+    "name": "value bad binary",
+    "op": "value",
+    "input": "a = 0b2\n"
+  },
+  {
+    "name": "doc bad binary",
+    "op": "doc",
+    "input": "a = 0b2\n"
+  },
+  {
+    "name": "table decimal prefix",
+    "op": "table",
+    "input": "a = 0d10\n"
+  },
+  {
+    "name": "value decimal prefix",
+    "op": "value",
+    "input": "a = 0d10\n"
+  },
+  {
+    "name": "doc decimal prefix",
+    "op": "doc",
+    "input": "a = 0d10\n"
+  },
+  {
+    "name": "table dot no fraction",
+    "op": "table",
+    "input": "a = 1.\n"
+  },
+  {
+    "name": "value dot no fraction",
+    "op": "value",
+    "input": "a = 1.\n"
+  },
+  {
+    "name": "doc dot no fraction",
+    "op": "doc",
+    "input": "a = 1.\n"
+  },
+  {
+    "name": "table leading dot",
+    "op": "table",
+    "input": "a = .1\n"
+  },
+  {
+    "name": "value leading dot",
+    "op": "value",
+    "input": "a = .1\n"
+  },
+  {
+    "name": "doc leading dot",
+    "op": "doc",
+    "input": "a = .1\n"
+  },
+  {
+    "name": "table exponent no digits",
+    "op": "table",
+    "input": "a = 1e\n"
+  },
+  {
+    "name": "value exponent no digits",
+    "op": "value",
+    "input": "a = 1e\n"
+  },
+  {
+    "name": "doc exponent no digits",
+    "op": "doc",
+    "input": "a = 1e\n"
+  },
+  {
+    "name": "table exponent sign no digits",
+    "op": "table",
+    "input": "a = 1e+\n"
+  },
+  {
+    "name": "value exponent sign no digits",
+    "op": "value",
+    "input": "a = 1e+\n"
+  },
+  {
+    "name": "doc exponent sign no digits",
+    "op": "doc",
+    "input": "a = 1e+\n"
+  },
+  {
+    "name": "table i64 max",
+    "op": "table",
+    "input": "a = 9223372036854775807\n"
+  },
+  {
+    "name": "value i64 max",
+    "op": "value",
+    "input": "a = 9223372036854775807\n"
+  },
+  {
+    "name": "doc i64 max",
+    "op": "doc",
+    "input": "a = 9223372036854775807\n"
+  },
+  {
+    "name": "table i64 min",
+    "op": "table",
+    "input": "a = -9223372036854775808\n"
+  },
+  {
+    "name": "value i64 min",
+    "op": "value",
+    "input": "a = -9223372036854775808\n"
+  },
+  {
+    "name": "doc i64 min",
+    "op": "doc",
+    "input": "a = -9223372036854775808\n"
+  },
+  {
+    "name": "table past i64",
+    "op": "table",
+    "input": "a = 9223372036854775808\n"
+  },
+  {
+    "name": "value past i64",
+    "op": "value",
+    "input": "a = 9223372036854775808\n"
+  },
+  {
+    "name": "doc past i64",
+    "op": "doc",
+    "input": "a = 9223372036854775808\n"
+  },
+  {
+    "name": "table below i64",
+    "op": "table",
+    "input": "a = -9223372036854775809\n"
+  },
+  {
+    "name": "value below i64",
+    "op": "value",
+    "input": "a = -9223372036854775809\n"
+  },
+  {
+    "name": "doc below i64",
+    "op": "doc",
+    "input": "a = -9223372036854775809\n"
+  },
+  {
+    "name": "table huge",
+    "op": "table",
+    "input": "a = 999999999999999999999999999999999999999999\n"
+  },
+  {
+    "name": "value huge",
+    "op": "value",
+    "input": "a = 999999999999999999999999999999999999999999\n"
+  },
+  {
+    "name": "doc huge",
+    "op": "doc",
+    "input": "a = 999999999999999999999999999999999999999999\n"
+  },
+  {
+    "name": "table hex big",
+    "op": "table",
+    "input": "a = 0xffffffffffffffff\n"
+  },
+  {
+    "name": "value hex big",
+    "op": "value",
+    "input": "a = 0xffffffffffffffff\n"
+  },
+  {
+    "name": "doc hex big",
+    "op": "doc",
+    "input": "a = 0xffffffffffffffff\n"
+  },
+  {
+    "name": "table float overflow",
+    "op": "table",
+    "input": "a = 1.5e400\n"
+  },
+  {
+    "name": "value float overflow",
+    "op": "value",
+    "input": "a = 1.5e400\n"
+  },
+  {
+    "name": "doc float overflow",
+    "op": "doc",
+    "input": "a = 1.5e400\n"
+  },
+  {
+    "name": "table inf",
+    "op": "table",
+    "input": "a = inf\nb = -inf\nc = +inf\n"
+  },
+  {
+    "name": "value inf",
+    "op": "value",
+    "input": "a = inf\nb = -inf\nc = +inf\n"
+  },
+  {
+    "name": "doc inf",
+    "op": "doc",
+    "input": "a = inf\nb = -inf\nc = +inf\n"
+  },
+  {
+    "name": "table nan",
+    "op": "table",
+    "input": "a = nan\nb = -nan\nc = +nan\n"
+  },
+  {
+    "name": "value nan",
+    "op": "value",
+    "input": "a = nan\nb = -nan\nc = +nan\n"
+  },
+  {
+    "name": "doc nan",
+    "op": "doc",
+    "input": "a = nan\nb = -nan\nc = +nan\n"
+  },
+  {
+    "name": "table inf typo",
+    "op": "table",
+    "input": "a = infx\n"
+  },
+  {
+    "name": "value inf typo",
+    "op": "value",
+    "input": "a = infx\n"
+  },
+  {
+    "name": "doc inf typo",
+    "op": "doc",
+    "input": "a = infx\n"
+  },
+  {
+    "name": "table true typo",
+    "op": "table",
+    "input": "a = trueish\n"
+  },
+  {
+    "name": "value true typo",
+    "op": "value",
+    "input": "a = trueish\n"
+  },
+  {
+    "name": "doc true typo",
+    "op": "doc",
+    "input": "a = trueish\n"
+  },
+  {
+    "name": "table capital true",
+    "op": "table",
+    "input": "a = True\n"
+  },
+  {
+    "name": "value capital true",
+    "op": "value",
+    "input": "a = True\n"
+  },
+  {
+    "name": "doc capital true",
+    "op": "doc",
+    "input": "a = True\n"
+  },
+  {
+    "name": "table double sign",
+    "op": "table",
+    "input": "a = --1\n"
+  },
+  {
+    "name": "value double sign",
+    "op": "value",
+    "input": "a = --1\n"
+  },
+  {
+    "name": "doc double sign",
+    "op": "doc",
+    "input": "a = --1\n"
+  },
+  {
+    "name": "table exponent leading zero",
+    "op": "table",
+    "input": "a = 1.0e01\n"
+  },
+  {
+    "name": "value exponent leading zero",
+    "op": "value",
+    "input": "a = 1.0e01\n"
+  },
+  {
+    "name": "doc exponent leading zero",
+    "op": "doc",
+    "input": "a = 1.0e01\n"
+  },
+  {
+    "name": "table floats",
+    "op": "table",
+    "input": "a = 1.0\nb = -0.0\nc = 3.14159\nd = 1e10\ne = 5e-324\nf = 1_000.5\ng = 6.02e+23\nh = 0.1\n"
+  },
+  {
+    "name": "value floats",
+    "op": "value",
+    "input": "a = 1.0\nb = -0.0\nc = 3.14159\nd = 1e10\ne = 5e-324\nf = 1_000.5\ng = 6.02e+23\nh = 0.1\n"
+  },
+  {
+    "name": "doc floats",
+    "op": "doc",
+    "input": "a = 1.0\nb = -0.0\nc = 3.14159\nd = 1e10\ne = 5e-324\nf = 1_000.5\ng = 6.02e+23\nh = 0.1\n"
+  },
+  {
+    "name": "table ints",
+    "op": "table",
+    "input": "a = 0\nb = +7\nc = -7\nd = 0xDEAD_beef\ne = 0o755\nf = 0b1101\ng = 1_000\n"
+  },
+  {
+    "name": "value ints",
+    "op": "value",
+    "input": "a = 0\nb = +7\nc = -7\nd = 0xDEAD_beef\ne = 0o755\nf = 0b1101\ng = 1_000\n"
+  },
+  {
+    "name": "doc ints",
+    "op": "doc",
+    "input": "a = 0\nb = +7\nc = -7\nd = 0xDEAD_beef\ne = 0o755\nf = 0b1101\ng = 1_000\n"
+  },
+  {
+    "name": "table date",
+    "op": "table",
+    "input": "a = 1979-05-27\n"
+  },
+  {
+    "name": "value date",
+    "op": "value",
+    "input": "a = 1979-05-27\n"
+  },
+  {
+    "name": "doc date",
+    "op": "doc",
+    "input": "a = 1979-05-27\n"
+  },
+  {
+    "name": "table offset datetime",
+    "op": "table",
+    "input": "a = 1979-05-27T07:32:00Z\n"
+  },
+  {
+    "name": "value offset datetime",
+    "op": "value",
+    "input": "a = 1979-05-27T07:32:00Z\n"
+  },
+  {
+    "name": "doc offset datetime",
+    "op": "doc",
+    "input": "a = 1979-05-27T07:32:00Z\n"
+  },
+  {
+    "name": "table space datetime",
+    "op": "table",
+    "input": "a = 1979-05-27 07:32:00\n"
+  },
+  {
+    "name": "value space datetime",
+    "op": "value",
+    "input": "a = 1979-05-27 07:32:00\n"
+  },
+  {
+    "name": "doc space datetime",
+    "op": "doc",
+    "input": "a = 1979-05-27 07:32:00\n"
+  },
+  {
+    "name": "table lower t datetime",
+    "op": "table",
+    "input": "a = 1979-05-27t07:32:00z\n"
+  },
+  {
+    "name": "value lower t datetime",
+    "op": "value",
+    "input": "a = 1979-05-27t07:32:00z\n"
+  },
+  {
+    "name": "doc lower t datetime",
+    "op": "doc",
+    "input": "a = 1979-05-27t07:32:00z\n"
+  },
+  {
+    "name": "table bad month",
+    "op": "table",
+    "input": "a = 1979-13-01\n"
+  },
+  {
+    "name": "value bad month",
+    "op": "value",
+    "input": "a = 1979-13-01\n"
+  },
+  {
+    "name": "doc bad month",
+    "op": "doc",
+    "input": "a = 1979-13-01\n"
+  },
+  {
+    "name": "table bad day",
+    "op": "table",
+    "input": "a = 1979-02-30\n"
+  },
+  {
+    "name": "value bad day",
+    "op": "value",
+    "input": "a = 1979-02-30\n"
+  },
+  {
+    "name": "doc bad day",
+    "op": "doc",
+    "input": "a = 1979-02-30\n"
+  },
+  {
+    "name": "table leap day",
+    "op": "table",
+    "input": "a = 2024-02-29\n"
+  },
+  {
+    "name": "value leap day",
+    "op": "value",
+    "input": "a = 2024-02-29\n"
+  },
+  {
+    "name": "doc leap day",
+    "op": "doc",
+    "input": "a = 2024-02-29\n"
+  },
+  {
+    "name": "table non leap day",
+    "op": "table",
+    "input": "a = 2023-02-29\n"
+  },
+  {
+    "name": "value non leap day",
+    "op": "value",
+    "input": "a = 2023-02-29\n"
+  },
+  {
+    "name": "doc non leap day",
+    "op": "doc",
+    "input": "a = 2023-02-29\n"
+  },
+  {
+    "name": "table local time",
+    "op": "table",
+    "input": "a = 07:32:00\nb = 07:32:00.5\nc = 07:32\n"
+  },
+  {
+    "name": "value local time",
+    "op": "value",
+    "input": "a = 07:32:00\nb = 07:32:00.5\nc = 07:32\n"
+  },
+  {
+    "name": "doc local time",
+    "op": "doc",
+    "input": "a = 07:32:00\nb = 07:32:00.5\nc = 07:32\n"
+  },
+  {
+    "name": "table bad hour",
+    "op": "table",
+    "input": "a = 25:00:00\n"
+  },
+  {
+    "name": "value bad hour",
+    "op": "value",
+    "input": "a = 25:00:00\n"
+  },
+  {
+    "name": "doc bad hour",
+    "op": "doc",
+    "input": "a = 25:00:00\n"
+  },
+  {
+    "name": "table no seconds",
+    "op": "table",
+    "input": "a = 1979-05-27T07:32\n"
+  },
+  {
+    "name": "value no seconds",
+    "op": "value",
+    "input": "a = 1979-05-27T07:32\n"
+  },
+  {
+    "name": "doc no seconds",
+    "op": "doc",
+    "input": "a = 1979-05-27T07:32\n"
+  },
+  {
+    "name": "table fraction offset",
+    "op": "table",
+    "input": "a = 1979-05-27T07:32:00.999999+07:00\n"
+  },
+  {
+    "name": "value fraction offset",
+    "op": "value",
+    "input": "a = 1979-05-27T07:32:00.999999+07:00\n"
+  },
+  {
+    "name": "doc fraction offset",
+    "op": "doc",
+    "input": "a = 1979-05-27T07:32:00.999999+07:00\n"
+  },
+  {
+    "name": "table bad offset",
+    "op": "table",
+    "input": "a = 1979-05-27T07:32:00+25:00\n"
+  },
+  {
+    "name": "value bad offset",
+    "op": "value",
+    "input": "a = 1979-05-27T07:32:00+25:00\n"
+  },
+  {
+    "name": "doc bad offset",
+    "op": "doc",
+    "input": "a = 1979-05-27T07:32:00+25:00\n"
+  },
+  {
+    "name": "table short month",
+    "op": "table",
+    "input": "a = 1979-5-27\n"
+  },
+  {
+    "name": "value short month",
+    "op": "value",
+    "input": "a = 1979-5-27\n"
+  },
+  {
+    "name": "doc short month",
+    "op": "doc",
+    "input": "a = 1979-5-27\n"
+  },
+  {
+    "name": "table long fraction",
+    "op": "table",
+    "input": "a = 1979-05-27T07:32:00.1234567891Z\n"
+  },
+  {
+    "name": "value long fraction",
+    "op": "value",
+    "input": "a = 1979-05-27T07:32:00.1234567891Z\n"
+  },
+  {
+    "name": "doc long fraction",
+    "op": "doc",
+    "input": "a = 1979-05-27T07:32:00.1234567891Z\n"
+  },
+  {
+    "name": "table datetime junk",
+    "op": "table",
+    "input": "a = 1979-05-27X\n"
+  },
+  {
+    "name": "value datetime junk",
+    "op": "value",
+    "input": "a = 1979-05-27X\n"
+  },
+  {
+    "name": "doc datetime junk",
+    "op": "doc",
+    "input": "a = 1979-05-27X\n"
+  },
+  {
+    "name": "table unicode value",
+    "op": "table",
+    "input": "a = \"héllo\"\n"
+  },
+  {
+    "name": "value unicode value",
+    "op": "value",
+    "input": "a = \"héllo\"\n"
+  },
+  {
+    "name": "doc unicode value",
+    "op": "doc",
+    "input": "a = \"héllo\"\n"
+  },
+  {
+    "name": "table unicode then error",
+    "op": "table",
+    "input": "a = \"日本\" b\n"
+  },
+  {
+    "name": "value unicode then error",
+    "op": "value",
+    "input": "a = \"日本\" b\n"
+  },
+  {
+    "name": "doc unicode then error",
+    "op": "doc",
+    "input": "a = \"日本\" b\n"
+  },
+  {
+    "name": "table unicode key bare",
+    "op": "table",
+    "input": "é = 1\n"
+  },
+  {
+    "name": "value unicode key bare",
+    "op": "value",
+    "input": "é = 1\n"
+  },
+  {
+    "name": "doc unicode key bare",
+    "op": "doc",
+    "input": "é = 1\n"
+  },
+  {
+    "name": "table unicode key quoted",
+    "op": "table",
+    "input": "\"é\" = 1\n"
+  },
+  {
+    "name": "value unicode key quoted",
+    "op": "value",
+    "input": "\"é\" = 1\n"
+  },
+  {
+    "name": "doc unicode key quoted",
+    "op": "doc",
+    "input": "\"é\" = 1\n"
+  },
+  {
+    "name": "table unicode before error",
+    "op": "table",
+    "input": "x = \"é\"\ny = é\n"
+  },
+  {
+    "name": "value unicode before error",
+    "op": "value",
+    "input": "x = \"é\"\ny = é\n"
+  },
+  {
+    "name": "doc unicode before error",
+    "op": "doc",
+    "input": "x = \"é\"\ny = é\n"
+  },
+  {
+    "name": "table duplicate key",
+    "op": "table",
+    "input": "a = 1\na = 2\n"
+  },
+  {
+    "name": "value duplicate key",
+    "op": "value",
+    "input": "a = 1\na = 2\n"
+  },
+  {
+    "name": "doc duplicate key",
+    "op": "doc",
+    "input": "a = 1\na = 2\n"
+  },
+  {
+    "name": "table duplicate dotted",
+    "op": "table",
+    "input": "a.b = 1\na.b = 2\n"
+  },
+  {
+    "name": "value duplicate dotted",
+    "op": "value",
+    "input": "a.b = 1\na.b = 2\n"
+  },
+  {
+    "name": "doc duplicate dotted",
+    "op": "doc",
+    "input": "a.b = 1\na.b = 2\n"
+  },
+  {
+    "name": "table value then dotted",
+    "op": "table",
+    "input": "a = 1\na.b = 2\n"
+  },
+  {
+    "name": "value value then dotted",
+    "op": "value",
+    "input": "a = 1\na.b = 2\n"
+  },
+  {
+    "name": "doc value then dotted",
+    "op": "doc",
+    "input": "a = 1\na.b = 2\n"
+  },
+  {
+    "name": "table table then subtable dotted",
+    "op": "table",
+    "input": "[a]\nb = 1\n[a.b]\n"
+  },
+  {
+    "name": "value table then subtable dotted",
+    "op": "value",
+    "input": "[a]\nb = 1\n[a.b]\n"
+  },
+  {
+    "name": "doc table then subtable dotted",
+    "op": "doc",
+    "input": "[a]\nb = 1\n[a.b]\n"
+  },
+  {
+    "name": "table subtable then table",
+    "op": "table",
+    "input": "[a.b]\nc = 1\n[a]\nd = 2\n"
+  },
+  {
+    "name": "value subtable then table",
+    "op": "value",
+    "input": "[a.b]\nc = 1\n[a]\nd = 2\n"
+  },
+  {
+    "name": "doc subtable then table",
+    "op": "doc",
+    "input": "[a.b]\nc = 1\n[a]\nd = 2\n"
+  },
+  {
+    "name": "table table subtable table",
+    "op": "table",
+    "input": "[a]\n[a.b]\n[a]\n"
+  },
+  {
+    "name": "value table subtable table",
+    "op": "value",
+    "input": "[a]\n[a.b]\n[a]\n"
+  },
+  {
+    "name": "doc table subtable table",
+    "op": "doc",
+    "input": "[a]\n[a.b]\n[a]\n"
+  },
+  {
+    "name": "table aot then table",
+    "op": "table",
+    "input": "[[a]]\n[a]\n"
+  },
+  {
+    "name": "value aot then table",
+    "op": "value",
+    "input": "[[a]]\n[a]\n"
+  },
+  {
+    "name": "doc aot then table",
+    "op": "doc",
+    "input": "[[a]]\n[a]\n"
+  },
+  {
+    "name": "table table then aot",
+    "op": "table",
+    "input": "[a]\n[[a]]\n"
+  },
+  {
+    "name": "value table then aot",
+    "op": "value",
+    "input": "[a]\n[[a]]\n"
+  },
+  {
+    "name": "doc table then aot",
+    "op": "doc",
+    "input": "[a]\n[[a]]\n"
+  },
+  {
+    "name": "table array then aot",
+    "op": "table",
+    "input": "a = []\n[[a]]\n"
+  },
+  {
+    "name": "value array then aot",
+    "op": "value",
+    "input": "a = []\n[[a]]\n"
+  },
+  {
+    "name": "doc array then aot",
+    "op": "doc",
+    "input": "a = []\n[[a]]\n"
+  },
+  {
+    "name": "table array then dotted",
+    "op": "table",
+    "input": "a = [1]\na.b = 1\n"
+  },
+  {
+    "name": "value array then dotted",
+    "op": "value",
+    "input": "a = [1]\na.b = 1\n"
+  },
+  {
+    "name": "doc array then dotted",
+    "op": "doc",
+    "input": "a = [1]\na.b = 1\n"
+  },
+  {
+    "name": "table dotted then header",
+    "op": "table",
+    "input": "[a]\nb.c = 1\n[a.b]\n"
+  },
+  {
+    "name": "value dotted then header",
+    "op": "value",
+    "input": "[a]\nb.c = 1\n[a.b]\n"
+  },
+  {
+    "name": "doc dotted then header",
+    "op": "doc",
+    "input": "[a]\nb.c = 1\n[a.b]\n"
+  },
+  {
+    "name": "table deep dotted then header",
+    "op": "table",
+    "input": "a.b.c = 1\n[a.b]\n"
+  },
+  {
+    "name": "value deep dotted then header",
+    "op": "value",
+    "input": "a.b.c = 1\n[a.b]\n"
+  },
+  {
+    "name": "doc deep dotted then header",
+    "op": "doc",
+    "input": "a.b.c = 1\n[a.b]\n"
+  },
+  {
+    "name": "table inline then dotted",
+    "op": "table",
+    "input": "x = {a = 1}\nx.b = 2\n"
+  },
+  {
+    "name": "value inline then dotted",
+    "op": "value",
+    "input": "x = {a = 1}\nx.b = 2\n"
+  },
+  {
+    "name": "doc inline then dotted",
+    "op": "doc",
+    "input": "x = {a = 1}\nx.b = 2\n"
+  },
+  {
+    "name": "table dotted in table then header",
+    "op": "table",
+    "input": "[x]\na.b = 1\n[x.a]\n"
+  },
+  {
+    "name": "value dotted in table then header",
+    "op": "value",
+    "input": "[x]\na.b = 1\n[x.a]\n"
+  },
+  {
+    "name": "doc dotted in table then header",
+    "op": "doc",
+    "input": "[x]\na.b = 1\n[x.a]\n"
+  },
+  {
+    "name": "table header after dotted root",
+    "op": "table",
+    "input": "a.b = 1\n[a]\n"
+  },
+  {
+    "name": "value header after dotted root",
+    "op": "value",
+    "input": "a.b = 1\n[a]\n"
+  },
+  {
+    "name": "doc header after dotted root",
+    "op": "doc",
+    "input": "a.b = 1\n[a]\n"
+  },
+  {
+    "name": "table aot nested",
+    "op": "table",
+    "input": "[[a]]\nx = 1\n[[a.b]]\ny = 2\n[[a]]\nx = 3\n"
+  },
+  {
+    "name": "value aot nested",
+    "op": "value",
+    "input": "[[a]]\nx = 1\n[[a.b]]\ny = 2\n[[a]]\nx = 3\n"
+  },
+  {
+    "name": "doc aot nested",
+    "op": "doc",
+    "input": "[[a]]\nx = 1\n[[a.b]]\ny = 2\n[[a]]\nx = 3\n"
+  },
+  {
+    "name": "table aot subtable",
+    "op": "table",
+    "input": "[[fruit]]\nname = 'apple'\n[fruit.physical]\ncolor = 'red'\n[[fruit.variety]]\nname = 'red delicious'\n"
+  },
+  {
+    "name": "value aot subtable",
+    "op": "value",
+    "input": "[[fruit]]\nname = 'apple'\n[fruit.physical]\ncolor = 'red'\n[[fruit.variety]]\nname = 'red delicious'\n"
+  },
+  {
+    "name": "doc aot subtable",
+    "op": "doc",
+    "input": "[[fruit]]\nname = 'apple'\n[fruit.physical]\ncolor = 'red'\n[[fruit.variety]]\nname = 'red delicious'\n"
+  },
+  {
+    "name": "table unclosed inline",
+    "op": "table",
+    "input": "a = {\n"
+  },
+  {
+    "name": "value unclosed inline",
+    "op": "value",
+    "input": "a = {\n"
+  },
+  {
+    "name": "doc unclosed inline",
+    "op": "doc",
+    "input": "a = {\n"
+  },
+  {
+    "name": "table unclosed inline value",
+    "op": "table",
+    "input": "a = {b = 1\n"
+  },
+  {
+    "name": "value unclosed inline value",
+    "op": "value",
+    "input": "a = {b = 1\n"
+  },
+  {
+    "name": "doc unclosed inline value",
+    "op": "doc",
+    "input": "a = {b = 1\n"
+  },
+  {
+    "name": "table inline trailing comma",
+    "op": "table",
+    "input": "a = {b = 1,}\n"
+  },
+  {
+    "name": "value inline trailing comma",
+    "op": "value",
+    "input": "a = {b = 1,}\n"
+  },
+  {
+    "name": "doc inline trailing comma",
+    "op": "doc",
+    "input": "a = {b = 1,}\n"
+  },
+  {
+    "name": "table inline missing comma",
+    "op": "table",
+    "input": "a = {b = 1 c = 2}\n"
+  },
+  {
+    "name": "value inline missing comma",
+    "op": "value",
+    "input": "a = {b = 1 c = 2}\n"
+  },
+  {
+    "name": "doc inline missing comma",
+    "op": "doc",
+    "input": "a = {b = 1 c = 2}\n"
+  },
+  {
+    "name": "table inline key only",
+    "op": "table",
+    "input": "a = {b}\n"
+  },
+  {
+    "name": "value inline key only",
+    "op": "value",
+    "input": "a = {b}\n"
+  },
+  {
+    "name": "doc inline key only",
+    "op": "doc",
+    "input": "a = {b}\n"
+  },
+  {
+    "name": "table inline missing value",
+    "op": "table",
+    "input": "a = {b = }\n"
+  },
+  {
+    "name": "value inline missing value",
+    "op": "value",
+    "input": "a = {b = }\n"
+  },
+  {
+    "name": "doc inline missing value",
+    "op": "doc",
+    "input": "a = {b = }\n"
+  },
+  {
+    "name": "table inline lone comma",
+    "op": "table",
+    "input": "a = {,}\n"
+  },
+  {
+    "name": "value inline lone comma",
+    "op": "value",
+    "input": "a = {,}\n"
+  },
+  {
+    "name": "doc inline lone comma",
+    "op": "doc",
+    "input": "a = {,}\n"
+  },
+  {
+    "name": "table inline duplicate",
+    "op": "table",
+    "input": "a = {b = 1, b = 2}\n"
+  },
+  {
+    "name": "value inline duplicate",
+    "op": "value",
+    "input": "a = {b = 1, b = 2}\n"
+  },
+  {
+    "name": "doc inline duplicate",
+    "op": "doc",
+    "input": "a = {b = 1, b = 2}\n"
+  },
+  {
+    "name": "table inline dotted",
+    "op": "table",
+    "input": "a = {b.c = 1, b.d = 2}\n"
+  },
+  {
+    "name": "value inline dotted",
+    "op": "value",
+    "input": "a = {b.c = 1, b.d = 2}\n"
+  },
+  {
+    "name": "doc inline dotted",
+    "op": "doc",
+    "input": "a = {b.c = 1, b.d = 2}\n"
+  },
+  {
+    "name": "table inline dotted conflict",
+    "op": "table",
+    "input": "a = {b.c = 1, b = 2}\n"
+  },
+  {
+    "name": "value inline dotted conflict",
+    "op": "value",
+    "input": "a = {b.c = 1, b = 2}\n"
+  },
+  {
+    "name": "doc inline dotted conflict",
+    "op": "doc",
+    "input": "a = {b.c = 1, b = 2}\n"
+  },
+  {
+    "name": "table inline spaces",
+    "op": "table",
+    "input": "a = { b = 1, }\n"
+  },
+  {
+    "name": "value inline spaces",
+    "op": "value",
+    "input": "a = { b = 1, }\n"
+  },
+  {
+    "name": "doc inline spaces",
+    "op": "doc",
+    "input": "a = { b = 1, }\n"
+  },
+  {
+    "name": "table inline newline",
+    "op": "table",
+    "input": "a = {\n b = 1 }\n"
+  },
+  {
+    "name": "value inline newline",
+    "op": "value",
+    "input": "a = {\n b = 1 }\n"
+  },
+  {
+    "name": "doc inline newline",
+    "op": "doc",
+    "input": "a = {\n b = 1 }\n"
+  },
+  {
+    "name": "table inline nested array open",
+    "op": "table",
+    "input": "a = {b = [1,2}\n"
+  },
+  {
+    "name": "value inline nested array open",
+    "op": "value",
+    "input": "a = {b = [1,2}\n"
+  },
+  {
+    "name": "doc inline nested array open",
+    "op": "doc",
+    "input": "a = {b = [1,2}\n"
+  },
+  {
+    "name": "table stray close brace",
+    "op": "table",
+    "input": "a = }\n"
+  },
+  {
+    "name": "value stray close brace",
+    "op": "value",
+    "input": "a = }\n"
+  },
+  {
+    "name": "doc stray close brace",
+    "op": "doc",
+    "input": "a = }\n"
+  },
+  {
+    "name": "table stray close bracket",
+    "op": "table",
+    "input": "a = ]\n"
+  },
+  {
+    "name": "value stray close bracket",
+    "op": "value",
+    "input": "a = ]\n"
+  },
+  {
+    "name": "doc stray close bracket",
+    "op": "doc",
+    "input": "a = ]\n"
+  },
+  {
+    "name": "table array missing comma",
+    "op": "table",
+    "input": "a = [1 2]\n"
+  },
+  {
+    "name": "value array missing comma",
+    "op": "value",
+    "input": "a = [1 2]\n"
+  },
+  {
+    "name": "doc array missing comma",
+    "op": "doc",
+    "input": "a = [1 2]\n"
+  },
+  {
+    "name": "table array double comma",
+    "op": "table",
+    "input": "a = [1,,2]\n"
+  },
+  {
+    "name": "value array double comma",
+    "op": "value",
+    "input": "a = [1,,2]\n"
+  },
+  {
+    "name": "doc array double comma",
+    "op": "doc",
+    "input": "a = [1,,2]\n"
+  },
+  {
+    "name": "table array equals",
+    "op": "table",
+    "input": "a = [=]\n"
+  },
+  {
+    "name": "value array equals",
+    "op": "value",
+    "input": "a = [=]\n"
+  },
+  {
+    "name": "doc array equals",
+    "op": "doc",
+    "input": "a = [=]\n"
+  },
+  {
+    "name": "table unclosed array",
+    "op": "table",
+    "input": "a = [\n"
+  },
+  {
+    "name": "value unclosed array",
+    "op": "value",
+    "input": "a = [\n"
+  },
+  {
+    "name": "doc unclosed array",
+    "op": "doc",
+    "input": "a = [\n"
+  },
+  {
+    "name": "table unclosed array item",
+    "op": "table",
+    "input": "a = [1,\n"
+  },
+  {
+    "name": "value unclosed array item",
+    "op": "value",
+    "input": "a = [1,\n"
+  },
+  {
+    "name": "doc unclosed array item",
+    "op": "doc",
+    "input": "a = [1,\n"
+  },
+  {
+    "name": "table array trailing comma",
+    "op": "table",
+    "input": "a = [ 1, 2, ]\n"
+  },
+  {
+    "name": "value array trailing comma",
+    "op": "value",
+    "input": "a = [ 1, 2, ]\n"
+  },
+  {
+    "name": "doc array trailing comma",
+    "op": "doc",
+    "input": "a = [ 1, 2, ]\n"
+  },
+  {
+    "name": "table array comments",
+    "op": "table",
+    "input": "a = [ # c\n 1, # d\n 2 ]\n"
+  },
+  {
+    "name": "value array comments",
+    "op": "value",
+    "input": "a = [ # c\n 1, # d\n 2 ]\n"
+  },
+  {
+    "name": "doc array comments",
+    "op": "doc",
+    "input": "a = [ # c\n 1, # d\n 2 ]\n"
+  },
+  {
+    "name": "table array nested",
+    "op": "table",
+    "input": "a = [[1, 2], ['a'], [], [{x = 1}]]\n"
+  },
+  {
+    "name": "value array nested",
+    "op": "value",
+    "input": "a = [[1, 2], ['a'], [], [{x = 1}]]\n"
+  },
+  {
+    "name": "doc array nested",
+    "op": "doc",
+    "input": "a = [[1, 2], ['a'], [], [{x = 1}]]\n"
+  },
+  {
+    "name": "table key space",
+    "op": "table",
+    "input": "a b = 1\n"
+  },
+  {
+    "name": "value key space",
+    "op": "value",
+    "input": "a b = 1\n"
+  },
+  {
+    "name": "doc key space",
+    "op": "doc",
+    "input": "a b = 1\n"
+  },
+  {
+    "name": "table dot space",
+    "op": "table",
+    "input": "a. b = 1\na .c = 2\n"
+  },
+  {
+    "name": "value dot space",
+    "op": "value",
+    "input": "a. b = 1\na .c = 2\n"
+  },
+  {
+    "name": "doc dot space",
+    "op": "doc",
+    "input": "a. b = 1\na .c = 2\n"
+  },
+  {
+    "name": "table empty literal key",
+    "op": "table",
+    "input": "'' = 1\n"
+  },
+  {
+    "name": "value empty literal key",
+    "op": "value",
+    "input": "'' = 1\n"
+  },
+  {
+    "name": "doc empty literal key",
+    "op": "doc",
+    "input": "'' = 1\n"
+  },
+  {
+    "name": "table empty basic key",
+    "op": "table",
+    "input": "\"\" = 1\n"
+  },
+  {
+    "name": "value empty basic key",
+    "op": "value",
+    "input": "\"\" = 1\n"
+  },
+  {
+    "name": "doc empty basic key",
+    "op": "doc",
+    "input": "\"\" = 1\n"
+  },
+  {
+    "name": "table quoted dotted",
+    "op": "table",
+    "input": "a.'b c'.d = 1\n"
+  },
+  {
+    "name": "value quoted dotted",
+    "op": "value",
+    "input": "a.'b c'.d = 1\n"
+  },
+  {
+    "name": "doc quoted dotted",
+    "op": "doc",
+    "input": "a.'b c'.d = 1\n"
+  },
+  {
+    "name": "table double dot",
+    "op": "table",
+    "input": "a..b = 1\n"
+  },
+  {
+    "name": "value double dot",
+    "op": "value",
+    "input": "a..b = 1\n"
+  },
+  {
+    "name": "doc double dot",
+    "op": "doc",
+    "input": "a..b = 1\n"
+  },
+  {
+    "name": "table leading dot key",
+    "op": "table",
+    "input": ".a = 1\n"
+  },
+  {
+    "name": "value leading dot key",
+    "op": "value",
+    "input": ".a = 1\n"
+  },
+  {
+    "name": "doc leading dot key",
+    "op": "doc",
+    "input": ".a = 1\n"
+  },
+  {
+    "name": "table trailing dot key",
+    "op": "table",
+    "input": "a. = 1\n"
+  },
+  {
+    "name": "value trailing dot key",
+    "op": "value",
+    "input": "a. = 1\n"
+  },
+  {
+    "name": "doc trailing dot key",
+    "op": "doc",
+    "input": "a. = 1\n"
+  },
+  {
+    "name": "table ml literal key",
+    "op": "table",
+    "input": "'''a''' = 1\n"
+  },
+  {
+    "name": "value ml literal key",
+    "op": "value",
+    "input": "'''a''' = 1\n"
+  },
+  {
+    "name": "doc ml literal key",
+    "op": "doc",
+    "input": "'''a''' = 1\n"
+  },
+  {
+    "name": "table ml basic key",
+    "op": "table",
+    "input": "\"\"\"a\"\"\" = 1\n"
+  },
+  {
+    "name": "value ml basic key",
+    "op": "value",
+    "input": "\"\"\"a\"\"\" = 1\n"
+  },
+  {
+    "name": "doc ml basic key",
+    "op": "doc",
+    "input": "\"\"\"a\"\"\" = 1\n"
+  },
+  {
+    "name": "table spaced header",
+    "op": "table",
+    "input": "[ a . b ]\nc = 1\n"
+  },
+  {
+    "name": "value spaced header",
+    "op": "value",
+    "input": "[ a . b ]\nc = 1\n"
+  },
+  {
+    "name": "doc spaced header",
+    "op": "doc",
+    "input": "[ a . b ]\nc = 1\n"
+  },
+  {
+    "name": "table quoted header",
+    "op": "table",
+    "input": "[\"a\".'b']\nc = 1\n"
+  },
+  {
+    "name": "value quoted header",
+    "op": "value",
+    "input": "[\"a\".'b']\nc = 1\n"
+  },
+  {
+    "name": "doc quoted header",
+    "op": "doc",
+    "input": "[\"a\".'b']\nc = 1\n"
+  },
+  {
+    "name": "table control in comment",
+    "op": "table",
+    "input": "# ctrl \u0001\n"
+  },
+  {
+    "name": "value control in comment",
+    "op": "value",
+    "input": "# ctrl \u0001\n"
+  },
+  {
+    "name": "doc control in comment",
+    "op": "doc",
+    "input": "# ctrl \u0001\n"
+  },
+  {
+    "name": "table del in comment",
+    "op": "table",
+    "input": "a = 1 # x\n"
+  },
+  {
+    "name": "value del in comment",
+    "op": "value",
+    "input": "a = 1 # x\n"
+  },
+  {
+    "name": "doc del in comment",
+    "op": "doc",
+    "input": "a = 1 # x\n"
+  },
+  {
+    "name": "table cr in comment",
+    "op": "table",
+    "input": "#a\rb\n"
+  },
+  {
+    "name": "value cr in comment",
+    "op": "value",
+    "input": "#a\rb\n"
+  },
+  {
+    "name": "doc cr in comment",
+    "op": "doc",
+    "input": "#a\rb\n"
+  },
+  {
+    "name": "table deep arrays",
+    "op": "table",
+    "input": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "value deep arrays",
+    "op": "value",
+    "input": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "doc deep arrays",
+    "op": "doc",
+    "input": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "table deep ok arrays",
+    "op": "table",
+    "input": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "value deep ok arrays",
+    "op": "value",
+    "input": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "doc deep ok arrays",
+    "op": "doc",
+    "input": "a = [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\n"
+  },
+  {
+    "name": "table deep inline",
+    "op": "table",
+    "input": "a = {b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b=1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}\n"
+  },
+  {
+    "name": "value deep inline",
+    "op": "value",
+    "input": "a = {b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b=1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}\n"
+  },
+  {
+    "name": "doc deep inline",
+    "op": "doc",
+    "input": "a = {b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b={b=1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}\n"
+  },
+  {
+    "name": "table trailing",
+    "op": "table",
+    "input": "a = 1\n[b]\nc = 2\n\n\n# end"
+  },
+  {
+    "name": "value trailing",
+    "op": "value",
+    "input": "a = 1\n[b]\nc = 2\n\n\n# end"
+  },
+  {
+    "name": "doc trailing",
+    "op": "doc",
+    "input": "a = 1\n[b]\nc = 2\n\n\n# end"
+  },
+  {
+    "name": "table error on line 12",
+    "op": "table",
+    "input": "k0 = 0\nk1 = 1\nk2 = 2\nk3 = 3\nk4 = 4\nk5 = 5\nk6 = 6\nk7 = 7\nk8 = 8\nk9 = 9\nk10 = 10\nbad\n"
+  },
+  {
+    "name": "value error on line 12",
+    "op": "value",
+    "input": "k0 = 0\nk1 = 1\nk2 = 2\nk3 = 3\nk4 = 4\nk5 = 5\nk6 = 6\nk7 = 7\nk8 = 8\nk9 = 9\nk10 = 10\nbad\n"
+  },
+  {
+    "name": "doc error on line 12",
+    "op": "doc",
+    "input": "k0 = 0\nk1 = 1\nk2 = 2\nk3 = 3\nk4 = 4\nk5 = 5\nk6 = 6\nk7 = 7\nk8 = 8\nk9 = 9\nk10 = 10\nbad\n"
+  },
+  {
+    "name": "table comment then content",
+    "op": "table",
+    "input": "# c\n[a] # header\nb = 1 # value\n\n# tail\n"
+  },
+  {
+    "name": "value comment then content",
+    "op": "value",
+    "input": "# c\n[a] # header\nb = 1 # value\n\n# tail\n"
+  },
+  {
+    "name": "doc comment then content",
+    "op": "doc",
+    "input": "# c\n[a] # header\nb = 1 # value\n\n# tail\n"
+  },
+  {
+    "name": "table unexpected after value",
+    "op": "table",
+    "input": "a = 1 b = 2\n"
+  },
+  {
+    "name": "value unexpected after value",
+    "op": "value",
+    "input": "a = 1 b = 2\n"
+  },
+  {
+    "name": "doc unexpected after value",
+    "op": "doc",
+    "input": "a = 1 b = 2\n"
+  },
+  {
+    "name": "table unexpected after header",
+    "op": "table",
+    "input": "[a] b = 1\n"
+  },
+  {
+    "name": "value unexpected after header",
+    "op": "value",
+    "input": "[a] b = 1\n"
+  },
+  {
+    "name": "doc unexpected after header",
+    "op": "doc",
+    "input": "[a] b = 1\n"
+  },
+  {
+    "name": "table whitespace before header",
+    "op": "table",
+    "input": "  [a]\n  b = 1\n"
+  },
+  {
+    "name": "value whitespace before header",
+    "op": "value",
+    "input": "  [a]\n  b = 1\n"
+  },
+  {
+    "name": "doc whitespace before header",
+    "op": "doc",
+    "input": "  [a]\n  b = 1\n"
+  },
+  {
+    "name": "table garbage",
+    "op": "table",
+    "input": "@@@\n"
+  },
+  {
+    "name": "value garbage",
+    "op": "value",
+    "input": "@@@\n"
+  },
+  {
+    "name": "doc garbage",
+    "op": "doc",
+    "input": "@@@\n"
+  },
+  {
+    "name": "table string unquoted",
+    "op": "table",
+    "input": "a = hello\n"
+  },
+  {
+    "name": "value string unquoted",
+    "op": "value",
+    "input": "a = hello\n"
+  },
+  {
+    "name": "doc string unquoted",
+    "op": "doc",
+    "input": "a = hello\n"
+  },
+  {
+    "name": "table missing opening quote",
+    "op": "table",
+    "input": "a = hello'\n"
+  },
+  {
+    "name": "value missing opening quote",
+    "op": "value",
+    "input": "a = hello'\n"
+  },
+  {
+    "name": "doc missing opening quote",
+    "op": "doc",
+    "input": "a = hello'\n"
+  },
+  {
+    "name": "table missing opening dquote",
+    "op": "table",
+    "input": "a = hello\"\n"
+  },
+  {
+    "name": "value missing opening dquote",
+    "op": "value",
+    "input": "a = hello\"\n"
+  },
+  {
+    "name": "doc missing opening dquote",
+    "op": "doc",
+    "input": "a = hello\"\n"
+  },
+  {
+    "name": "table dotted root tables",
+    "op": "table",
+    "input": "a.b.c = 1\na.d = 2\n[x]\ny.z = 3\n"
+  },
+  {
+    "name": "value dotted root tables",
+    "op": "value",
+    "input": "a.b.c = 1\na.d = 2\n[x]\ny.z = 3\n"
+  },
+  {
+    "name": "doc dotted root tables",
+    "op": "doc",
+    "input": "a.b.c = 1\na.d = 2\n[x]\ny.z = 3\n"
+  },
+  {
+    "name": "table keys needing quotes",
+    "op": "table",
+    "input": "\"a b\" = 1\n'c.d' = 2\n\"e\\\"f\" = 3\n"
+  },
+  {
+    "name": "value keys needing quotes",
+    "op": "value",
+    "input": "\"a b\" = 1\n'c.d' = 2\n\"e\\\"f\" = 3\n"
+  },
+  {
+    "name": "doc keys needing quotes",
+    "op": "doc",
+    "input": "\"a b\" = 1\n'c.d' = 2\n\"e\\\"f\" = 3\n"
+  },
+  {
+    "name": "table mixed array",
+    "op": "table",
+    "input": "a = [1, 'x', 1.5, true, 1979-05-27]\n"
+  },
+  {
+    "name": "value mixed array",
+    "op": "value",
+    "input": "a = [1, 'x', 1.5, true, 1979-05-27]\n"
+  },
+  {
+    "name": "doc mixed array",
+    "op": "doc",
+    "input": "a = [1, 'x', 1.5, true, 1979-05-27]\n"
+  },
+  {
+    "name": "table comment only lines",
+    "op": "table",
+    "input": "\n\n# a\n\n# b\n"
+  },
+  {
+    "name": "value comment only lines",
+    "op": "value",
+    "input": "\n\n# a\n\n# b\n"
+  },
+  {
+    "name": "doc comment only lines",
+    "op": "doc",
+    "input": "\n\n# a\n\n# b\n"
+  },
+  {
+    "name": "table header comment no nl",
+    "op": "table",
+    "input": "[a] # x"
+  },
+  {
+    "name": "value header comment no nl",
+    "op": "value",
+    "input": "[a] # x"
+  },
+  {
+    "name": "doc header comment no nl",
+    "op": "doc",
+    "input": "[a] # x"
+  },
+  {
+    "name": "table value comment no nl",
+    "op": "table",
+    "input": "a = 1 # x"
+  },
+  {
+    "name": "value value comment no nl",
+    "op": "value",
+    "input": "a = 1 # x"
+  },
+  {
+    "name": "doc value comment no nl",
+    "op": "doc",
+    "input": "a = 1 # x"
+  },
+  {
+    "name": "table eof after equals spaces",
+    "op": "table",
+    "input": "a =   "
+  },
+  {
+    "name": "value eof after equals spaces",
+    "op": "value",
+    "input": "a =   "
+  },
+  {
+    "name": "doc eof after equals spaces",
+    "op": "doc",
+    "input": "a =   "
+  },
+  {
+    "name": "table header after array open",
+    "op": "table",
+    "input": "a = [\n[b]\n"
+  },
+  {
+    "name": "value header after array open",
+    "op": "value",
+    "input": "a = [\n[b]\n"
+  },
+  {
+    "name": "doc header after array open",
+    "op": "doc",
+    "input": "a = [\n[b]\n"
+  },
+  {
+    "name": "table header in inline",
+    "op": "table",
+    "input": "a = { [b] }\n"
+  },
+  {
+    "name": "value header in inline",
+    "op": "value",
+    "input": "a = { [b] }\n"
+  },
+  {
+    "name": "doc header in inline",
+    "op": "doc",
+    "input": "a = { [b] }\n"
+  },
+  {
+    "name": "table nested inline arrays",
+    "op": "table",
+    "input": "a = {b = [{c = 1}, {c = 2}]}\n"
+  },
+  {
+    "name": "value nested inline arrays",
+    "op": "value",
+    "input": "a = {b = [{c = 1}, {c = 2}]}\n"
+  },
+  {
+    "name": "doc nested inline arrays",
+    "op": "doc",
+    "input": "a = {b = [{c = 1}, {c = 2}]}\n"
+  },
+  {
+    "name": "de:Kitchen full",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen full",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen minimal",
+    "op": "de:Kitchen",
+    "input": "s = \"x\"\nn = 1\ni = 1\nf = 1\nb = false\n"
+  },
+  {
+    "name": "try:Kitchen minimal",
+    "op": "try:Kitchen",
+    "input": "s = \"x\"\nn = 1\ni = 1\nf = 1\nb = false\n"
+  },
+  {
+    "name": "de:Kitchen empty",
+    "op": "de:Kitchen",
+    "input": ""
+  },
+  {
+    "name": "try:Kitchen empty",
+    "op": "try:Kitchen",
+    "input": ""
+  },
+  {
+    "name": "de:Kitchen missing s",
+    "op": "de:Kitchen",
+    "input": "n = 1\ni = 1\nf = 1\nb = false\n"
+  },
+  {
+    "name": "try:Kitchen missing s",
+    "op": "try:Kitchen",
+    "input": "n = 1\ni = 1\nf = 1\nb = false\n"
+  },
+  {
+    "name": "de:Kitchen missing n later",
+    "op": "de:Kitchen",
+    "input": "s = \"x\"\n\n\ni = 1\nf = 1\nb = false\n"
+  },
+  {
+    "name": "try:Kitchen missing n later",
+    "op": "try:Kitchen",
+    "input": "s = \"x\"\n\n\ni = 1\nf = 1\nb = false\n"
+  },
+  {
+    "name": "de:Kitchen n string",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = \"x\"\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen n string",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = \"x\"\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen n negative",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = -1\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen n negative",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = -1\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen n float",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 1.5\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen n float",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 1.5\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen n too big",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 4294967296\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen n too big",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 4294967296\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen i past i64",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = 9223372036854775808\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen i past i64",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = 9223372036854775808\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen i below i64",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -9223372036854775809\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen i below i64",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -9223372036854775809\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen n i128",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = -9223372036854775809\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen n i128",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = -9223372036854775809\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen f string",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = \"x\"\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen f string",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = \"x\"\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen f int",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 3\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen f int",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 3\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen f inf",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = -inf\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen f inf",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = -inf\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen b int",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = 1\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen b int",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = 1\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen v string",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = \"x\"\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen v string",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = \"x\"\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen v ints",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [1]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen v ints",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [1]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen v aot",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n[[v]]\nx = 1\n"
+  },
+  {
+    "name": "try:Kitchen v aot",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n[[v]]\nx = 1\n"
+  },
+  {
+    "name": "de:Kitchen m string value",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { a = \"x\" }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen m string value",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { a = \"x\" }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen m array",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = [1]\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen m array",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = [1]\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen o int",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = 1\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen o int",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = 1\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen e unknown",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"gamma\"\n"
+  },
+  {
+    "name": "try:Kitchen e unknown",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"gamma\"\n"
+  },
+  {
+    "name": "de:Kitchen e int",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = 1\n"
+  },
+  {
+    "name": "try:Kitchen e int",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = 1\n"
+  },
+  {
+    "name": "de:Kitchen e table",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = {} }\n"
+  },
+  {
+    "name": "try:Kitchen e table",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = {} }\n"
+  },
+  {
+    "name": "de:Kitchen e table nonempty",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = { x = 1 } }\n"
+  },
+  {
+    "name": "try:Kitchen e table nonempty",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = { x = 1 } }\n"
+  },
+  {
+    "name": "de:Kitchen e table string",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = \"x\" }\n"
+  },
+  {
+    "name": "try:Kitchen e table string",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = \"x\" }\n"
+  },
+  {
+    "name": "de:Kitchen e table empty",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = {}\n"
+  },
+  {
+    "name": "try:Kitchen e table empty",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = {}\n"
+  },
+  {
+    "name": "de:Kitchen e table two",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = {}, alpha = {} }\n"
+  },
+  {
+    "name": "try:Kitchen e table two",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { beta = {}, alpha = {} }\n"
+  },
+  {
+    "name": "de:Kitchen e table unknown",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { gamma = [] }\n"
+  },
+  {
+    "name": "try:Kitchen e table unknown",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = { gamma = [] }\n"
+  },
+  {
+    "name": "de:Kitchen e array",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = []\n"
+  },
+  {
+    "name": "try:Kitchen e array",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = []\n"
+  },
+  {
+    "name": "de:Kitchen u8 overflow",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nu8v = 300\n"
+  },
+  {
+    "name": "try:Kitchen u8 overflow",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nu8v = 300\n"
+  },
+  {
+    "name": "de:Kitchen u8 negative",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nu8v = -1\n"
+  },
+  {
+    "name": "try:Kitchen u8 negative",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nu8v = -1\n"
+  },
+  {
+    "name": "de:Kitchen renamed",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n\"renamed-key\" = \"r\"\n"
+  },
+  {
+    "name": "try:Kitchen renamed",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n\"renamed-key\" = \"r\"\n"
+  },
+  {
+    "name": "de:Kitchen renamed bad",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nrenamed-key = 1\n"
+  },
+  {
+    "name": "try:Kitchen renamed bad",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nrenamed-key = 1\n"
+  },
+  {
+    "name": "de:Kitchen s datetime",
+    "op": "de:Kitchen",
+    "input": "s = 1979-05-27\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen s datetime",
+    "op": "try:Kitchen",
+    "input": "s = 1979-05-27\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen s table",
+    "op": "de:Kitchen",
+    "input": "s = { x = 1 }\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen s table",
+    "op": "try:Kitchen",
+    "input": "s = { x = 1 }\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen s array",
+    "op": "de:Kitchen",
+    "input": "s = []\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen s array",
+    "op": "try:Kitchen",
+    "input": "s = []\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen s header",
+    "op": "de:Kitchen",
+    "input": "n = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n[s]\nx = 1\n"
+  },
+  {
+    "name": "try:Kitchen s header",
+    "op": "try:Kitchen",
+    "input": "n = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n[s]\nx = 1\n"
+  },
+  {
+    "name": "de:Kitchen unknown field",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nzzz = 1\n"
+  },
+  {
+    "name": "try:Kitchen unknown field",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nzzz = 1\n"
+  },
+  {
+    "name": "de:Kitchen syntax error",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nzzz = \n"
+  },
+  {
+    "name": "try:Kitchen syntax error",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = 7\ni = -3\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\nzzz = \n"
+  },
+  {
+    "name": "de:Kitchen two errors",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\nn = \"x\"\ni = \"y\"\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "try:Kitchen two errors",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\nn = \"x\"\ni = \"y\"\nf = 2.5\nb = true\nv = [\"x\", \"y\"]\nm = { b = 2, a = 1 }\no = \"opt\"\ne = \"beta\"\n"
+  },
+  {
+    "name": "de:Kitchen crlf",
+    "op": "de:Kitchen",
+    "input": "s = \"str\"\r\nn = \"x\"\r\ni = -3\r\nf = 2.5\r\nb = true\r\nv = [\"x\", \"y\"]\r\nm = { b = 2, a = 1 }\r\no = \"opt\"\r\ne = \"beta\"\r\n"
+  },
+  {
+    "name": "try:Kitchen crlf",
+    "op": "try:Kitchen",
+    "input": "s = \"str\"\r\nn = \"x\"\r\ni = -3\r\nf = 2.5\r\nb = true\r\nv = [\"x\", \"y\"]\r\nm = { b = 2, a = 1 }\r\no = \"opt\"\r\ne = \"beta\"\r\n"
+  },
+  {
+    "name": "de:Kitchen unicode before",
+    "op": "de:Kitchen",
+    "input": "s = \"日本語\"\nn = \"x\"\n"
+  },
+  {
+    "name": "try:Kitchen unicode before",
+    "op": "try:Kitchen",
+    "input": "s = \"日本語\"\nn = \"x\"\n"
+  },
+  {
+    "name": "de:Strict ok",
+    "op": "de:Strict",
+    "input": "name = \"x\"\n"
+  },
+  {
+    "name": "try:Strict ok",
+    "op": "try:Strict",
+    "input": "name = \"x\"\n"
+  },
+  {
+    "name": "de:Strict unknown",
+    "op": "de:Strict",
+    "input": "name = \"x\"\nextra = 1\n"
+  },
+  {
+    "name": "try:Strict unknown",
+    "op": "try:Strict",
+    "input": "name = \"x\"\nextra = 1\n"
+  },
+  {
+    "name": "de:Strict unknown first",
+    "op": "de:Strict",
+    "input": "aaa = 1\nname = \"x\"\n"
+  },
+  {
+    "name": "try:Strict unknown first",
+    "op": "try:Strict",
+    "input": "aaa = 1\nname = \"x\"\n"
+  },
+  {
+    "name": "de:Strict count string",
+    "op": "de:Strict",
+    "input": "name = \"x\"\ncount = \"y\"\n"
+  },
+  {
+    "name": "try:Strict count string",
+    "op": "try:Strict",
+    "input": "name = \"x\"\ncount = \"y\"\n"
+  },
+  {
+    "name": "de:Strict missing name",
+    "op": "de:Strict",
+    "input": "count = 1\n"
+  },
+  {
+    "name": "try:Strict missing name",
+    "op": "try:Strict",
+    "input": "count = 1\n"
+  },
+  {
+    "name": "de:ShapeHolder circle",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"circle\", r = 1.5 }\n"
+  },
+  {
+    "name": "try:ShapeHolder circle",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"circle\", r = 1.5 }\n"
+  },
+  {
+    "name": "de:ShapeHolder square",
+    "op": "de:ShapeHolder",
+    "input": "[shape]\nkind = \"square\"\nside = 3\n"
+  },
+  {
+    "name": "try:ShapeHolder square",
+    "op": "try:ShapeHolder",
+    "input": "[shape]\nkind = \"square\"\nside = 3\n"
+  },
+  {
+    "name": "de:ShapeHolder empty",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"empty\" }\n"
+  },
+  {
+    "name": "try:ShapeHolder empty",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"empty\" }\n"
+  },
+  {
+    "name": "de:ShapeHolder missing kind",
+    "op": "de:ShapeHolder",
+    "input": "shape = { r = 1.5 }\n"
+  },
+  {
+    "name": "try:ShapeHolder missing kind",
+    "op": "try:ShapeHolder",
+    "input": "shape = { r = 1.5 }\n"
+  },
+  {
+    "name": "de:ShapeHolder unknown kind",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"triangle\" }\n"
+  },
+  {
+    "name": "try:ShapeHolder unknown kind",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"triangle\" }\n"
+  },
+  {
+    "name": "de:ShapeHolder kind int",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = 1 }\n"
+  },
+  {
+    "name": "try:ShapeHolder kind int",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = 1 }\n"
+  },
+  {
+    "name": "de:ShapeHolder missing field",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"square\" }\n"
+  },
+  {
+    "name": "try:ShapeHolder missing field",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"square\" }\n"
+  },
+  {
+    "name": "de:ShapeHolder bad field",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"square\", side = \"x\" }\n"
+  },
+  {
+    "name": "try:ShapeHolder bad field",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"square\", side = \"x\" }\n"
+  },
+  {
+    "name": "de:ShapeHolder extra field",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"square\", side = 1, extra = 2 }\n"
+  },
+  {
+    "name": "try:ShapeHolder extra field",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"square\", side = 1, extra = 2 }\n"
+  },
+  {
+    "name": "de:ShapeHolder string",
+    "op": "de:ShapeHolder",
+    "input": "shape = \"circle\"\n"
+  },
+  {
+    "name": "try:ShapeHolder string",
+    "op": "try:ShapeHolder",
+    "input": "shape = \"circle\"\n"
+  },
+  {
+    "name": "de:ShapeHolder list",
+    "op": "de:ShapeHolder",
+    "input": "shape = { kind = \"empty\" }\n[[shapes]]\nkind = \"circle\"\nr = 2.0\n[[shapes]]\nkind = \"bad\"\n"
+  },
+  {
+    "name": "try:ShapeHolder list",
+    "op": "try:ShapeHolder",
+    "input": "shape = { kind = \"empty\" }\n[[shapes]]\nkind = \"circle\"\nr = 2.0\n[[shapes]]\nkind = \"bad\"\n"
+  },
+  {
+    "name": "de:Nested ok",
+    "op": "de:Nested",
+    "input": "[outer]\na = \"x\"\n[[list]]\na = \"y\"\nb = 2\n"
+  },
+  {
+    "name": "try:Nested ok",
+    "op": "try:Nested",
+    "input": "[outer]\na = \"x\"\n[[list]]\na = \"y\"\nb = 2\n"
+  },
+  {
+    "name": "de:Nested outer missing",
+    "op": "de:Nested",
+    "input": "list = []\n"
+  },
+  {
+    "name": "try:Nested outer missing",
+    "op": "try:Nested",
+    "input": "list = []\n"
+  },
+  {
+    "name": "de:Nested outer a missing",
+    "op": "de:Nested",
+    "input": "[outer]\nb = 1\n"
+  },
+  {
+    "name": "try:Nested outer a missing",
+    "op": "try:Nested",
+    "input": "[outer]\nb = 1\n"
+  },
+  {
+    "name": "de:Nested list item bad",
+    "op": "de:Nested",
+    "input": "[outer]\na = \"x\"\n[[list]]\na = 1\n"
+  },
+  {
+    "name": "try:Nested list item bad",
+    "op": "try:Nested",
+    "input": "[outer]\na = \"x\"\n[[list]]\na = 1\n"
+  },
+  {
+    "name": "de:Nested list second missing",
+    "op": "de:Nested",
+    "input": "[outer]\na = \"x\"\n[[list]]\na = \"y\"\n[[list]]\nb = 1\n"
+  },
+  {
+    "name": "try:Nested list second missing",
+    "op": "try:Nested",
+    "input": "[outer]\na = \"x\"\n[[list]]\na = \"y\"\n[[list]]\nb = 1\n"
+  },
+  {
+    "name": "de:Nested inline list",
+    "op": "de:Nested",
+    "input": "outer = { a = \"x\" }\nlist = [{ a = \"y\" }, { a = 2 }]\n"
+  },
+  {
+    "name": "try:Nested inline list",
+    "op": "try:Nested",
+    "input": "outer = { a = \"x\" }\nlist = [{ a = \"y\" }, { a = 2 }]\n"
+  },
+  {
+    "name": "de:Nested outer string",
+    "op": "de:Nested",
+    "input": "outer = \"x\"\n"
+  },
+  {
+    "name": "try:Nested outer string",
+    "op": "try:Nested",
+    "input": "outer = \"x\"\n"
+  },
+  {
+    "name": "de:Bare datetime",
+    "op": "de:Bare",
+    "input": "value = 1979-05-27T07:32:00Z\n"
+  },
+  {
+    "name": "de:Bare table",
+    "op": "de:Bare",
+    "input": "value = { a = [1, 2.5, 'x', { b = true }] }\n"
+  },
+  {
+    "name": "de:Bare int",
+    "op": "de:Bare",
+    "input": "value = -5\n"
+  },
+  {
+    "name": "de:Bare missing",
+    "op": "de:Bare",
+    "input": ""
+  },
+  {
+    "name": "de:HpyToml full",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml full",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml empty",
+    "op": "de:HpyToml",
+    "input": ""
+  },
+  {
+    "name": "try:HpyToml empty",
+    "op": "try:HpyToml",
+    "input": ""
+  },
+  {
+    "name": "de:HpyToml project only",
+    "op": "de:HpyToml",
+    "input": "[project]\nname = \"x\"\n"
+  },
+  {
+    "name": "try:HpyToml project only",
+    "op": "try:HpyToml",
+    "input": "[project]\nname = \"x\"\n"
+  },
+  {
+    "name": "de:HpyToml description int",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = 1\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml description int",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = 1\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml installation text int",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = 1 }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml installation text int",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = 1 }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml installation wrong key",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { txt = \"x\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml installation wrong key",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { txt = \"x\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml section datetime",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = 1979-05-27\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml section datetime",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = 1979-05-27\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml section table",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\n[release.sections.security]\ntext = \"s\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml section table",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\n[release.sections.security]\ntext = \"s\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml icon string",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = \"icon.png\"\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml icon string",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = \"icon.png\"\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml icon missing path",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { alt = \"x\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml icon missing path",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { alt = \"x\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml keywords string",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = \"lua\"\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml keywords string",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = \"lua\"\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml author name int",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = 1 }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml author name int",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = 1 }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml screenshot missing path",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ alt = \"x\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml screenshot missing path",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ alt = \"x\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml requires int",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = 3\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml requires int",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = 3\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml build command int",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\ncommand = 1\n"
+  },
+  {
+    "name": "try:HpyToml build command int",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\ncommand = 1\n"
+  },
+  {
+    "name": "de:HpyToml profile",
+    "op": "de:HpyToml",
+    "input": "[profile]\nname = 'x'\n"
+  },
+  {
+    "name": "try:HpyToml profile",
+    "op": "try:HpyToml",
+    "input": "[profile]\nname = 'x'\n"
+  },
+  {
+    "name": "de:HpyToml release icon",
+    "op": "de:HpyToml",
+    "input": "[release.artifacts]\nicon = { path = 'x.png' }\n"
+  },
+  {
+    "name": "try:HpyToml release icon",
+    "op": "try:HpyToml",
+    "input": "[release.artifacts]\nicon = { path = 'x.png' }\n"
+  },
+  {
+    "name": "de:HpyToml syntax error",
+    "op": "de:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "try:HpyToml syntax error",
+    "op": "try:HpyToml",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build\nwasm = \"plugin.wasm\"\n"
+  },
+  {
+    "name": "de:HpyToml crlf",
+    "op": "de:HpyToml",
+    "input": "\r\n# keep me\r\n[project]\r\ndisplay_name = \"Lua\"\r\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\r\nkeywords = \"lua\"\r\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\r\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\r\n\r\n[release]\r\nlicense = \"MIT\"\r\nchangelog = \"CHANGELOG.md\"\r\n\r\n[release.requires]\r\n\"env:happyview\" = \">=3.0.0\"\r\n\r\n[release.sections]\r\ndescription = \"DESCRIPTION.md\"\r\ninstallation = { text = \"hpy add happyview-lua\" }\r\n\r\n[release.artifacts]\r\nbanner = { path = \"banner.png\", alt = \"a banner\" }\r\nscreenshots = [{ path = \"shot.png\" }]\r\n\r\n[build]\r\nwasm = \"plugin.wasm\"\r\n"
+  },
+  {
+    "name": "try:HpyToml crlf",
+    "op": "try:HpyToml",
+    "input": "\r\n# keep me\r\n[project]\r\ndisplay_name = \"Lua\"\r\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\r\nkeywords = \"lua\"\r\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\r\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\r\n\r\n[release]\r\nlicense = \"MIT\"\r\nchangelog = \"CHANGELOG.md\"\r\n\r\n[release.requires]\r\n\"env:happyview\" = \">=3.0.0\"\r\n\r\n[release.sections]\r\ndescription = \"DESCRIPTION.md\"\r\ninstallation = { text = \"hpy add happyview-lua\" }\r\n\r\n[release.artifacts]\r\nbanner = { path = \"banner.png\", alt = \"a banner\" }\r\nscreenshots = [{ path = \"shot.png\" }]\r\n\r\n[build]\r\nwasm = \"plugin.wasm\"\r\n"
+  },
+  {
+    "name": "de:Lockfile ok",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat ok",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile version string",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = \"2\"\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat version string",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = \"2\"\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile version missing",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat version missing",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile kind bad",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"plugin\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat kind bad",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"plugin\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile plugin missing field",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat plugin missing field",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile plugin as table",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[plugin]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat plugin as table",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n[happyview]\nversion = \"3.0.0\"\n\n[plugin]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile happyview missing",
+    "op": "de:Lockfile",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:LockFormat happyview missing",
+    "op": "de:LockFormat",
+    "input": "# Written by hpy from happyview.toml. Commit it; don't edit it by hand.\n\nversion = 2\n\n\n[[plugin]]\nid = \"happyview-lua\"\nkind = \"interpreter\"\nkeys = [\"lua\"]\nproject = \"at://did:plc:abc/software.release.project/happyview-lua\"\nversion = \"1.2.0\"\nchannel = \"latest\"\nversion_uri = \"at://did:plc:abc/software.release.version/happyview-lua:1.2.0\"\nmanifest_cid = \"bafyreiabc\"\npackage_cid = \"bafkreiabc\"\nmanifest_blob_cid = \"bafkreidef\"\ndependencies = []\ncapabilities = [\"net\"]\n"
+  },
+  {
+    "name": "de:Lockfile version 1",
+    "op": "de:Lockfile",
+    "input": "version = 1\n"
+  },
+  {
+    "name": "de:LockFormat version 1",
+    "op": "de:LockFormat",
+    "input": "version = 1\n"
+  },
+  {
+    "name": "de:Lockfile negative version",
+    "op": "de:Lockfile",
+    "input": "version = -1\n"
+  },
+  {
+    "name": "de:LockFormat negative version",
+    "op": "de:LockFormat",
+    "input": "version = -1\n"
+  },
+  {
+    "name": "de:RawToml ok",
+    "op": "de:RawToml",
+    "input": "[happyview]\nversion = \"3.0.0\"\n\n[interpreters]\nlua = { did = \"did:plc:abc\", name = \"happyview-lua\", channel = \"latest\" }\n\n[libraries]\n\n[dev]\nbackfill = true\n"
+  },
+  {
+    "name": "try:RawToml ok",
+    "op": "try:RawToml",
+    "input": "[happyview]\nversion = \"3.0.0\"\n\n[interpreters]\nlua = { did = \"did:plc:abc\", name = \"happyview-lua\", channel = \"latest\" }\n\n[libraries]\n\n[dev]\nbackfill = true\n"
+  },
+  {
+    "name": "de:RawToml string entry",
+    "op": "de:RawToml",
+    "input": "[interpreters]\nlua = \"1.0\"\n"
+  },
+  {
+    "name": "try:RawToml string entry",
+    "op": "try:RawToml",
+    "input": "[interpreters]\nlua = \"1.0\"\n"
+  },
+  {
+    "name": "de:RawToml dotted entry",
+    "op": "de:RawToml",
+    "input": "interpreters.lua.did = \"did:plc:x\"\ninterpreters.lua.name = \"n\"\n"
+  },
+  {
+    "name": "try:RawToml dotted entry",
+    "op": "try:RawToml",
+    "input": "interpreters.lua.did = \"did:plc:x\"\ninterpreters.lua.name = \"n\"\n"
+  },
+  {
+    "name": "de:RawToml happyview int",
+    "op": "de:RawToml",
+    "input": "happyview = 1\n"
+  },
+  {
+    "name": "try:RawToml happyview int",
+    "op": "try:RawToml",
+    "input": "happyview = 1\n"
+  },
+  {
+    "name": "de:RawToml version int",
+    "op": "de:RawToml",
+    "input": "[happyview]\nversion = 3\n"
+  },
+  {
+    "name": "try:RawToml version int",
+    "op": "try:RawToml",
+    "input": "[happyview]\nversion = 3\n"
+  },
+  {
+    "name": "de:RawToml backfill string",
+    "op": "de:RawToml",
+    "input": "[dev]\nbackfill = \"yes\"\n"
+  },
+  {
+    "name": "try:RawToml backfill string",
+    "op": "try:RawToml",
+    "input": "[dev]\nbackfill = \"yes\"\n"
+  },
+  {
+    "name": "de:RawToml interpreters array",
+    "op": "de:RawToml",
+    "input": "interpreters = []\n"
+  },
+  {
+    "name": "try:RawToml interpreters array",
+    "op": "try:RawToml",
+    "input": "interpreters = []\n"
+  },
+  {
+    "name": "de:RawToml datetime entry",
+    "op": "de:RawToml",
+    "input": "[libraries]\nx = 1979-05-27\n"
+  },
+  {
+    "name": "try:RawToml datetime entry",
+    "op": "try:RawToml",
+    "input": "[libraries]\nx = 1979-05-27\n"
+  },
+  {
+    "name": "de:RawToml unknown tables",
+    "op": "de:RawToml",
+    "input": "[instance]\napp_name = 'x'\n[lexicons.\"com.x\"]\nbackfill = true\n"
+  },
+  {
+    "name": "try:RawToml unknown tables",
+    "op": "try:RawToml",
+    "input": "[instance]\napp_name = 'x'\n[lexicons.\"com.x\"]\nbackfill = true\n"
+  },
+  {
+    "name": "de:ModulesFile ok",
+    "op": "de:ModulesFile",
+    "input": "[modules.a]\nlanguage = \"rust\"\npath = \"modules/a\"\n"
+  },
+  {
+    "name": "de:ModulesFile missing path",
+    "op": "de:ModulesFile",
+    "input": "[modules.a]\nlanguage = \"rust\"\n"
+  },
+  {
+    "name": "de:ModulesFile modules string",
+    "op": "de:ModulesFile",
+    "input": "modules = \"x\"\n"
+  },
+  {
+    "name": "de:ModulesFile none",
+    "op": "de:ModulesFile",
+    "input": "[happyview]\nversion = \"3\"\n"
+  },
+  {
+    "name": "de:SettingsFile ok",
+    "op": "de:SettingsFile",
+    "input": "[registry]\nurl = \"https://example.com/\"\nclient_key = \"k\"\n\n[oauth]\nclient_id = \"c\"\nscope = \"s\"\nredirect = \"loopback\"\nclient_auth = \"none\"\n\n[credentials]\nstore = \"file\"\n"
+  },
+  {
+    "name": "de:SettingsFile url int",
+    "op": "de:SettingsFile",
+    "input": "[registry]\nurl = 1\n"
+  },
+  {
+    "name": "de:SettingsFile oauth string",
+    "op": "de:SettingsFile",
+    "input": "oauth = \"x\"\n"
+  },
+  {
+    "name": "de:SettingsFile unknown",
+    "op": "de:SettingsFile",
+    "input": "[other]\nx = 1\n"
+  },
+  {
+    "name": "de:SettingsFile empty",
+    "op": "de:SettingsFile",
+    "input": ""
+  },
+  {
+    "name": "de:SettingsFile bad syntax",
+    "op": "de:SettingsFile",
+    "input": "[registry\n"
+  },
+  {
+    "name": "de:ChannelFile beta",
+    "op": "de:ChannelFile",
+    "input": "channel = \"beta\"\n"
+  },
+  {
+    "name": "de:ChannelFile nightly",
+    "op": "de:ChannelFile",
+    "input": "channel = \"nightly\"\n"
+  },
+  {
+    "name": "de:ChannelFile int",
+    "op": "de:ChannelFile",
+    "input": "channel = 1\n"
+  },
+  {
+    "name": "de:ChannelFile missing",
+    "op": "de:ChannelFile",
+    "input": ""
+  },
+  {
+    "name": "de:ChannelFile upper",
+    "op": "de:ChannelFile",
+    "input": "channel = \"Beta\"\n"
+  },
+  {
+    "name": "de:UpdateState ok",
+    "op": "de:UpdateState",
+    "input": "last_checked = \"2026-11-12\"\n"
+  },
+  {
+    "name": "de:UpdateState missing",
+    "op": "de:UpdateState",
+    "input": ""
+  },
+  {
+    "name": "de:UpdateState datetime",
+    "op": "de:UpdateState",
+    "input": "last_checked = 2026-11-12\n"
+  },
+  {
+    "name": "de:AccessRecord ok",
+    "op": "de:AccessRecord",
+    "input": "ca_sha256 = \"abc\"\n"
+  },
+  {
+    "name": "de:AccessRecord int",
+    "op": "de:AccessRecord",
+    "input": "ca_sha256 = 1\n"
+  },
+  {
+    "name": "de:Editable ok",
+    "op": "de:Editable",
+    "input": "# Editing the `x` project.\n\ndisplay_name = \"X\"\ndescription = \"d\"\nkeywords = [\"a\", \"b\"]\n\n[[authors]]\nname = \"Ada\"\nemail = \"ada@example.com\"\n\n[[security]]\nurl = \"https://example.com\"\n"
+  },
+  {
+    "name": "de:Editable emptied",
+    "op": "de:Editable",
+    "input": ""
+  },
+  {
+    "name": "de:Editable missing display name",
+    "op": "de:Editable",
+    "input": "keywords = [\"a\"]\n"
+  },
+  {
+    "name": "de:Editable author missing name",
+    "op": "de:Editable",
+    "input": "display_name = \"X\"\n[[authors]]\nurl = \"u\"\n"
+  },
+  {
+    "name": "de:Editable keywords ints",
+    "op": "de:Editable",
+    "input": "display_name = \"X\"\nkeywords = [1]\n"
+  },
+  {
+    "name": "write_project absent full",
+    "op": "write_project",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project absent small",
+    "op": "write_project",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project empty full",
+    "op": "write_project",
+    "input": "",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project empty small",
+    "op": "write_project",
+    "input": "",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project just project full",
+    "op": "write_project",
+    "input": "[project]\nname = \"x\"\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project just project small",
+    "op": "write_project",
+    "input": "[project]\nname = \"x\"\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project test full",
+    "op": "write_project",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project test small",
+    "op": "write_project",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project middle full",
+    "op": "write_project",
+    "input": "# top\n[release]\nlicense = \"MIT\"\n\n# about the project\n# second line\n[project] # header comment\n# inside\nname = \"old\" # trailing\n\n[build]\nwasm = \"p.wasm\"\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project middle small",
+    "op": "write_project",
+    "input": "# top\n[release]\nlicense = \"MIT\"\n\n# about the project\n# second line\n[project] # header comment\n# inside\nname = \"old\" # trailing\n\n[build]\nwasm = \"p.wasm\"\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project crlf full",
+    "op": "write_project",
+    "input": "# top\r\n[release]\r\nlicense = \"MIT\"\r\n\r\n# about\r\n[project]\r\nname = \"old\"\r\n\r\n[build]\r\nwasm = \"p.wasm\"\r\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project crlf small",
+    "op": "write_project",
+    "input": "# top\r\n[release]\r\nlicense = \"MIT\"\r\n\r\n# about\r\n[project]\r\nname = \"old\"\r\n\r\n[build]\r\nwasm = \"p.wasm\"\r\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project no project full",
+    "op": "write_project",
+    "input": "[release]\nlicense = \"MIT\"\n\n[build]\nwasm = \"p.wasm\"\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project no project small",
+    "op": "write_project",
+    "input": "[release]\nlicense = \"MIT\"\n\n[build]\nwasm = \"p.wasm\"\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project no project no newline full",
+    "op": "write_project",
+    "input": "[release]\nlicense = \"MIT\"",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project no project no newline small",
+    "op": "write_project",
+    "input": "[release]\nlicense = \"MIT\"",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project dotted project full",
+    "op": "write_project",
+    "input": "project.name = \"x\"\n\n[release]\nlicense = \"MIT\"\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project dotted project small",
+    "op": "write_project",
+    "input": "project.name = \"x\"\n\n[release]\nlicense = \"MIT\"\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project project subtable full",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n\n[project.icon]\npath = 'a.png'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project project subtable small",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n\n[project.icon]\npath = 'a.png'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project invalid full",
+    "op": "write_project",
+    "input": "[project\nname = 'x'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project invalid small",
+    "op": "write_project",
+    "input": "[project\nname = 'x'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project spaced header full",
+    "op": "write_project",
+    "input": "[ project ]  # trailing\nname = 'x'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project spaced header small",
+    "op": "write_project",
+    "input": "[ project ]  # trailing\nname = 'x'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project quoted header full",
+    "op": "write_project",
+    "input": "[\"project\"]\nname = 'x'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project quoted header small",
+    "op": "write_project",
+    "input": "[\"project\"]\nname = 'x'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project inline project full",
+    "op": "write_project",
+    "input": "project = { name = 'x' }\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project inline project small",
+    "op": "write_project",
+    "input": "project = { name = 'x' }\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project trailing comments full",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n\n# end comment\n# more\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project trailing comments small",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n\n# end comment\n# more\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project root values full",
+    "op": "write_project",
+    "input": "top = 1\n\n[project]\nname = 'x'\n[zzz]\na = 1\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project root values small",
+    "op": "write_project",
+    "input": "top = 1\n\n[project]\nname = 'x'\n[zzz]\na = 1\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project aot after full",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n\n[[release.thing]]\na = 1\n\n[[release.thing]]\na = 2\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project aot after small",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n\n[[release.thing]]\na = 1\n\n[[release.thing]]\na = 2\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project only comments full",
+    "op": "write_project",
+    "input": "# just a comment\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project only comments small",
+    "op": "write_project",
+    "input": "# just a comment\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project project last full",
+    "op": "write_project",
+    "input": "[release]\nlicense = 'MIT'\n\n[project]\nname = 'x'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project project last small",
+    "op": "write_project",
+    "input": "[release]\nlicense = 'MIT'\n\n[project]\nname = 'x'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project aot project full",
+    "op": "write_project",
+    "input": "[[project]]\nname = 'x'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project aot project small",
+    "op": "write_project",
+    "input": "[[project]]\nname = 'x'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project empty project full",
+    "op": "write_project",
+    "input": "# c\n[project]\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project empty project small",
+    "op": "write_project",
+    "input": "# c\n[project]\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project project first with comments full",
+    "op": "write_project",
+    "input": "# file comment\n\n# project comment\n[project]\nname = 'x'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project project first with comments small",
+    "op": "write_project",
+    "input": "# file comment\n\n# project comment\n[project]\nname = 'x'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project crlf header comment full",
+    "op": "write_project",
+    "input": "[release]\r\nlicense = 'MIT'\r\n\r\n[project] # c\r\nname = 'x'\r\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project crlf header comment small",
+    "op": "write_project",
+    "input": "[release]\r\nlicense = 'MIT'\r\n\r\n[project] # c\r\nname = 'x'\r\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project trailing spaces no newline full",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'   ",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project trailing spaces no newline small",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'   ",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project project items aot full",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n[[project.items]]\na = 1\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project project items aot small",
+    "op": "write_project",
+    "input": "[project]\nname = 'x'\n[[project.items]]\na = 1\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project implicit project full",
+    "op": "write_project",
+    "input": "[project.icon]\npath = 'x'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project implicit project small",
+    "op": "write_project",
+    "input": "[project.icon]\npath = 'x'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project dotted inside project full",
+    "op": "write_project",
+    "input": "[project]\nicon.path = 'x'\nname = 'y'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project dotted inside project small",
+    "op": "write_project",
+    "input": "[project]\nicon.path = 'x'\nname = 'y'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project nested release first full",
+    "op": "write_project",
+    "input": "[release.sections]\ndescription = 'D.md'\n\n[project]\nname = 'x'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project nested release first small",
+    "op": "write_project",
+    "input": "[release.sections]\ndescription = 'D.md'\n\n[project]\nname = 'x'\n\n[release]\nlicense = 'MIT'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project multiline strings full",
+    "op": "write_project",
+    "input": "[release]\nnotes = \"\"\"\r\nline1\r\nline2\"\"\"\r\n[project]\nname = 'x'\n",
+    "args": {
+      "name": "happyview-lua",
+      "display_name": "Lua",
+      "description": "Runs \"Lua\" handlers.\nIt's fast.",
+      "icon": {
+        "path": "icon.png",
+        "alt": "the Lua logo"
+      },
+      "keywords": ["lua", "scripting"],
+      "authors": [
+        {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        {
+          "name": "Bea",
+          "url": "https://example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "https://github.com/happyproto/plugins/security"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project multiline strings small",
+    "op": "write_project",
+    "input": "[release]\nnotes = \"\"\"\r\nline1\r\nline2\"\"\"\r\n[project]\nname = 'x'\n",
+    "args": {
+      "display_name": "Lua",
+      "keywords": ["lua"]
+    }
+  },
+  {
+    "name": "write_project absent empty cfg",
+    "op": "write_project",
+    "args": {}
+  },
+  {
+    "name": "write_project absent description newline",
+    "op": "write_project",
+    "args": {
+      "description": "ends with newline\n",
+      "display_name": "\"",
+      "keywords": []
+    }
+  },
+  {
+    "name": "write_project absent authors both",
+    "op": "write_project",
+    "args": {
+      "authors": [
+        {
+          "name": "A",
+          "url": "u",
+          "email": "ada@example.com"
+        }
+      ],
+      "security": [
+        {
+          "url": "u",
+          "email": "ada@example.com"
+        }
+      ]
+    }
+  },
+  {
+    "name": "write_project test empty cfg",
+    "op": "write_project",
+    "input": "\n# keep me\n[project]\ndisplay_name = \"Lua\"\nicon = { path = \"icon.png\", alt = \"the Lua logo\" }\nkeywords = [\"lua\"]\nauthors = [{ name = \"Ada\", email = \"ada@example.com\" }]\nsecurity = [{ url = \"https://github.com/happyproto/plugins/security\" }]\n\n[release]\nlicense = \"MIT\"\nchangelog = \"CHANGELOG.md\"\n\n[release.requires]\n\"env:happyview\" = \">=3.0.0\"\n\n[release.sections]\ndescription = \"DESCRIPTION.md\"\ninstallation = { text = \"hpy add happyview-lua\" }\n\n[release.artifacts]\nbanner = { path = \"banner.png\", alt = \"a banner\" }\nscreenshots = [{ path = \"shot.png\" }]\n\n[build]\nwasm = \"plugin.wasm\"\n",
+    "args": {}
+  },
+  {
+    "name": "write_project escapes",
+    "op": "write_project",
+    "args": {
+      "name": "x",
+      "display_name": "quote\"s and 'apostrophes'",
+      "description": "tab\there\u0001ctrl and \\ backslash",
+      "keywords": ["日本", "a'b", "c\"d", "line\nbreak", "'''"],
+      "icon": {
+        "path": "p"
+      },
+      "security": [
+        {
+          "email": "ada@example.com"
+        },
+        {}
+      ]
+    }
+  },
+  {
+    "name": "set_plugin empty lua",
+    "op": "set_plugin",
+    "input": "",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin empty lib",
+    "op": "set_plugin",
+    "input": "",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin scaffold lua",
+    "op": "set_plugin",
+    "input": "# A HappyView project.\n\n[happyview]\nversion = \"3.0.0\"\n\n[instance]\napp_name = \"x\"\n\n[interpreters]\n\n[libraries]\n\n[dev]\nbackfill = false\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin scaffold lib",
+    "op": "set_plugin",
+    "input": "# A HappyView project.\n\n[happyview]\nversion = \"3.0.0\"\n\n[instance]\napp_name = \"x\"\n\n[interpreters]\n\n[libraries]\n\n[dev]\nbackfill = false\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin other entry lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\n# comment\njs = { did = \"did:plc:x\", name = \"js\", channel = \"beta\" }\n\n[libraries]\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin other entry lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\n# comment\njs = { did = \"did:plc:x\", name = \"js\", channel = \"beta\" }\n\n[libraries]\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin replace with comment lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\nlua = \"1.0\" # pinned\njs = \"2\"\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin replace with comment lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\nlua = \"1.0\" # pinned\njs = \"2\"\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin replace inline lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\nlua   =   { did = \"did:plc:old\", name = \"old\", version = \"0.1.0\" }   # keep\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin replace inline lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\nlua   =   { did = \"did:plc:old\", name = \"old\", version = \"0.1.0\" }   # keep\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline at root lua",
+    "op": "set_plugin",
+    "input": "interpreters = { js = { did = \"did:plc:x\", name = \"js\", channel = \"beta\" } }\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline at root lib",
+    "op": "set_plugin",
+    "input": "interpreters = { js = { did = \"did:plc:x\", name = \"js\", channel = \"beta\" } }\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline replace at root lua",
+    "op": "set_plugin",
+    "input": "interpreters = { lua = \"1\" , js = \"2\" }\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline replace at root lib",
+    "op": "set_plugin",
+    "input": "interpreters = { lua = \"1\" , js = \"2\" }\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted lua",
+    "op": "set_plugin",
+    "input": "interpreters.js = \"x\"\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted lib",
+    "op": "set_plugin",
+    "input": "interpreters.js = \"x\"\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted replace lua",
+    "op": "set_plugin",
+    "input": "interpreters.lua = \"x\" # c\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted replace lib",
+    "op": "set_plugin",
+    "input": "interpreters.lua = \"x\" # c\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin not a table lua",
+    "op": "set_plugin",
+    "input": "interpreters = \"x\"\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin not a table lib",
+    "op": "set_plugin",
+    "input": "interpreters = \"x\"\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin invalid lua",
+    "op": "set_plugin",
+    "input": "[interpreters\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin invalid lib",
+    "op": "set_plugin",
+    "input": "[interpreters\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin crlf lua",
+    "op": "set_plugin",
+    "input": "[happyview]\r\nversion = \"3.0.0\"\r\n\r\n[interpreters]\r\njs = \"x\"\r\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin crlf lib",
+    "op": "set_plugin",
+    "input": "[happyview]\r\nversion = \"3.0.0\"\r\n\r\n[interpreters]\r\njs = \"x\"\r\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin only libraries lua",
+    "op": "set_plugin",
+    "input": "[libraries]\nfoo = 'x'\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin only libraries lib",
+    "op": "set_plugin",
+    "input": "[libraries]\nfoo = 'x'\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin no newline eof lua",
+    "op": "set_plugin",
+    "input": "[happyview]\nversion = \"3.0.0\" # end",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin no newline eof lib",
+    "op": "set_plugin",
+    "input": "[happyview]\nversion = \"3.0.0\" # end",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin trailing comment lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\njs = \"x\"\n\n# tail comment\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin trailing comment lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\njs = \"x\"\n\n# tail comment\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin header comment lua",
+    "op": "set_plugin",
+    "input": "# about\n[interpreters] # plugins\n\n# later\n[dev]\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin header comment lib",
+    "op": "set_plugin",
+    "input": "# about\n[interpreters] # plugins\n\n# later\n[dev]\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin aot interpreters lua",
+    "op": "set_plugin",
+    "input": "[[interpreters]]\nx = 1\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin aot interpreters lib",
+    "op": "set_plugin",
+    "input": "[[interpreters]]\nx = 1\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin sub table lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\njs = \"x\"\n\n[interpreters.lua]\ndid = \"old\"\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin sub table lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\njs = \"x\"\n\n[interpreters.lua]\ndid = \"old\"\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin implicit parent lua",
+    "op": "set_plugin",
+    "input": "[interpreters.js]\ndid = \"x\"\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin implicit parent lib",
+    "op": "set_plugin",
+    "input": "[interpreters.js]\ndid = \"x\"\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline trailing comma lua",
+    "op": "set_plugin",
+    "input": "interpreters = { js = \"x\", }\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline trailing comma lib",
+    "op": "set_plugin",
+    "input": "interpreters = { js = \"x\", }\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline multiline lua",
+    "op": "set_plugin",
+    "input": "interpreters = {\n  js = \"x\", # c\n  lua = \"y\",\n}\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin inline multiline lib",
+    "op": "set_plugin",
+    "input": "interpreters = {\n  js = \"x\", # c\n  lua = \"y\",\n}\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin quoted key replace lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\n\"lua\" = \"1\" # q\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin quoted key replace lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\n\"lua\" = \"1\" # q\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin quoted key replace lib lua",
+    "op": "set_plugin",
+    "input": "[libraries]\n'my lib' = '1'\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin quoted key replace lib lib",
+    "op": "set_plugin",
+    "input": "[libraries]\n'my lib' = '1'\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted then table lua",
+    "op": "set_plugin",
+    "input": "interpreters.js = \"x\"\n\n[other]\na = 1\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted then table lib",
+    "op": "set_plugin",
+    "input": "interpreters.js = \"x\"\n\n[other]\na = 1\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin comments in table end lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\njs = \"x\"\n# end of interpreters\n\n[libraries]\n# none yet\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin comments in table end lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\njs = \"x\"\n# end of interpreters\n\n[libraries]\n# none yet\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin tabs and unicode lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\t# é\njs\t=\t\"日本\"\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin tabs and unicode lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\t# é\njs\t=\t\"日本\"\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin empty inline lua",
+    "op": "set_plugin",
+    "input": "interpreters = {}\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin empty inline lib",
+    "op": "set_plugin",
+    "input": "interpreters = {}\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin value tables lua",
+    "op": "set_plugin",
+    "input": "[interpreters]\nlua = { did = \"a\" }\n[interpreters.lua2]\nx = 1\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin value tables lib",
+    "op": "set_plugin",
+    "input": "[interpreters]\nlua = { did = \"a\" }\n[interpreters.lua2]\nx = 1\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin spaced header lua",
+    "op": "set_plugin",
+    "input": "[ interpreters ]\njs = 'x'\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin spaced header lib",
+    "op": "set_plugin",
+    "input": "[ interpreters ]\njs = 'x'\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin blank lines only lua",
+    "op": "set_plugin",
+    "input": "\n\n\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin blank lines only lib",
+    "op": "set_plugin",
+    "input": "\n\n\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin comment only lua",
+    "op": "set_plugin",
+    "input": "# hello\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin comment only lib",
+    "op": "set_plugin",
+    "input": "# hello\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted header lua",
+    "op": "set_plugin",
+    "input": "[interpreters.\"a.b\"]\nx = 1\n",
+    "args": {
+      "kind": "interpreter",
+      "key": "lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin dotted header lib",
+    "op": "set_plugin",
+    "input": "[interpreters.\"a.b\"]\nx = 1\n",
+    "args": {
+      "kind": "library",
+      "key": "my lib",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "version": "1.2.0"
+      }
+    }
+  },
+  {
+    "name": "set_plugin bad interpreter key",
+    "op": "set_plugin",
+    "input": "",
+    "args": {
+      "kind": "interpreter",
+      "key": "Lua",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin empty library key",
+    "op": "set_plugin",
+    "input": "",
+    "args": {
+      "kind": "library",
+      "key": "  ",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "set_plugin quoted key",
+    "op": "set_plugin",
+    "input": "[libraries]\n'a.b' = 'x'\n",
+    "args": {
+      "kind": "library",
+      "key": "a.b",
+      "entry": {
+        "did": "did:plc:abc",
+        "name": "happyview-lua",
+        "channel": "latest"
+      }
+    }
+  },
+  {
+    "name": "first_interpreter table",
+    "op": "first_interpreter",
+    "input": "[interpreters]\nlua = \"x\"\njs = \"y\"\n"
+  },
+  {
+    "name": "first_interpreter inline",
+    "op": "first_interpreter",
+    "input": "interpreters = { js = \"y\", lua = \"x\" }\n"
+  },
+  {
+    "name": "first_interpreter dotted",
+    "op": "first_interpreter",
+    "input": "interpreters.ts.a = 1\n"
+  },
+  {
+    "name": "first_interpreter empty",
+    "op": "first_interpreter",
+    "input": "[interpreters]\n"
+  },
+  {
+    "name": "first_interpreter missing",
+    "op": "first_interpreter",
+    "input": ""
+  },
+  {
+    "name": "first_interpreter invalid",
+    "op": "first_interpreter",
+    "input": "["
+  },
+  {
+    "name": "first_interpreter value",
+    "op": "first_interpreter",
+    "input": "interpreters = 1\n"
+  },
+  {
+    "name": "scaffold full",
+    "op": "scaffold",
+    "args": {
+      "app_name": "My App",
+      "superadmin": "did:plc:admin",
+      "happyview_version": "3.0.0",
+      "interpreters": {
+        "lua": {
+          "did": "did:plc:abc",
+          "name": "happyview-lua",
+          "channel": "latest"
+        },
+        "javascript": {
+          "did": "did:plc:abc",
+          "name": "happyview-js",
+          "version": "1.2.0"
+        }
+      },
+      "libraries": {
+        "my lib": {
+          "did": "did:plc:abc",
+          "name": "happyview-lua",
+          "channel": "latest"
+        }
+      },
+      "handler_language": "lua"
+    }
+  },
+  {
+    "name": "scaffold bare",
+    "op": "scaffold",
+    "args": {
+      "app_name": "a\"b",
+      "superadmin": "",
+      "happyview_version": "3.0.0"
+    }
+  },
+  {
+    "name": "render full",
+    "op": "render",
+    "args": {
+      "happyview_version": "3.1.0",
+      "app_name": "X",
+      "superadmin": "did:plc:admin",
+      "interpreters": {
+        "lua": {
+          "did": "did:plc:abc",
+          "name": "happyview-lua",
+          "channel": "latest"
+        }
+      },
+      "network_lexicons": ["com.example.a", "com.example.b"],
+      "labels": ["did:plc:labeler"],
+      "lexicons": {
+        "com.example.a": {
+          "backfill": true,
+          "token_cost": 5
+        },
+        "com.example.b": {},
+        "com.example.c": {
+          "indexed": false
+        }
+      },
+      "scripts": {
+        "com.example.a": {
+          "description": "desc"
+        },
+        "record.create:com.example.b": {
+          "outbound_xrpcs": ["com.other.x", "com.other.y"]
+        },
+        "com.example.none": {}
+      },
+      "modules": {
+        "my-mod": {
+          "language": "rust",
+          "path": "modules/my-mod"
+        }
+      }
+    }
+  },
+  {
+    "name": "render bare",
+    "op": "render",
+    "args": {
+      "happyview_version": "3.1.0"
+    }
+  },
+  {
+    "name": "ser:Lockfile two",
+    "op": "ser:Lockfile",
+    "input": "{\"version\":2,\"happyview\":{\"version\":\"3.0.0\"},\"plugin\":[{\"id\":\"zeta\",\"kind\":\"library\",\"keys\":[\"b\",\"a\"],\"project\":\"at://did:plc:abc/software.release.project/zeta\",\"version\":\"1.2.0\",\"channel\":null,\"version_uri\":\"at://did:plc:abc/software.release.version/zeta:1.2.0\",\"manifest_cid\":\"bafyreiabc\",\"package_cid\":\"bafkreiabc\",\"manifest_blob_cid\":\"bafkreidef\",\"dependencies\":[\"alpha\"],\"capabilities\":null},{\"id\":\"alpha\",\"kind\":\"interpreter\",\"keys\":[\"lua\"],\"project\":\"at://did:plc:abc/software.release.project/alpha\",\"version\":\"1.2.0\",\"channel\":\"latest\",\"version_uri\":\"at://did:plc:abc/software.release.version/alpha:1.2.0\",\"manifest_cid\":\"bafyreiabc\",\"package_cid\":\"bafkreiabc\",\"manifest_blob_cid\":\"bafkreidef\",\"dependencies\":[],\"capabilities\":[\"net\",\"fs\"]}]}"
+  },
+  {
+    "name": "render:Lockfile two",
+    "op": "render:Lockfile",
+    "input": "{\"version\":2,\"happyview\":{\"version\":\"3.0.0\"},\"plugin\":[{\"id\":\"zeta\",\"kind\":\"library\",\"keys\":[\"b\",\"a\"],\"project\":\"at://did:plc:abc/software.release.project/zeta\",\"version\":\"1.2.0\",\"channel\":null,\"version_uri\":\"at://did:plc:abc/software.release.version/zeta:1.2.0\",\"manifest_cid\":\"bafyreiabc\",\"package_cid\":\"bafkreiabc\",\"manifest_blob_cid\":\"bafkreidef\",\"dependencies\":[\"alpha\"],\"capabilities\":null},{\"id\":\"alpha\",\"kind\":\"interpreter\",\"keys\":[\"lua\"],\"project\":\"at://did:plc:abc/software.release.project/alpha\",\"version\":\"1.2.0\",\"channel\":\"latest\",\"version_uri\":\"at://did:plc:abc/software.release.version/alpha:1.2.0\",\"manifest_cid\":\"bafyreiabc\",\"package_cid\":\"bafkreiabc\",\"manifest_blob_cid\":\"bafkreidef\",\"dependencies\":[],\"capabilities\":[\"net\",\"fs\"]}]}"
+  },
+  {
+    "name": "ser:Lockfile none",
+    "op": "ser:Lockfile",
+    "input": "{\"version\":2,\"happyview\":{\"version\":\"3.0.0\"},\"plugin\":[]}"
+  },
+  {
+    "name": "ser:Lockfile empty caps",
+    "op": "ser:Lockfile",
+    "input": "{\"version\":2,\"happyview\":{\"version\":\"3.0.0\"},\"plugin\":[{\"id\":\"a\",\"kind\":\"interpreter\",\"keys\":[\"lua\"],\"project\":\"at://did:plc:abc/software.release.project/a\",\"version\":\"1.2.0\",\"channel\":\"latest\",\"version_uri\":\"at://did:plc:abc/software.release.version/a:1.2.0\",\"manifest_cid\":\"bafyreiabc\",\"package_cid\":\"bafkreiabc\",\"manifest_blob_cid\":\"bafkreidef\",\"dependencies\":[],\"capabilities\":[]}]}"
+  },
+  {
+    "name": "ser:ChannelFile beta",
+    "op": "ser:ChannelFile",
+    "input": "{\"channel\":\"beta\"}"
+  },
+  {
+    "name": "ser:UpdateState ok",
+    "op": "ser:UpdateState",
+    "input": "{\"last_checked\":\"2026-11-12\"}"
+  },
+  {
+    "name": "ser:AccessRecord ok",
+    "op": "ser:AccessRecord",
+    "input": "{\"ca_sha256\":\"abc123\"}"
+  },
+  {
+    "name": "ser_pretty:Editable full",
+    "op": "ser_pretty:Editable",
+    "input": "{\"display_name\":\"X\",\"description\":\"A \\\"quoted\\\" description.\\nSecond line.\",\"keywords\":[\"a\",\"b\"],\"authors\":[{\"name\":\"Ada\",\"email\":\"ada@example.com\"},{\"name\":\"Bea\",\"url\":\"https://example.com\"}],\"security\":[{\"url\":\"https://example.com/security\"}]}"
+  },
+  {
+    "name": "ser:Editable full",
+    "op": "ser:Editable",
+    "input": "{\"display_name\":\"X\",\"description\":\"A \\\"quoted\\\" description.\\nSecond line.\",\"keywords\":[\"a\",\"b\"],\"authors\":[{\"name\":\"Ada\",\"email\":\"ada@example.com\"},{\"name\":\"Bea\",\"url\":\"https://example.com\"}],\"security\":[{\"url\":\"https://example.com/security\"}]}"
+  },
+  {
+    "name": "ser_pretty:Editable minimal",
+    "op": "ser_pretty:Editable",
+    "input": "{\"display_name\":\"X\",\"keywords\":[\"one\"],\"authors\":[],\"security\":[]}"
+  },
+  {
+    "name": "ser_pretty:Editable one keyword",
+    "op": "ser_pretty:Editable",
+    "input": "{\"display_name\":\"X\",\"description\":null,\"keywords\":[],\"authors\":[{\"name\":\"A\"}],\"security\":[]}"
+  },
+  {
+    "name": "ser:HpyToml full",
+    "op": "ser:HpyToml",
+    "input": "{\"project\":{\"name\":\"happyview-lua\",\"display_name\":\"Lua\",\"description\":\"Runs \\\"Lua\\\" handlers.\\nIt's fast.\",\"icon\":{\"path\":\"icon.png\",\"alt\":\"the Lua logo\"},\"keywords\":[\"lua\",\"scripting\"],\"authors\":[{\"name\":\"Ada\",\"email\":\"ada@example.com\"},{\"name\":\"Bea\",\"url\":\"https://example.com\"}],\"security\":[{\"url\":\"https://github.com/happyproto/plugins/security\"}]},\"release\":{\"license\":\"MIT\",\"requires\":{\"env:happyview\":\">=3.0.0\",\"alpha\":\"1\"},\"sections\":{\"description\":\"DESCRIPTION.md\",\"installation\":{\"text\":\"hpy add x\"}},\"artifacts\":{\"banner\":{\"path\":\"b.png\"},\"screenshots\":[{\"path\":\"s.png\",\"alt\":\"s\"}]}},\"build\":{\"command\":\"make\",\"wasm\":null}}"
+  },
+  {
+    "name": "ser_pretty:HpyToml full",
+    "op": "ser_pretty:HpyToml",
+    "input": "{\"project\":{\"name\":\"happyview-lua\",\"display_name\":\"Lua\",\"description\":\"Runs \\\"Lua\\\" handlers.\\nIt's fast.\",\"icon\":{\"path\":\"icon.png\",\"alt\":\"the Lua logo\"},\"keywords\":[\"lua\",\"scripting\"],\"authors\":[{\"name\":\"Ada\",\"email\":\"ada@example.com\"},{\"name\":\"Bea\",\"url\":\"https://example.com\"}],\"security\":[{\"url\":\"https://github.com/happyproto/plugins/security\"}]},\"release\":{\"license\":\"MIT\",\"requires\":{\"env:happyview\":\">=3.0.0\",\"alpha\":\"1\"},\"sections\":{\"description\":\"DESCRIPTION.md\",\"installation\":{\"text\":\"hpy add x\"}},\"artifacts\":{\"banner\":{\"path\":\"b.png\"},\"screenshots\":[{\"path\":\"s.png\",\"alt\":\"s\"}]}},\"build\":{\"command\":\"make\",\"wasm\":null}}"
+  },
+  {
+    "name": "ser:HpyToml release only",
+    "op": "ser:HpyToml",
+    "input": "{\"release\":{\"artifacts\":{}}}"
+  },
+  {
+    "name": "ser:HpyToml empty",
+    "op": "ser:HpyToml",
+    "input": "{}"
+  },
+  {
+    "name": "ser:Kitchen full",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":1,\"b\":true,\"v\":[\"a\",\"line\\nbreak\",\"'''\",\"\\\"\\\"\\\"\",\"back\\\\slash\",\"日本\"],\"m\":{\"b\":2,\"a\":1,\"needs quotes\":3,\"\":4},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser_pretty:Kitchen full",
+    "op": "ser_pretty:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":1,\"b\":true,\"v\":[\"a\",\"line\\nbreak\",\"'''\",\"\\\"\\\"\\\"\",\"back\\\\slash\",\"日本\"],\"m\":{\"b\":2,\"a\":1,\"needs quotes\":3,\"\":4},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float half",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":1.5,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float big",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":1e+300,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float tiny",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":5e-324,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float negzero",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":-0.0,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float third",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":0.3333333333333333,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float e16",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":10000000000000000,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float e15",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":1000000000000000,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Kitchen float e21",
+    "op": "ser:Kitchen",
+    "input": "{\"s\":\"it's \\\"quoted\\\"\\ttab\\u0001\",\"n\":4294967295,\"i\":-9007199254740991,\"f\":1e+21,\"b\":true,\"v\":[],\"m\":{},\"o\":null,\"e\":\"alpha\",\"u8v\":255,\"renamed-key\":\"r\"}"
+  },
+  {
+    "name": "ser:Nested ok",
+    "op": "ser:Nested",
+    "input": "{\"outer\":{\"a\":\"x\",\"b\":1},\"list\":[{\"a\":\"y\",\"b\":null},{\"a\":\"z\",\"b\":-2}]}"
+  },
+  {
+    "name": "ser_pretty:Nested ok",
+    "op": "ser_pretty:Nested",
+    "input": "{\"outer\":{\"a\":\"x\",\"b\":1},\"list\":[{\"a\":\"y\",\"b\":null},{\"a\":\"z\",\"b\":-2}]}"
+  },
+  {
+    "name": "ser:Nested empty list",
+    "op": "ser:Nested",
+    "input": "{\"outer\":{\"a\":\"x\",\"b\":null},\"list\":[]}"
+  },
+  {
+    "name": "ser:Kitchen bad json",
+    "op": "ser:Kitchen",
+    "input": "{\"s\": 1"
+  },
+  {
+    "name": "ser:ShapeHolder shapes",
+    "op": "ser:ShapeHolder",
+    "input": "{\"shape\":{\"kind\":\"circle\",\"r\":2},\"shapes\":[{\"kind\":\"empty\"},{\"kind\":\"square\",\"side\":2}]}"
+  },
+  {
+    "name": "ser_table scalars",
+    "op": "ser_table",
+    "input": "a = 1\nb = 'x'\nc = 1.5\nd = true\ne = 1979-05-27T07:32:00Z\nf = 07:32:00\ng = 1979-05-27\n"
+  },
+  {
+    "name": "ser_table_pretty scalars",
+    "op": "ser_table_pretty",
+    "input": "a = 1\nb = 'x'\nc = 1.5\nd = true\ne = 1979-05-27T07:32:00Z\nf = 07:32:00\ng = 1979-05-27\n"
+  },
+  {
+    "name": "ser_table nested",
+    "op": "ser_table",
+    "input": "[a]\nx = 1\n[a.b]\ny = 2\n[a.b.c]\n[d]\n"
+  },
+  {
+    "name": "ser_table_pretty nested",
+    "op": "ser_table_pretty",
+    "input": "[a]\nx = 1\n[a.b]\ny = 2\n[a.b.c]\n[d]\n"
+  },
+  {
+    "name": "ser_table aot",
+    "op": "ser_table",
+    "input": "[[a]]\nx = 1\n[[a]]\nx = 2\n[a.sub]\ny = 3\n"
+  },
+  {
+    "name": "ser_table_pretty aot",
+    "op": "ser_table_pretty",
+    "input": "[[a]]\nx = 1\n[[a]]\nx = 2\n[a.sub]\ny = 3\n"
+  },
+  {
+    "name": "ser_table aot in aot",
+    "op": "ser_table",
+    "input": "[[a]]\n[[a.b]]\nx = 1\n[[a.b]]\nx = 2\n"
+  },
+  {
+    "name": "ser_table_pretty aot in aot",
+    "op": "ser_table_pretty",
+    "input": "[[a]]\n[[a.b]]\nx = 1\n[[a.b]]\nx = 2\n"
+  },
+  {
+    "name": "ser_table arrays",
+    "op": "ser_table",
+    "input": "a = [[1, 2], ['x']]\nb = []\nc = [{ x = 1 }, { y = [1, 2] }]\nd = [1, { x = 1 }]\n"
+  },
+  {
+    "name": "ser_table_pretty arrays",
+    "op": "ser_table_pretty",
+    "input": "a = [[1, 2], ['x']]\nb = []\nc = [{ x = 1 }, { y = [1, 2] }]\nd = [1, { x = 1 }]\n"
+  },
+  {
+    "name": "ser_table keys",
+    "op": "ser_table",
+    "input": "\"a b\" = 1\n\"c.d\" = 2\n\"\" = 3\n\"é\" = 4\n'q\"' = 5\n"
+  },
+  {
+    "name": "ser_table_pretty keys",
+    "op": "ser_table_pretty",
+    "input": "\"a b\" = 1\n\"c.d\" = 2\n\"\" = 3\n\"é\" = 4\n'q\"' = 5\n"
+  },
+  {
+    "name": "ser_table strings",
+    "op": "ser_table",
+    "input": "a = \"line1\\nline2\"\nb = \"it's\"\nc = 'back\\slash'\nd = \"ctrl\\u0001\"\ne = \"tab\\t\"\nf = \"cr\\r\"\ng = \"\\\"\\\"\\\"\"\nh = \"a\\n'''\\n\\\"\\\"\\\"\"\n"
+  },
+  {
+    "name": "ser_table_pretty strings",
+    "op": "ser_table_pretty",
+    "input": "a = \"line1\\nline2\"\nb = \"it's\"\nc = 'back\\slash'\nd = \"ctrl\\u0001\"\ne = \"tab\\t\"\nf = \"cr\\r\"\ng = \"\\\"\\\"\\\"\"\nh = \"a\\n'''\\n\\\"\\\"\\\"\"\n"
+  },
+  {
+    "name": "ser_table inline tables",
+    "op": "ser_table",
+    "input": "a = { x = { y = 1 } }\nb = {}\n"
+  },
+  {
+    "name": "ser_table_pretty inline tables",
+    "op": "ser_table_pretty",
+    "input": "a = { x = { y = 1 } }\nb = {}\n"
+  },
+  {
+    "name": "ser_table empty table",
+    "op": "ser_table",
+    "input": "[a]\n"
+  },
+  {
+    "name": "ser_table_pretty empty table",
+    "op": "ser_table_pretty",
+    "input": "[a]\n"
+  },
+  {
+    "name": "ser_table deep empty",
+    "op": "ser_table",
+    "input": "[a.b.c]\n"
+  },
+  {
+    "name": "ser_table_pretty deep empty",
+    "op": "ser_table_pretty",
+    "input": "[a.b.c]\n"
+  },
+  {
+    "name": "ser_table table with array of mixed",
+    "op": "ser_table",
+    "input": "[t]\na = [1, 2, 3]\nb = ['x', 'y']\n"
+  },
+  {
+    "name": "ser_table_pretty table with array of mixed",
+    "op": "ser_table_pretty",
+    "input": "[t]\na = [1, 2, 3]\nb = ['x', 'y']\n"
+  }
+]

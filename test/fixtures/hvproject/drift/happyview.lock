@@ -1,0 +1,32 @@
+# Written by hpy from happyview.toml. Commit it; don't edit it by hand.
+
+version = 2
+
+[happyview]
+version = "3.0.0"
+
+[[plugin]]
+id = "lua"
+kind = "interpreter"
+keys = ["lua"]
+project = "at://did:plc:publisher/software.release.project/lua"
+version = "1.1.0"
+version_uri = "at://did:plc:publisher/software.release.version/lua.1.1.0"
+manifest_cid = "bafyreimanifest"
+package_cid = "bafkreipackage"
+manifest_blob_cid = "bafkreimanifestblob"
+dependencies = ["std"]
+capabilities = ["kv:read"]
+
+[[plugin]]
+id = "std"
+kind = "library"
+keys = ["std"]
+project = "at://did:plc:publisher/software.release.project/std"
+version = "2.0.0"
+version_uri = "at://did:plc:publisher/software.release.version/std.2.0.0"
+manifest_cid = "bafyreimanifest"
+package_cid = "bafkreipackage"
+manifest_blob_cid = "bafkreimanifestblob"
+dependencies = []
+capabilities = ["kv:read"]

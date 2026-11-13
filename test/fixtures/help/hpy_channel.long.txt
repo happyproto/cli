@@ -1,0 +1,14 @@
+Show or choose the release channel hpy updates from
+
+Usage: hpy channel [OPTIONS] [CHANNEL]
+
+Arguments:
+  [CHANNEL]  stable (also `main`), beta or alpha. Shows the current channel when omitted
+
+Options:
+      --json      Print the result as JSON on stdout
+  -y, --yes       Do not ask for confirmation
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help

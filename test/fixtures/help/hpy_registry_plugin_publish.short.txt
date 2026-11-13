@@ -1,0 +1,21 @@
+Publish the plugin in the current directory as a new version
+
+Usage: hpy registry plugin publish [OPTIONS]
+
+Options:
+      --json                    Print the result as JSON on stdout
+      --wasm <WASM>             Path to the built .wasm module, relative to the plugin's directory
+                                (-C)
+      --no-input                Never prompt; fail when a value is missing. Irreversible actions
+                                still need --yes. Implied without a terminal
+      --version <VERSION>       Version to publish (default: manifest.json version)
+  -C <DIR>                      Run as if started in DIR
+      --track <TRACK>           The channel to move to this version: latest, beta or alpha (default:
+                                latest for a stable version, else the prerelease's name)
+      --promote <FROM_VERSION>  Publish an already published version's artifact as --version instead
+                                of building one
+      --dry-run                 Validate and print what would be published without publishing
+      --no-build                Skip hpy.toml [build] command
+      --wait                    Wait until the registry has copied the version's blobs
+  -y, --yes                     Do not ask for confirmation
+  -h, --help                    Print help

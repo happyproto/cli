@@ -1,0 +1,82 @@
+# Publishes the release's npm package (package.json `name`, bin `hpy`) under
+# its channel's dist-tag: `latest` for a stable release, `beta` or `alpha` for
+# a prerelease. A prerelease no channel ships (e.g. -rc.1) is not published.
+#
+# Called by release.yml (dist `publish-jobs`) after the GitHub Release exists.
+# Builds dist/hpy.mjs from the release tag, as `npm run build` does.
+#
+# Needs: npm trusted publishing for the package, set up once on npmjs.com (the
+# package's Settings, Trusted publisher: GitHub Actions, repository
+# happyproto/cli, with both release.yml, the workflow that calls this one, and
+# publish-npm.yml registered). No token secret is used. An E404 from publish
+# means the trusted publisher didn't match: fix it and re-run this job.
+name: Publish npm package
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  npm:
+    runs-on: depot-ubuntu-24.04
+    # Permissions come from release.yml's call (dist grants publish jobs
+    # id-token: write, which npm provenance needs).
+    env:
+      TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ fromJson(inputs.plan).announcement_tag }}
+          persist-credentials: false
+
+      - name: Find the channel
+        id: channel
+        run: |
+          channel=$(packaging/channel.sh "$TAG")
+          case "$channel" in
+            stable) tag=latest ;;
+            beta | alpha) tag=$channel ;;
+            *) tag="" ; echo "::notice::$TAG is on no release channel; npm is left alone" ;;
+          esac
+          echo "dist-tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        if: steps.channel.outputs.dist-tag != ''
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # Trusted publishing (OIDC) needs npm 11.5.1 or newer; pinned, as everything in this job is.
+      - name: Update npm
+        if: steps.channel.outputs.dist-tag != ''
+        run: npm install -g npm@11.21.1
+
+      - name: Build
+        if: steps.channel.outputs.dist-tag != ''
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          [ "v$version" = "$TAG" ] || { echo "::error::package.json is at $version, not $TAG"; exit 1; }
+          npm ci --ignore-scripts
+          npm run build
+          HPY_NO_UPDATE_CHECK=1 node dist/hpy.mjs --version
+
+      # No token: npm trusts this repository's release workflow through GitHub's OIDC token
+      # (id-token: write, granted by release.yml's call), and records provenance.
+      - name: Publish
+        if: steps.channel.outputs.dist-tag != ''
+        env:
+          DIST_TAG: ${{ steps.channel.outputs.dist-tag }}
+        run: |
+          name=$(node -p 'require("./package.json").name')
+          version=$(node -p 'require("./package.json").version')
+          # A re-run of the release must not fail on a version npm already has. Trusted
+          # publishing covers only `npm publish`, so the dist-tag it set then stands.
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "::notice::$name@$version is already on npm; nothing to publish"
+          else
+            npm publish --provenance --access public --tag "$DIST_TAG"
+          fi

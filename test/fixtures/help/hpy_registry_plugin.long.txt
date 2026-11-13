@@ -1,0 +1,21 @@
+Manage your HappyView plugins in the registry
+
+Usage: hpy registry plugin [OPTIONS] <COMMAND>
+
+Commands:
+  init       Write hpy.toml's [project] and create the plugin's project in the registry
+  show       Show the plugin's project as the registry has it
+  edit       Edit the plugin's project in the registry
+  pull       Copy the plugin's project from the registry into hpy.toml's [project]
+  publish    Publish the plugin in the current directory as a new version
+  status     Show what the registry knows about this plugin's versions
+  lifecycle  Record a lifecycle event (end of support, end of life, …) for a version or the whole
+             project
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+      --json      Print the result as JSON on stdout
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help

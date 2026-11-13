@@ -1,5 +1,6 @@
 [workspace]
-members = ["cargo:."]
+# A generic member: dist.toml at the root (Bun builds, not cargo).
+members = ["dist:."]
 
 # Config for 'dist'
 [dist]
@@ -9,35 +10,61 @@ installers = ["shell", "powershell", "homebrew"]
 tap = "happyproto/homebrew-tap"
 # Homebrew publishing is our own job (publish-homebrew.yml): it pushes to the
 # tap as the happyproto-infra-bump GitHub App instead of with a static token.
-publish-jobs = ["./publish-homebrew"]
+# publish-npm.yml publishes the npm package under the channel's dist-tag.
+publish-jobs = ["./publish-homebrew", "./publish-npm"]
 # Prereleases publish too, each to its channel: the hpy-beta and hpy-alpha
 # formulae, and the beta and alpha apt suites and yum repositories.
 publish-prereleases = true
 formula = "hpy"
-# Linux ships only static (musl) builds: they run on any distribution, while a
-# glibc build from an Ubuntu 24.04 runner would need glibc 2.39.
+# Linux has a build for each libc. Bun's musl build is dynamically linked (it
+# needs musl's loader and libstdc++), so unlike Rust's static musl build it
+# does not run on glibc distributions: those get the gnu build, which the
+# shell installer prefers on glibc 2.31 and newer, and which the .deb/.rpm
+# packages carry. Alpine (with libstdc++) still gets the musl build.
 targets = [
   "aarch64-apple-darwin",
   "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
   "aarch64-unknown-linux-musl",
   "x86_64-unknown-linux-musl",
   "x86_64-pc-windows-msvc",
 ]
 install-path = "CARGO_HOME"
 install-updater = false
+# release.yml has one hand-added step: packaging/patch-installer.sh, which adds
+# the musl runtime check to the shell installer. dist must not regenerate the
+# workflow over it; after a dist upgrade, regenerate (dist generate), re-add
+# that step, and run packaging/test-musl-guard.sh.
+allow-dirty = ["ci"]
 # Releases are started by semantic-release (ci.yml), which picks the version
 # and dispatches this workflow with the tag, rather than by a tag push.
 dispatch-releases = true
 # Builds .deb/.rpm from the release's static Linux binaries, attaches them to
 # the release, and publishes the apt/yum repository on GitHub Pages.
 post-announce-jobs = ["./publish-linux-packages"]
+# Node, Bun and npm ci before each build (.github/build-setup.yml).
+github-build-setup = "../build-setup.yml"
+
+# dist would otherwise take the gnu build's minimum glibc from the build host
+# (ubuntu 24.04: 2.39), and its installer would turn Debian 12 and Ubuntu
+# 22.04 away from the gnu build. Bun's gnu build runs on glibc 2.31 and newer.
+# packaging/patch-installer.sh fails the release if the installer asks for
+# any other minimum.
+[dist.min-glibc-version]
+"*" = "2.31"
 
 [dist.github-custom-runners]
 global = "depot-ubuntu-24.04"
+# Each Linux build runs on its own architecture, so the smoke test can run
+# it: the gnu build directly, the musl one in an Alpine container.
+x86_64-unknown-linux-gnu = "depot-ubuntu-24.04"
+aarch64-unknown-linux-gnu = "depot-ubuntu-24.04-arm"
 x86_64-unknown-linux-musl = "depot-ubuntu-24.04"
 aarch64-unknown-linux-musl = "depot-ubuntu-24.04-arm"
 aarch64-apple-darwin = "depot-macos-15"
-# Depot's macOS runners are Apple silicon; the Intel build cross-compiles.
+# Depot's macOS runners are Apple silicon; Bun cross-compiles the Intel build,
+# which is then re-signed and smoke-tested under Rosetta.
 x86_64-apple-darwin = { runner = "depot-macos-15", host = "aarch64-apple-darwin" }
 x86_64-pc-windows-msvc = "depot-windows-2022"
 

@@ -1,0 +1,12 @@
+Write editor types for the project into .happyview/types/, and the tsconfig.json or .luarc.json that
+points editors at them
+
+Usage: hpy happyview types [OPTIONS]
+
+Options:
+      --json      Print the result as JSON on stdout
+      --locked    Fail rather than update happyview.lock when it no longer matches happyview.toml
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help

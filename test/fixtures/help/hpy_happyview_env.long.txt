@@ -1,0 +1,14 @@
+Work with the deployed instance's script variables, which scripts read as `ctx.env`
+
+Usage: hpy happyview env [OPTIONS] <COMMAND>
+
+Commands:
+  push  Send keys from the project's .env to the instance's script variables, asking before each
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+      --json      Print the result as JSON on stdout
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help
