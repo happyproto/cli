@@ -7,3 +7,7 @@ export const STATUS_NSID = "software.release.status";
 export const SIDECAR_NSID = "at.happyproto.registry.project";
 export const PUBLICATION_NSID = "site.standard.publication";
 export const DOCUMENT_NSID = "site.standard.document";
+/** The `$type` of a plugin's entry in a `software.release.manifest`'s `artifacts`. */
+export const ARTIFACT_TYPE = "at.happyproto.plugin.v1";
+export const TRACKS = ["latest", "beta", "alpha"] as const;
+export const PLUGIN_TYPES = ["auth", "library", "interpreter"] as const;
