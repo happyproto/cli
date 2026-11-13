@@ -741,4 +741,22 @@ describe("exec hands HappyView a process Rust would", () => {
     expect(r.code, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe("fd0=blocking fd1=blocking fd2=blocking");
   });
+
+  it.skipIf(!unix)("a_missing_interpreter_is_reported_not_an_abort", async () => {
+    const s = await cachedAs("#!/nonexistent/interpreter\n");
+    const r = await s.hpy(["hv", "check"]);
+    expect(r.code, r.stderr).toBe(1);
+    expect(says(r.stderr, "could not start")).toBe(true);
+    expect(says(r.stderr, "No such file or directory (os error 2)")).toBe(true);
+  });
+
+  it.skipIf(!unix)("a_file_exec_cannot_run_is_reported_not_an_abort", async () => {
+    const s = await cachedAs("\x7fELF but not really");
+    const r = await s.hpy(["hv", "check"]);
+    // exec refuses it, or, where the C library's execvp hands a file it cannot run to
+    // /bin/sh (glibc, macOS), the shell does, as for Rust's `Command::exec`; either way it
+    // is a failure, never Node's abort (134).
+    if (r.code === 1) expect(says(r.stderr, "Exec format error (os error 8)"), r.stderr).toBe(true);
+    else expect([126, 127], r.stderr).toContain(r.code);
+  });
 });

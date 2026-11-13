@@ -20,6 +20,7 @@ const UNIX: Record<string, [number, string]> = {
   EPERM: [1, "Operation not permitted"],
   ENOENT: [2, "No such file or directory"],
   EIO: [5, "Input/output error"],
+  ENOEXEC: [8, "Exec format error"],
   EBADF: [9, "Bad file descriptor"],
   EACCES: [13, "Permission denied"],
   EEXIST: [17, "File exists"],
@@ -31,6 +32,8 @@ const UNIX: Record<string, [number, string]> = {
   EROFS: [30, "Read-only file system"],
 };
 
+// No ENOEXEC: Windows reports a bad executable as ERROR_BAD_EXE_FORMAT, which libuv names
+// EFTYPE, and HappyView, the program `hpy` starts, has no Windows build to run.
 const WINDOWS: Record<string, [number, string]> = {
   ENOENT: [2, "The system cannot find the file specified."],
   EACCES: [5, "Access is denied."],

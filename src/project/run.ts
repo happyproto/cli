@@ -4,8 +4,16 @@
 //
 // Rust's blocking threads are async here, and its `AtomicBool` stops are `AbortSignal`s.
 import { spawn } from "node:child_process";
-import { accessSync, constants as fsConstants, statSync } from "node:fs";
+import {
+  accessSync,
+  closeSync,
+  constants as fsConstants,
+  openSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import { constants as osConstants } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { Failure } from "../core/failure.ts";
 import { ioErrorText } from "../core/io.ts";
 import { renderReport } from "../core/report.ts";
@@ -42,19 +50,94 @@ function couldNotStart(program: string, e: unknown): Failure {
 
 /**
  * Before Node 26.1 a failed `execve(2)` aborts the process instead of throwing, so the program
- * is checked first: what exec would refuse for a missing or non-executable file is refused
- * here with the same errno.
+ * is checked first; see `precheck`.
  */
 function execveThrows(): boolean {
   const [major, minor] = process.versions.node.split(".").map(Number) as [number, number];
   return major > 26 || (major === 26 && minor >= 1);
 }
 
-function precheck(program: string): void {
-  accessSync(program, fsConstants.X_OK);
-  if (!statSync(program).isFile()) {
+/** `access(X_OK)` and a regular file: what exec refuses a missing or non-executable file for, with its errno. */
+function runnable(path: string): void {
+  accessSync(path, fsConstants.X_OK);
+  if (!statSync(path).isFile()) {
     throw Object.assign(new Error("EACCES"), { code: "EACCES", errno: -13 });
   }
+}
+
+/** The first bytes of `path`, or `undefined` when it cannot be read (exec needs only X_OK). */
+function head(path: string): Buffer | undefined {
+  let fd: number;
+  try {
+    fd = openSync(path, "r");
+  } catch {
+    return undefined;
+  }
+  try {
+    const buf = Buffer.alloc(512);
+    return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0));
+  } catch {
+    return undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** The Mach-O CPU type and the ELF machine of this host, the only binaries judged sure to exec. */
+const MACHO_CPU = process.arch === "arm64" ? 0x0100000c : process.arch === "x64" ? 0x01000007 : -1;
+const ELF_MACHINE = process.arch === "arm64" ? 183 : process.arch === "x64" ? 62 : -1;
+
+/**
+ * Whether `bytes` start an executable this host's kernel runs: a 64-bit little-endian ELF
+ * executable or shared object for its machine on Linux, or a Mach-O executable (thin or fat)
+ * with a slice for its CPU on macOS. Anything else might fail in exec with ENOEXEC (or
+ * macOS's EBADARCH), which aborts Node before 26.1.
+ */
+function native(bytes: Buffer): boolean {
+  if (process.platform === "linux") {
+    return (
+      bytes.length >= 64 &&
+      bytes.readUInt32BE(0) === 0x7f454c46 &&
+      bytes[4] === 2 &&
+      bytes[5] === 1 &&
+      bytes[6] === 1 &&
+      [2, 3].includes(bytes.readUInt16LE(16)) &&
+      bytes.readUInt16LE(18) === ELF_MACHINE
+    );
+  }
+  if (process.platform === "darwin") {
+    if (bytes.length >= 16 && bytes.readUInt32LE(0) === 0xfeedfacf)
+      return bytes.readInt32LE(4) === MACHO_CPU && bytes.readUInt32LE(12) === 2;
+    if (bytes.length >= 8 && bytes.readUInt32BE(0) === 0xcafebabe) {
+      const n = bytes.readUInt32BE(4);
+      for (let i = 0; i < n && 8 + 20 * (i + 1) <= bytes.length; i++)
+        if (bytes.readInt32BE(8 + 20 * i) === MACHO_CPU) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks `program` the way exec will, for a Node that aborts when exec fails. A missing or
+ * non-executable program, or a `#!` naming a missing or non-executable interpreter, throws the
+ * errno exec would give. Answers whether exec is sure to work: a native binary, or a script
+ * whose interpreter is one. Anything else (a file it cannot read, another format, a script run
+ * by a script) is run as a child instead, where a file that cannot start is an error, not an
+ * abort.
+ */
+function precheck(program: string, cwd: string): boolean {
+  runnable(program);
+  const bytes = head(program);
+  if (bytes === undefined) return false;
+  if (bytes[0] !== 0x23 || bytes[1] !== 0x21) return native(bytes);
+  const line = bytes.subarray(2).toString("latin1").split("\n")[0]!;
+  // As the kernel reads it: blanks before the path, which ends at a blank (a `\r` is part of it).
+  const interpreter = line.replace(/^[ \t]+/, "").split(/[ \t]/)[0] ?? "";
+  if (interpreter === "") return false;
+  const path = isAbsolute(interpreter) ? interpreter : join(cwd, interpreter);
+  runnable(path);
+  const interpreterBytes = head(path);
+  return interpreterBytes !== undefined && native(interpreterBytes);
 }
 
 /** `process.execve` without the experimental warning, which a failure would print. */
@@ -96,11 +179,13 @@ export async function runForeground(
       : waitIgnoringCtrlC(program, args, cwd, envs, removeEnv);
   }
   const env = childEnv(envs, removeEnv);
+  let sure: boolean;
   try {
-    if (!execveThrows()) precheck(program);
+    sure = execveThrows() || precheck(program, cwd);
   } catch (e) {
     throw couldNotStart(program, e);
   }
+  if (!sure) return runSupervised(program, args, cwd, envs, removeEnv);
   await flushStdio();
   // exec hands HappyView our stdout and stderr; they must not stay non-blocking.
   blockingStdio();
