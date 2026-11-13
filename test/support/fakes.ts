@@ -1,8 +1,13 @@
 // crates/hpy/src/testing.rs: an in-memory `Repo` and `Registry` for command tests
-// (`FakeRepo`, `FakeRegistry`, `project_view`, `version_view`).
+// (`FakeRepo`, `FakeRegistry`, `project_view`, `version_view`, `RegistryFixture`,
+// `interpreter_ext`, `library_ext`, `private_tempdir`).
+import { chmodSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AtprotoError } from "../../src/atproto/error.ts";
 import type {
   Availability,
+  ChannelView,
   ProjectView,
   PublishOut,
   PutProjectOut,
@@ -12,14 +17,19 @@ import type {
 } from "../../src/atproto/registry.ts";
 import type { Repo, StoredRecord } from "../../src/atproto/repo.ts";
 import { type Json, sortKeys } from "../../src/core/output.ts";
+import { Version } from "../../src/core/semver.ts";
+import { compareKeys } from "../../src/core/serde-json.ts";
+import { MANIFEST_MIME, predictedBlob, WASM_MIME } from "../../src/plugin/artifact.ts";
 import { rawCid } from "../../src/plugin/checksum.ts";
 import {
+  ARTIFACT_TYPE,
   CHANNEL_NSID,
   MANIFEST_NSID,
   PROJECT_NSID,
   PUBLICATION_NSID,
   SIDECAR_NSID,
   STATUS_NSID,
+  TRACKS,
 } from "../../src/plugin/nsid.ts";
 import { projectUri, versionUri } from "../../src/plugin/validate.ts";
 
@@ -316,4 +326,216 @@ export class FakeRegistry implements Registry {
     this.statuses.push(structuredClone(input));
     return refs(STATUS_NSID, "3lstatus", "bafystatus");
   }
+}
+
+const keyOf = (did: string, name: string) => `${did} ${name}`;
+const channelKey = (did: string, name: string, channel: string) => `${did} ${name} ${channel}`;
+
+/** A registry holding many projects, for resolution and download tests (`RegistryFixture`). */
+export class RegistryFixture implements Registry {
+  readonly projects: ProjectView[] = [];
+  /** Every version of each `did name`, in publication order. */
+  readonly versions = new Map<string, VersionView[]>();
+  /** Channel heads, `did name channel` → version. Kept up to date by `publish` unless set by hand. */
+  readonly channels = new Map<string, string>();
+  /** Blob bytes by CID. */
+  readonly blobs = new Map<string, Uint8Array>();
+  /** Every query answered, as `method name[@version]`. */
+  readonly calls: string[] = [];
+
+  /**
+   * Publishes `version` of `did`'s `name` with the plugin fields `fields` (pluginType,
+   * apiVersion, …), `requires`, and `wasm` as its module. Its shipped manifest is `{"id": name}`.
+   */
+  publish(
+    did: string,
+    name: string,
+    version: string,
+    fields: { [k: string]: Json },
+    requires: Json,
+    wasm: Uint8Array | string,
+  ): void {
+    this.publishWithManifest(
+      did,
+      name,
+      version,
+      fields,
+      requires,
+      wasm,
+      JSON.stringify({ id: name }),
+    );
+  }
+
+  publishWithManifest(
+    did: string,
+    name: string,
+    version: string,
+    fields: { [k: string]: Json },
+    requires: Json,
+    wasm: Uint8Array | string,
+    manifest: Uint8Array | string,
+  ): void {
+    const w = typeof wasm === "string" ? bytes(wasm) : wasm;
+    const m = typeof manifest === "string" ? bytes(manifest) : manifest;
+    const artifact: { [k: string]: Json } = {
+      $type: ARTIFACT_TYPE,
+      package: predictedBlob(w, WASM_MIME),
+      manifest: predictedBlob(m, MANIFEST_MIME),
+      capabilities: [],
+      license: "MIT",
+      sections: { description: "A plugin." },
+      requires,
+    };
+    for (const [k, v] of Object.entries(fields)) artifact[k] = structuredClone(v);
+    const pluginType = typeof artifact.pluginType === "string" ? artifact.pluginType : "";
+    this.blobs.set(rawCid(w), w);
+    this.blobs.set(rawCid(m), m);
+    const key = keyOf(did, name);
+    const list = this.versions.get(key) ?? [];
+    list.push(versionView(did, name, version, artifact));
+    this.versions.set(key, list);
+    if (!this.projects.some((p) => p.did === did && p.name === name)) {
+      this.projects.push(projectView(did, name, pluginType));
+    }
+    this.#refreshChannels(did, name);
+  }
+
+  /** Marks a version no longer installable, as an `endOfDistribution` status does. */
+  retire(did: string, name: string, version: string): void {
+    for (const v of this.versions.get(keyOf(did, name)) ?? []) {
+      if (v.version === version) {
+        v.lifecycle.state = "unavailable";
+        v.lifecycle.installable = false;
+        v.lifecycle.reason = "withdrawn by its publisher";
+      }
+    }
+    this.#refreshChannels(did, name);
+  }
+
+  setChannel(did: string, name: string, channel: string, version: string): void {
+    this.channels.set(channelKey(did, name, channel), version);
+  }
+
+  /** `latest` follows the highest installable stable version, `beta` and `alpha` the highest prerelease named so. */
+  #refreshChannels(did: string, name: string): void {
+    const versions = this.versions.get(keyOf(did, name)) ?? [];
+    for (const channel of TRACKS) {
+      let head: Version | undefined;
+      for (const v of versions) {
+        if (!v.lifecycle.installable) continue;
+        let parsed: Version;
+        try {
+          parsed = Version.parse(v.version);
+        } catch {
+          continue;
+        }
+        const fits =
+          channel === "latest"
+            ? parsed.pre.isEmpty()
+            : parsed.pre.asStr().split(".")[0] === channel;
+        if (fits && (head === undefined || Version.compare(parsed, head) >= 0)) head = parsed;
+      }
+      const at = channelKey(did, name, channel);
+      if (head !== undefined) this.channels.set(at, head.toString());
+      else this.channels.delete(at);
+    }
+    const heads = new Map<string, ChannelView>();
+    for (const c of TRACKS) {
+      const version = this.channels.get(channelKey(did, name, c));
+      if (version === undefined) continue;
+      const v = versions.find((v) => v.version === version);
+      if (v === undefined) continue;
+      heads.set(c, {
+        version,
+        uri: v.uri,
+        cid: v.cid,
+        state: v.lifecycle.state,
+        availability: v.availability,
+      });
+    }
+    const p = this.projects.find((p) => p.did === did && p.name === name);
+    if (p !== undefined) p.channels = new Map([...heads].sort(([a], [b]) => compareKeys(a, b)));
+  }
+
+  find(did: string, name: string, version: string): VersionView | undefined {
+    const v = this.versions.get(keyOf(did, name))?.find((v) => v.version === version);
+    return v === undefined ? undefined : structuredClone(v);
+  }
+
+  async getProject(actor: string, name: string): Promise<ProjectView | null> {
+    this.calls.push(`getProject ${name}`);
+    const p = this.projects.find((p) => (p.did === actor || p.handle === actor) && p.name === name);
+    return p === undefined ? null : structuredClone(p);
+  }
+
+  async searchProjects(pluginType: string | undefined): Promise<ProjectView[]> {
+    this.calls.push(`searchProjects ${pluginType ?? "*"}`);
+    return this.projects
+      .filter((p) => pluginType === undefined || p.pluginType === pluginType)
+      .map((p) => structuredClone(p));
+  }
+
+  async listVersions(did: string, name: string): Promise<VersionView[]> {
+    this.calls.push(`listVersions ${name}`);
+    return (this.versions.get(keyOf(did, name)) ?? []).map((v) => structuredClone(v)).reverse();
+  }
+
+  async getVersion(did: string, name: string, version: string): Promise<VersionView | null> {
+    this.calls.push(`getVersion ${name}@${version}`);
+    return this.find(did, name, version) ?? null;
+  }
+
+  async resolveChannel(did: string, name: string, channel: string): Promise<VersionView | null> {
+    this.calls.push(`resolveChannel ${name}@${channel}`);
+    const v = this.channels.get(channelKey(did, name, channel));
+    return v === undefined ? null : (this.find(did, name, v) ?? null);
+  }
+
+  async getArtifact(cid: string): Promise<Uint8Array> {
+    this.calls.push(`getArtifact ${cid}`);
+    const b = this.blobs.get(cid);
+    if (b === undefined) {
+      throw AtprotoError.xrpc("at.happyproto.registry.getArtifact", "ArtifactNotHeld", undefined);
+    }
+    return new Uint8Array(b);
+  }
+
+  async putProject(): Promise<PutProjectOut | null> {
+    throw AtprotoError.other("RegistryFixture does not publish");
+  }
+
+  async publishRelease(): Promise<PublishOut | null> {
+    throw AtprotoError.other("RegistryFixture does not publish");
+  }
+
+  async promoteRelease(): Promise<PublishOut> {
+    throw AtprotoError.other("RegistryFixture does not publish");
+  }
+
+  async putStatus(): Promise<Ref> {
+    throw AtprotoError.other("RegistryFixture does not publish");
+  }
+}
+
+/** An interpreter's plugin fields. */
+export function interpreterExt(language: string, extension: string): { [k: string]: Json } {
+  return {
+    pluginType: "interpreter",
+    apiVersion: "2",
+    languageId: language,
+    fileExtensions: [extension],
+    capabilities: ["script:host"],
+  };
+}
+
+/** A library's plugin fields. */
+export function libraryExt(namespace: string): { [k: string]: Json } {
+  return { pluginType: "library", apiVersion: "2", namespace, capabilities: [] };
+}
+
+/** A temporary directory only this user can reach, as a cache root must be. */
+export function privateTempdir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "hpy-private-"));
+  if (process.platform !== "win32") chmodSync(dir, 0o700);
+  return dir;
 }
