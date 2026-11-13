@@ -27,6 +27,7 @@ import { mountRegistry } from "./mock-registry.mjs";
 export async function startMock() {
   const s = await MockServer.start();
   const mode = (r) => r.path.split("/")[1];
+  mountRv(s);
   mountRegistry(s);
   mountPull(s);
   mountCreate(s);
@@ -182,4 +183,59 @@ function mountDeploy(s) {
       : { status: 204 },
   );
   s.given("POST", /^\/vars\/admin\/script-variables$/, { status: 204 });
+}
+
+function mountRv(s) {
+  const err = (status, json, headers) => ({ status, json, headers });
+  for (const pre of ["", "reg-"]) {
+    s.given("*", new RegExp(`^/${pre}html(/|$)`), {
+      headers: { "content-type": "text/html" },
+      body: "<html>portal</html>",
+    });
+    s.given(
+      "*",
+      new RegExp(`^/${pre}e500(/|$)`),
+      err(500, { error: "InternalServerError", message: "boom" }),
+    );
+    s.given("*", new RegExp(`^/${pre}e500t(/|$)`), {
+      status: 500,
+      headers: { "content-type": "text/plain" },
+      body: "upstream broke",
+    });
+    s.given("*", new RegExp(`^/${pre}empty(/|$)`), { status: 200 });
+    s.given("*", new RegExp(`^/${pre}shape(/|$)`), {
+      json: { plugins: "x", sha256: 5, records: 3, value: 1 },
+    });
+    s.given(
+      "*",
+      new RegExp(`^/${pre}r429(/|$)`),
+      err(429, { error: "RateLimitExceeded", message: "slow down" }, { "retry-after": "0" }),
+    );
+    s.given(
+      "*",
+      new RegExp(`^/${pre}e401(/|$)`),
+      err(401, { error: "InvalidToken", message: "bad token" }),
+    );
+    s.given(
+      "*",
+      new RegExp(`^/${pre}exp(/|$)`),
+      err(400, { error: "ExpiredToken", message: "token expired" }),
+    );
+    s.given(
+      "*",
+      new RegExp(`^/${pre}nonce(/|$)`),
+      err(
+        401,
+        { error: "use_dpop_nonce", message: "nonce" },
+        { "dpop-nonce": "n1", "www-authenticate": 'DPoP error="use_dpop_nonce"' },
+      ),
+    );
+    s.given("*", new RegExp(`^/${pre}e403(/|$)`), err(403, { error: "Forbidden" }));
+    s.given(
+      "*",
+      new RegExp(`^/${pre}e404j(/|$)`),
+      err(404, { error: "NotFound", message: "no such thing" }),
+    );
+    s.given("*", new RegExp(`^/${pre}weird(/|$)`), err(400, { error: 7, message: "num error" }));
+  }
 }
