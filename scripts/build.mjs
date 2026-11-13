@@ -5,7 +5,9 @@
 import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 
-const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const { version, name } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
 
 await build({
   entryPoints: ["src/main.ts"],
@@ -15,7 +17,7 @@ await build({
   target: "node22",
   outfile: "dist/hpy.mjs",
   external: ["@napi-rs/keyring", "@napi-rs/lzma"],
-  define: { HPY_VERSION: JSON.stringify(version) },
+  define: { HPY_VERSION: JSON.stringify(version), HPY_PACKAGE_NAME: JSON.stringify(name) },
   banner: {
     js: '#!/usr/bin/env node\nimport { createRequire as __hpyRequire } from "node:module";\nconst require = __hpyRequire(import.meta.url);',
   },

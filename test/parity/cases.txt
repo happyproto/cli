@@ -254,3 +254,31 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 @mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy --url $MOCK/pv3
 @mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy
 @mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --legacy --url ftp://x
+# channel: show, choose the one already followed (no network), refuse an unknown one.
+-- channel
+-- --json channel
+@keep=hpy/channel.toml -- channel alpha
+@keep=hpy/channel.toml -- --json channel alpha
+@keep=hpy/channel.toml -- channel alpha ;; channel ;; --json channel
+-- channel nightly
+-- channel ''
+-- --json channel nightly
+-- channel alpha extra
+XDG_CONFIG_HOME=/dev/null/x -- channel alpha
+XDG_CONFIG_HOME=/dev/null/x -- channel
+# Switching channels lists the releases on GitHub; a prerelease channel always warns, so with no
+# terminal and no --yes these stop at the confirmation, before anything is recorded or installed.
+# Never add a networked `update`, `channel stable` or `--yes` case: when GitHub has a newer
+# release, the Rust binary would replace itself with it.
+@net @keep=hpy/channel.toml -- channel beta
+@net @keep=hpy/channel.toml -- --json --no-input channel beta
+# update and switching channels need GitHub's release list; through a proxy that refuses, both
+# fail before anything is recorded or installed. reqwest honours these variables; so does the TS.
+# Only beta here: should the proxy ever be skipped, a prerelease channel still stops at its
+# confirmation, where stable (newer than this alpha) would install.
+HTTPS_PROXY=http://127.0.0.1:9 -- update
+https_proxy=http://127.0.0.1:9 -- --json update
+ALL_PROXY=127.0.0.1:9 -- update
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel beta
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- --json channel beta
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channel beta ;; channel
