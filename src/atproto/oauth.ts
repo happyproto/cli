@@ -216,12 +216,16 @@ export async function listen(): Promise<{
     server.listen(0, "127.0.0.1", () => res());
   });
   const port = (server.address() as AddressInfo).port;
+  const callback = done.then((r) => {
+    if ("err" in r) throw r.err;
+    return r.ok;
+  });
+  // A callback that fails before anyone awaits it (a stray request during PAR) is reported
+  // when the caller gets to it, not as an unhandled rejection that kills the process.
+  callback.catch(() => {});
   return {
     port,
-    callback: done.then((r) => {
-      if ("err" in r) throw r.err;
-      return r.ok;
-    }),
+    callback,
     close: () => server.close(),
   };
 }
