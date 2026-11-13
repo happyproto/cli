@@ -3,7 +3,7 @@
 import type { Command } from "commander";
 import { CommanderError } from "commander";
 import { loadSettings } from "./atproto/settings.ts";
-import { check } from "./checks.ts";
+import { check, requiredBy } from "./checks.ts";
 import { buildCli, type Invocation, UsageExit } from "./cli.ts";
 import { HANDLERS } from "./commands/index.ts";
 import { Ctx } from "./core/ctx.ts";
@@ -117,18 +117,27 @@ async function run(argv: string[]): Promise<number> {
   const problem = check(invocation.route, invocation.args, argv);
   if (problem !== null) {
     const args = invocation.args;
+    const needed = requiredBy(invocation.route, args);
     const positionals = target.registeredArguments.map((a) => {
       const used =
         a.name() !== problem.except &&
         args[a.name()] !== undefined &&
         !(Array.isArray(args[a.name()]) && (args[a.name()] as unknown[]).length === 0);
-      const open = used || a.required || a.name() === problem.missing ? "<" : "[";
+      const open =
+        used || a.required || a.name() === problem.missing || needed.includes(a.name()) ? "<" : "[";
       const close = open === "<" ? ">" : "]";
       return `${open}${a.name()}${close}${a.variadic ? "..." : ""}`;
     });
     const required = problem.message.startsWith("the following required");
     const shown = required ? positionals.filter((p) => !problem.used.includes(p)) : positionals;
-    const usageLine = [commandPath(target), ...problem.used, ...shown].join(" ");
+    // clap's usage names every option the command line used, in the order given, but the one
+    // that conflicted; a missing required option comes first.
+    const given = usedOptions(target, argv).filter((d) => d !== problem.excluded);
+    const lead = required
+      ? problem.used.filter((u) => u.startsWith("-") && !given.includes(u))
+      : [];
+    const used = [...lead, ...given];
+    const usageLine = [commandPath(target), ...used, ...shown].join(" ");
     process.stderr.write(
       `error: ${problem.message}\n\nUsage: ${usageLine}\n\nFor more information, try '--help'.\n`,
     );
@@ -223,3 +232,26 @@ async function main(): Promise<void> {
 }
 
 await main();
+
+/**
+ * The options of `cmd` itself that `argv` gives, as clap displays them in a usage line
+ * (`--kind <KIND>`, `--yes`), in command-line order. Global options are left out: clap matches
+ * them on the parent command.
+ */
+function usedOptions(cmd: Command, argv: string[]): string[] {
+  const found: [number, string][] = [];
+  for (const o of cmd.options) {
+    const long = o.long;
+    const short = o.short;
+    const i = argv.findIndex(
+      (a) =>
+        (long !== undefined && (a === long || a.startsWith(`${long}=`))) ||
+        (short !== undefined &&
+          (a === short || (a.startsWith(short) && a.length > 2 && !a.startsWith("--")))),
+    );
+    if (i === -1) continue;
+    const value = o.flags.match(/[<[]([^>\]]+)[>\]]/)?.[1];
+    found.push([i, value !== undefined ? `${long} <${value}>` : `${long ?? short}`]);
+  }
+  return found.sort(([a], [b]) => a - b).map(([, d]) => d);
+}

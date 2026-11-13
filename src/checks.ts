@@ -79,6 +79,8 @@ export interface Violation {
   except?: string;
   /** A required positional that was left out: shown as required in the usage. */
   missing?: string;
+  /** The argument that conflicted, which clap leaves out of the usage's "used" set. */
+  excluded?: string;
 }
 
 /** The first violated rule, as clap's error line (without `error: `), or null. */
@@ -107,8 +109,18 @@ export function check(route: string, args: Args, argv: string[]): Violation | nu
         message: `the argument '${first}' cannot be used with '${second}'`,
         used: isArg(firstKey) ? [] : [first],
         except: [a, b].find(isArg),
+        excluded: second,
       };
     }
   }
   return null;
+}
+
+/** The arguments that the given ones `require`: clap shows them as required in a usage line. */
+export function requiredBy(route: string, args: Args): string[] {
+  const out: string[] = [];
+  for (const rule of RULES[route] ?? []) {
+    if ("requires" in rule && given(args, rule.requires[0])) out.push(rule.requires[1]);
+  }
+  return out;
 }

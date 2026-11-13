@@ -2,7 +2,7 @@
 // Runs every case in cases.txt against the Rust hpy and the TypeScript one,
 // each in a fresh HOME, and diffs exit code, stdout and stderr byte for byte.
 //
-//   RUST_HPY=/path/to/rust/hpy node test/parity/run.mjs [--offline] [--ts "node dist/hpy.mjs"] [filter]
+//   RUST_HPY=/path/to/rust/hpy node test/parity/run.mjs [--offline] [--show] [--ts "node dist/hpy.mjs"] [filter]
 //
 // Exits 1 when any case's exit code, stdout, kept files or mock requests
 // differ. stderr differences are listed but do not fail the run unless
@@ -53,6 +53,8 @@ const opt = (f) => {
 };
 const offline = flag("--offline");
 const strictStderr = flag("--strict-stderr");
+/** Print what each matching case printed (Rust's side), to see that a case tests something. */
+const show = flag("--show");
 const tsCmd = (opt("--ts") ?? `node ${join(root, "dist/hpy.mjs")}`).split(" ");
 const rust = process.env.RUST_HPY;
 if (!rust) {
@@ -178,6 +180,7 @@ for (const line of cases) {
   const errSame = a.stderr === b.stderr;
   if (same && errSame) {
     console.log(`ok      ${line}`);
+    if (show) console.log(`        exit ${a.code}\n${a.stdout}${a.stderr}`);
     continue;
   }
   if (same) {
