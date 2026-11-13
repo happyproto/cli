@@ -19,7 +19,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=22.15"
+    "node": "^22.20 || ^24.12 || >=25"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [depot-ubuntu-24.04, depot-macos-15, depot-windows-2022]
-        node: ["22.15.0", lts/*]
+        node: ["22.20.0", lts/*]
     name: test (${{ matrix.os }}, node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     defaults:

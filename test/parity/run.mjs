@@ -86,6 +86,8 @@ function spawnStep(cmd, argv, env, cwd, input) {
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
     child.on("close", (code) => res({ code, stdout, stderr }));
+    // A binary that exits before reading its input closes the pipe; that is not a failure.
+    child.stdin.on("error", () => {});
     child.stdin.end(input);
   });
 }

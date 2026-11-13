@@ -86,7 +86,7 @@ That installs the newest **beta** release. Once `1.0.0` is cut,
 
 **With npm**
 
-With Node 22.15 or newer:
+With Node 22.20 or newer (or 24.12 or newer):
 
 ```sh
 npm install -g @happyproto/cli@beta
