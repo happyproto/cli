@@ -26,6 +26,7 @@ import {
   nextPage,
   parseSha256,
   type ReleaseSource,
+  stallNote,
 } from "../../src/project/binary.ts";
 import { binaryPath, withFileName } from "../../src/project/cache.ts";
 import { MockServer, query } from "../support/mock-server.ts";
@@ -365,8 +366,15 @@ const head = (length: number) =>
 it("a_download_with_no_response_fails_once_it_stalls", async () => {
   const url = await rawServer(() => {});
   const started = Date.now();
-  await expect(httpClient(300).request(url)).rejects.toThrow();
+  const err = await httpClient(300)
+    .request(url)
+    .then(
+      () => undefined,
+      (e: unknown) => e,
+    );
   expect(Date.now() - started).toBeLessThan(5_000);
+  // The download's error then says it timed out.
+  expect(stallNote(err)).toBe(": timed out after 60 seconds with no data");
 });
 
 it("a_download_whose_body_stops_fails_once_it_stalls", async () => {

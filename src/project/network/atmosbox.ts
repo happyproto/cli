@@ -22,7 +22,7 @@ import { Failure } from "../../core/failure.ts";
 import { createDirAll, ioErrorText, readToString, writeString } from "../../core/io.ts";
 import { dataBase, rustFileName, rustJoin, rustParent } from "../../core/paths.ts";
 import { Version } from "../../core/semver.ts";
-import { type HttpClient, sendError, statusError, tarEntries } from "../binary.ts";
+import { type HttpClient, sendError, stallNote, statusError, tarEntries } from "../binary.ts";
 import { mustWithEnv, type Runner } from "./runner.ts";
 
 export const VERSION = "v0.7.1";
@@ -180,15 +180,15 @@ export async function fetchCheckout(
     let resp: Response;
     try {
       resp = await http.request(pinned.url);
-    } catch {
-      throw failed(sendError(pinned.url));
+    } catch (e) {
+      throw failed(`${sendError(pinned.url)}${stallNote(e)}`);
     }
     if (resp.status >= 400) throw failed(statusError(resp));
     let bytes: Uint8Array;
     try {
       bytes = new Uint8Array(await resp.arrayBuffer());
-    } catch {
-      throw failed(`error decoding response body`);
+    } catch (e) {
+      throw failed(`error decoding response body${stallNote(e)}`);
     }
     const got = createHash("sha256").update(bytes).digest("hex");
     if (got !== pinned.sha256) {

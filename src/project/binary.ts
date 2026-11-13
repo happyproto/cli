@@ -156,6 +156,13 @@ export function sendError(url: string): string {
   }
 }
 
+/** TS-only: what a stalled transfer adds to its error (Rust's client never times out). */
+export function stallNote(e: unknown): string {
+  return e instanceof Error && e.name === "TimeoutError"
+    ? `: timed out after ${STALL_MS / 1000} seconds with no data`
+    : "";
+}
+
 export const BINARY_NAME = "happyview";
 /** The v2-to-v3 script rewriter, which the release archive carries beside `happyview`. */
 export const CODEMOD_NAME = "happyview-codemod";
@@ -448,8 +455,8 @@ export async function latestVersion(
     let resp: Response;
     try {
       resp = await http.request(page, { headers: { accept: "application/vnd.github+json" } });
-    } catch {
-      throw Failure.runtime(`could not list HappyView releases: ${sendError(page)}`);
+    } catch (e) {
+      throw Failure.runtime(`could not list HappyView releases: ${sendError(page)}${stallNote(e)}`);
     }
     if (resp.status >= 400) {
       await resp.body?.cancel();
@@ -488,8 +495,8 @@ async function fetchBytes(http: HttpClient, url: string): Promise<Uint8Array | u
   let resp: Response;
   try {
     resp = await http.request(url);
-  } catch {
-    throw Failure.runtime(`could not download ${url}: ${sendError(url)}`);
+  } catch (e) {
+    throw Failure.runtime(`could not download ${url}: ${sendError(url)}${stallNote(e)}`);
   }
   if (resp.status === 404) {
     await resp.body?.cancel();
@@ -501,9 +508,9 @@ async function fetchBytes(http: HttpClient, url: string): Promise<Uint8Array | u
   }
   try {
     return new Uint8Array(await resp.arrayBuffer());
-  } catch {
+  } catch (e) {
     throw Failure.runtime(
-      `could not download ${url}: request or response body error for url (${resp.url})`,
+      `could not download ${url}: request or response body error for url (${resp.url})${stallNote(e)}`,
     );
   }
 }
