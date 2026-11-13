@@ -104,8 +104,8 @@ export function manifestProblems(m: Manifest): Problem[] {
   };
   if (m.api_version !== undefined) max("manifest.api_version", m.api_version, 16);
   if (m.namespace !== undefined) max("manifest.namespace", m.namespace, 256);
-  (m.capabilities ?? []).forEach((c, i) => max(`manifest.capabilities[${i}]`, c, 128));
-  m.allowed_hosts.forEach((h, i) => max(`manifest.allowed_hosts[${i}]`, h, 256));
+  for (const [i, c] of (m.capabilities ?? []).entries()) max(`manifest.capabilities[${i}]`, c, 128);
+  for (const [i, h] of m.allowed_hosts.entries()) max(`manifest.allowed_hosts[${i}]`, h, 256);
   if (m.capabilities === undefined)
     out.push(new Problem("manifest.capabilities", "must be declared, even when empty"));
   if (m.plugin_type === "library" && m.namespace === undefined)
