@@ -1,6 +1,7 @@
 // Route → handler. A route missing here exits 1 saying it is not ported yet.
 import type { Args } from "../cli.ts";
 import type { Ctx } from "../core/ctx.ts";
+import * as add from "./add.ts";
 import * as auth from "./auth.ts";
 import * as channel from "./channel.ts";
 import * as deploy from "./deploy.ts";
@@ -10,6 +11,7 @@ import * as lifecycle from "./lifecycle.ts";
 import * as profile from "./profile.ts";
 import * as publish from "./publish.ts";
 import * as pull from "./pull/index.ts";
+import * as scaffold from "./scaffold.ts";
 import * as status from "./status.ts";
 import * as update from "./update.ts";
 
@@ -32,6 +34,8 @@ export const HANDLERS: Record<string, Handler> = {
   "hv.deploy": deploy.run,
   "hv.env.push": env.push,
   "hv.pull": pull.run,
+  "hv.add": add.run,
+  "hv.scaffold": scaffold.run,
   update: (ctx) => update.run(ctx),
   channel: channel.run,
 };
