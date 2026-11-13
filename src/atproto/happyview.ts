@@ -2,10 +2,11 @@
 // DPoP key, signing client assertions, registering and revoking sessions, and
 // XRPC calls made as the signed-in user.
 import { type Json, sortKeys } from "../core/output.ts";
+import { fromSlice, optional, str, struct } from "../core/serde-json.ts";
 import type { Credential } from "./credential.ts";
 import { DpopKey } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
-import { request, statusText, transportError } from "./http.ts";
+import { parseJson, request, statusText, transportError } from "./http.ts";
 
 /** Refusals the gateway makes on purpose; each message is written for the publisher. */
 const NAMED_REGISTRY_ERRORS = [
@@ -67,6 +68,26 @@ function registrationJson(r: SessionRegistration): string {
   return JSON.stringify(o);
 }
 
+/** `XrpcError`: `{ error, message }`, each an optional string. */
+const XRPC_ERROR = struct("XrpcError", { error: optional(str), message: optional(str) });
+
+/**
+ * `serde_json::from_slice::<XrpcError>(body).unwrap_or(..)`: a body that is not that struct
+ * (a non-string `error`, say) is read as naming neither.
+ */
+export function xrpcErrorBody(body: string | Uint8Array): { error?: string; message?: string } {
+  const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+  try {
+    const parsed = fromSlice(bytes, XRPC_ERROR);
+    return {
+      ...(parsed.error !== undefined ? { error: parsed.error } : {}),
+      ...(parsed.message !== undefined ? { message: parsed.message } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Maps an error from HappyView to ours. `asUser` is false for the sign-in
  * handshake, where a 401 means the client itself was refused, not that a
@@ -75,16 +96,12 @@ function registrationJson(r: SessionRegistration): string {
 export function xrpcError(
   what: string,
   status: number,
-  body: string,
+  body: string | Uint8Array,
   asUser: boolean,
 ): AtprotoError {
-  let parsed: { error?: unknown; message?: unknown } = {};
-  try {
-    const v = JSON.parse(body);
-    if (v && typeof v === "object") parsed = v;
-  } catch {}
-  const name = typeof parsed.error === "string" ? parsed.error : `HTTP ${statusText(status)}`;
-  const message = typeof parsed.message === "string" ? parsed.message : undefined;
+  const parsed = xrpcErrorBody(body);
+  const name = parsed.error ?? `HTTP ${statusText(status)}`;
+  const message = parsed.message;
   if (!asUser) {
     const detail = message !== undefined ? `${name}: ${message}` : name;
     return AtprotoError.other(`HappyView refused ${what} (${detail})`);
@@ -132,18 +149,20 @@ export class HappyView {
         throw AtprotoError.other(`could not reach ${this.base} (${what}): ${transportError(e)}`);
       }
       if (resp.status === 429 && attempt === 0) {
-        const after = Number.parseInt(resp.headers.get("retry-after") ?? "", 10);
-        const wait = Math.min(Number.isFinite(after) && after >= 0 ? after : 1, 10);
+        const wait = Math.min(retryAfter(resp.headers.get("retry-after")), 10);
         await resp.arrayBuffer().catch(() => undefined);
         await new Promise((res) => setTimeout(res, wait * 1000));
         continue;
       }
-      const body = await resp.text().catch(() => "");
+      const body = await resp
+        .arrayBuffer()
+        .then((b) => new Uint8Array(b))
+        .catch(() => new Uint8Array());
       if (!resp.ok) throw xrpcError(what, resp.status, body, asUser);
-      if (body === "") return null;
+      if (body.length === 0) return null;
       let value: Json;
       try {
-        value = JSON.parse(body) as Json;
+        value = parseJson(body);
       } catch (e) {
         throw AtprotoError.other(`${what} answered something unreadable: ${(e as Error).message}`);
       }
@@ -243,6 +262,16 @@ export class HappyView {
     if (blob === undefined) throw AtprotoError.other("the upload answered no blob");
     return blob;
   }
+}
+
+/**
+ * Seconds to wait before retrying a 429: `Retry-After` read as `u64::from_str` reads it (digits,
+ * with an optional leading `+`), or 1 when it is missing or anything else (`5s`, a date).
+ */
+export function retryAfter(header: string | null): number {
+  if (header === null || !/^\+?[0-9]+$/.test(header)) return 1;
+  const n = BigInt(header);
+  return n > 18446744073709551615n ? 1 : n > 10n ? 10 : Number(n);
 }
 
 /** `url::form_urlencoded::byte_serialize`: application/x-www-form-urlencoded, spaces as `+`. */

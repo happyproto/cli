@@ -419,3 +419,42 @@ it("the_key_never_appears_in_debug_output", () => {
   expect(inspect(admin)).not.toContain(KEY);
   expect(String(admin)).not.toContain(KEY);
 });
+
+// TS-only: an answer that does not fit is reported with serde_json's own wording, as Rust's
+// `from_slice` / `from_value` errors read.
+it("an_unreadable_answer_reads_as_serde_says", async () => {
+  const s = await start();
+  s.given("GET", "/admin/plugins", { headers: { "content-type": "text/html" }, body: "<html>" });
+  const html = await fails(Admin.withKey(s.url, KEY).plugins());
+  expect(html.message).toBe(
+    `${s.url} answered listing plugins with something unreadable: expected value at line 1 column 1`,
+  );
+
+  const empty = await start();
+  empty.given("GET", "/admin/plugins", { status: 200 });
+  expect((await fails(Admin.withKey(empty.url, KEY).plugins())).message).toBe(
+    `${empty.url} listed its plugins unreadably: invalid type: null, expected struct PluginList`,
+  );
+
+  const shape = await start();
+  shape.given("GET", "/admin/plugins", { json: { plugins: "x" } });
+  expect((await fails(Admin.withKey(shape.url, KEY).plugins())).message).toBe(
+    `${shape.url} listed its plugins unreadably: invalid type: string "x", expected a sequence`,
+  );
+});
+
+it("a_deploy_answer_with_null_changes_is_unreadable", async () => {
+  const s = await start();
+  s.given("PUT", "/admin/project", { json: { sha256: "abc", dry_run: true, changes: null } });
+  const err = await fails(Admin.withKey(s.url, KEY).deployProject(new Uint8Array(), true, null));
+  expect(err.message).toBe(
+    `${s.url} answered checking the project unreadably: invalid type: null, expected a map`,
+  );
+});
+
+it("a_refusal_whose_error_is_not_a_string_names_only_the_status", async () => {
+  const s = await start();
+  s.given("DELETE", "*", { status: 400, json: { error: 7, message: "num error" } });
+  const err = await fails(Admin.withKey(s.url, KEY).remove("p"));
+  expect(err.message).toBe(`${s.url} refused removing p (HTTP 400 Bad Request)`);
+});

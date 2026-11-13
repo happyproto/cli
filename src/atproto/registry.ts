@@ -20,7 +20,7 @@ import {
 } from "../core/serde-json.ts";
 import type { Credential } from "./credential.ts";
 import { AtprotoError } from "./error.ts";
-import type { HappyView } from "./happyview.ts";
+import { type HappyView, xrpcErrorBody } from "./happyview.ts";
 import { request, statusText, transportError } from "./http.ts";
 
 /** A record the gateway wrote or the registry indexed. */
@@ -389,22 +389,6 @@ function readJson(bytes: Uint8Array): { v: unknown } | undefined {
   }
 }
 
-/** `XrpcErrorBody`: `error` and `message` when each is a string; anything else reads as none. */
-function errorBody(parsed: unknown): { error?: string; message?: string } {
-  const v = (parsed as { v?: unknown } | undefined)?.v;
-  if (!isObject(v)) return {};
-  // serde reads the whole body as XrpcErrorBody, so a non-string `error` fails it entirely.
-  const e = v.error;
-  const m = v.message;
-  const okE = e === undefined || e === null || typeof e === "string";
-  const okM = m === undefined || m === null || typeof m === "string";
-  if (!okE || !okM) return {};
-  return {
-    ...(typeof e === "string" ? { error: e } : {}),
-    ...(typeof m === "string" ? { message: m } : {}),
-  };
-}
-
 function parse<T>(what: string, out: unknown, decoder: Decoder<T>): T {
   try {
     return fromValue(out, decoder);
@@ -479,7 +463,7 @@ export class HttpRegistry implements Registry {
       }
       return parse(method, parsed.v, decoder);
     }
-    const err = errorBody(parsed);
+    const err = xrpcErrorBody(bytes);
     const name = err.error ?? `HTTP ${statusText(resp.status)}`;
     if (NOT_FOUND.includes(name)) return null;
     throw AtprotoError.xrpc(method, name, err.message);
@@ -571,7 +555,7 @@ export class HttpRegistry implements Registry {
     } catch (e) {
       throw AtprotoError.other(transportError(e));
     }
-    const err = json ? errorBody(readJson(bytes)) : {};
+    const err = json ? xrpcErrorBody(bytes) : {};
     if (resp.ok && err.error === undefined) return bytes;
     throw AtprotoError.xrpc(METHOD, err.error ?? `HTTP ${statusText(resp.status)}`, err.message);
   }

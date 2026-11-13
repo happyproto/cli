@@ -16,6 +16,7 @@ import { join } from "node:path";
 import * as p from "@clack/prompts";
 import { Admin } from "../../atproto/admin.ts";
 import { AtprotoError } from "../../atproto/error.ts";
+import { parseJson } from "../../atproto/http.ts";
 import { checkKey, normalizeUrl } from "../../atproto/instance.ts";
 import type { Registry, VersionView } from "../../atproto/registry.ts";
 import type { Args } from "../../cli.ts";
@@ -115,7 +116,7 @@ async function servedVersion(url: string): Promise<string | undefined> {
   try {
     const resp = await httpClient().request(`${url}/config`, { timeout: 30 });
     if (!resp.ok) return undefined;
-    const config = (await resp.json()) as unknown;
+    const config: unknown = parseJson(new Uint8Array(await resp.arrayBuffer()));
     const v =
       config !== null && typeof config === "object" && !Array.isArray(config)
         ? (config as Record<string, unknown>).version

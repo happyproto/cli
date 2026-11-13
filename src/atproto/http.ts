@@ -1,6 +1,8 @@
 // What reqwest gave the Rust code for free: a user agent, timeouts, and
 // StatusCode's Display (`404 Not Found`).
 import * as nodeHttp from "node:http";
+import type { Json } from "../core/output.ts";
+import { fromSlice, type Node, node, objectEntries } from "../core/serde-json.ts";
 import { USER_AGENT } from "../core/version.ts";
 
 export function statusText(status: number): string {
@@ -120,3 +122,43 @@ export function transportError(e: unknown): string {
   }
   return String(e);
 }
+
+/**
+ * A parsed `serde_json::Value` as plain `Json`: the last of duplicate keys wins and keys come
+ * out sorted, as `Value`'s map holds them. Integers past 2^53 lose precision, as JSON.parse's do.
+ */
+export function nodeJson(n: Node): Json {
+  switch (n.kind) {
+    case "null":
+    case "bool":
+    case "string":
+      return n.value;
+    case "number":
+      return Number(n.value);
+    case "array":
+      return n.children.map(nodeJson);
+    case "object": {
+      const out: { [key: string]: Json } = {};
+      for (const [key, value] of objectEntries(n)) {
+        Object.defineProperty(out, key, {
+          value: nodeJson(value),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      return out;
+    }
+  }
+}
+
+/**
+ * `serde_json::from_slice::<Value>`: throws serde_json's own error (`expected value at line 1
+ * column 1`) for a body that is not JSON.
+ */
+export function parseJson(bytes: Uint8Array): Json {
+  return nodeJson(fromSlice(bytes, node));
+}
+
+/** reqwest's Display for `Response::json`'s error: the serde error is only its source. */
+export const DECODE_ERROR = "error decoding response body";

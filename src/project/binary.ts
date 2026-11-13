@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 // A literal static import, so `bun build --compile` embeds the addon (HANDOFF D5).
 import { xz } from "@napi-rs/lzma";
-import { type RequestOptions, request, statusText } from "../atproto/http.ts";
+import { DECODE_ERROR, type RequestOptions, request, statusText } from "../atproto/http.ts";
 import { Failure } from "../core/failure.ts";
 import { toIoError } from "../core/io.ts";
 import { Version } from "../core/semver.ts";
@@ -394,7 +394,7 @@ export async function latestVersion(
         GITHUB_RELEASES,
       );
     } catch {
-      throw Failure.runtime("could not read HappyView releases: error decoding response body");
+      throw Failure.runtime(`could not read HappyView releases: ${DECODE_ERROR}`);
     }
     for (const r of releases) {
       if (r.draft || !r.assets.some((a) => a.name === asset)) continue;

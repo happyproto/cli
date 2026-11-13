@@ -4,7 +4,7 @@
 // carries a DPoP proof made with the key HappyView provisioned.
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Json } from "../core/output.ts";
+import { fromSlice, get, type Node, node } from "../core/serde-json.ts";
 import type { DpopKey } from "./dpop.ts";
 import { AtprotoError } from "./error.ts";
 import { request, statusText, transportError } from "./http.ts";
@@ -50,6 +50,12 @@ export function formEncode(pairs: [string, string][]): string {
   return new URLSearchParams(pairs).toString();
 }
 
+/** `body[name].as_str()`: a string member of an object, or undefined. */
+function str(body: Node | undefined, name: string): string | undefined {
+  const v = body === undefined ? undefined : get(body, name);
+  return v?.kind === "string" ? v.value : undefined;
+}
+
 /** A form POST with a DPoP proof, retried once when the server asks for a nonce. */
 async function postForm(
   what: string,
@@ -57,7 +63,7 @@ async function postForm(
   form: [string, string][],
   key: DpopKey,
   startNonce: string | null,
-): Promise<{ body: Record<string, Json>; nonce: string | null }> {
+): Promise<{ body: Node | undefined; nonce: string | null }> {
   let nonce = startNonce;
   for (let attempt = 0; attempt < 2; attempt++) {
     const proof = await key.proof("POST", url, null, nonce);
@@ -75,19 +81,19 @@ async function postForm(
       );
     }
     const newNonce = resp.headers.get("dpop-nonce");
-    let body: Record<string, Json> = {};
+    // `resp.json().unwrap_or(Value::Null)`.
+    let body: Node | undefined;
     try {
-      const v = (await resp.json()) as Json;
-      if (v && typeof v === "object" && !Array.isArray(v)) body = v;
+      body = fromSlice(new Uint8Array(await resp.arrayBuffer()), node);
     } catch {}
     if (resp.ok) return { body, nonce: newNonce ?? nonce };
-    if (body.error === "use_dpop_nonce" && attempt === 0 && newNonce !== null) {
+    if (str(body, "error") === "use_dpop_nonce" && attempt === 0 && newNonce !== null) {
       nonce = newNonce;
       continue;
     }
-    const error = typeof body.error === "string" ? body.error : "unknown_error";
-    const description =
-      typeof body.error_description === "string" ? `: ${body.error_description}` : "";
+    const error = str(body, "error") ?? "unknown_error";
+    const d = str(body, "error_description");
+    const description = d !== undefined ? `: ${d}` : "";
     throw AtprotoError.other(
       `${what} was refused (${statusText(resp.status)}) — ${error}${description}`,
     );
@@ -110,11 +116,12 @@ export async function par(auth: AuthServer, p: ParParams, key: DpopKey) {
     form.push(["client_assertion_type", ASSERTION_TYPE]);
     form.push(["client_assertion", p.clientAssertion]);
   }
-  if (p.loginHint) form.push(["login_hint", p.loginHint]);
+  if (p.loginHint !== undefined && p.loginHint !== null) form.push(["login_hint", p.loginHint]);
   const { body, nonce } = await postForm("the sign-in request", auth.parEndpoint, form, key, null);
-  if (typeof body.request_uri !== "string")
+  const requestUri = str(body, "request_uri");
+  if (requestUri === undefined)
     throw AtprotoError.other("the authorization server answered no request_uri");
-  return { requestUri: body.request_uri, nonce };
+  return { requestUri, nonce };
 }
 
 export function authorizeUrl(auth: AuthServer, clientId: string, requestUri: string): string {
@@ -143,16 +150,16 @@ export async function exchange(
   }
   const { body } = await postForm("the token request", auth.tokenEndpoint, form, key, nonce);
   const field = (name: string) => {
-    const v = body[name];
-    if (typeof v !== "string") throw AtprotoError.other(`the token response has no ${name}`);
+    const v = str(body, name);
+    if (v === undefined) throw AtprotoError.other(`the token response has no ${name}`);
     return v;
   };
-  const expires = body.expires_in;
+  // `as_u64()`: a non-negative integer, not a float such as `3600.0`.
+  const expires = body === undefined ? undefined : get(body, "expires_in");
   return {
     accessToken: field("access_token"),
-    refreshToken: typeof body.refresh_token === "string" ? body.refresh_token : null,
-    expiresIn:
-      typeof expires === "number" && Number.isInteger(expires) && expires >= 0 ? expires : null,
+    refreshToken: str(body, "refresh_token") ?? null,
+    expiresIn: expires?.kind === "number" && expires.type === "u64" ? Number(expires.value) : null,
     scope: field("scope"),
     sub: field("sub"),
   };

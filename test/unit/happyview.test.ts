@@ -4,7 +4,7 @@ import { afterEach, expect, it } from "vitest";
 import type { Credential } from "../../src/atproto/credential.ts";
 import { DpopKey, sha256b64url } from "../../src/atproto/dpop.ts";
 import type { AtprotoError } from "../../src/atproto/error.ts";
-import { HappyView, sessionRegistration } from "../../src/atproto/happyview.ts";
+import { HappyView, retryAfter, sessionRegistration } from "../../src/atproto/happyview.ts";
 import { header, MockServer, type Recorded } from "../support/mock-server.ts";
 
 let servers: MockServer[] = [];
@@ -307,4 +307,34 @@ it("session_registration_debug_hides_tokens", () => {
   const shown = inspect(r);
   expect(shown).not.toContain("secret");
   expect(shown).toContain("hvp_1");
+});
+
+// TS-only: serde reads the whole body as `XrpcError`, so a non-string `error` reads as neither
+// field, message included.
+it("an_error_that_is_not_a_string_names_only_the_status", async () => {
+  const s = await start();
+  s.given("POST", "*", { status: 400, json: { error: 7, message: "num error" } });
+  const err = await fails(new HappyView(s.url, "hvc_test").procedure(await cred(s), "a.b.c", {}));
+  expect(err.message).toBe("a.b.c failed: HTTP 400 Bad Request");
+});
+
+it("an_unreadable_answer_reads_as_serde_says", async () => {
+  const s = await start();
+  s.given("POST", "*", { headers: { "content-type": "text/html" }, body: "<html>" });
+  const err = await fails(new HappyView(s.url, "hvc_test").procedure(await cred(s), "a.b.c", {}));
+  expect(err.message).toBe(
+    "a.b.c answered something unreadable: expected value at line 1 column 1",
+  );
+});
+
+it("retry_after_reads_only_whole_seconds", () => {
+  expect(retryAfter(null)).toBe(1);
+  expect(retryAfter("0")).toBe(0);
+  expect(retryAfter("+3")).toBe(3);
+  expect(retryAfter("5s")).toBe(1);
+  expect(retryAfter(" 5")).toBe(1);
+  expect(retryAfter("-1")).toBe(1);
+  expect(retryAfter("Wed, 21 Oct 2015 07:28:00 GMT")).toBe(1);
+  expect(retryAfter("600")).toBe(10);
+  expect(retryAfter("99999999999999999999")).toBe(1);
 });

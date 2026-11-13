@@ -5,7 +5,7 @@ import type { Credential, Saved } from "../atproto/credential.ts";
 import * as credential from "../atproto/credential.ts";
 import { AtprotoError } from "../atproto/error.ts";
 import { HappyView } from "../atproto/happyview.ts";
-import { request, statusText, transportError } from "../atproto/http.ts";
+import { DECODE_ERROR, parseJson, request, statusText, transportError } from "../atproto/http.ts";
 import type { Auth, Info } from "../atproto/instance.ts";
 import * as instance from "../atproto/instance.ts";
 import { processEnv } from "../atproto/settings.ts";
@@ -56,9 +56,9 @@ async function clientKey(url: string): Promise<string> {
     );
   let config: unknown;
   try {
-    config = await resp.json();
-  } catch (e) {
-    throw Failure.runtime(`${url}/config is not a HappyView's: ${(e as Error).message}`);
+    config = parseJson(new Uint8Array(await resp.arrayBuffer()));
+  } catch {
+    throw Failure.runtime(`${url}/config is not a HappyView's: ${DECODE_ERROR}`);
   }
   const key = (config as { cli_client_key?: unknown } | null)?.cli_client_key;
   return typeof key === "string" ? key : instance.DEFAULT_CLIENT_KEY;

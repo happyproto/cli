@@ -5,18 +5,22 @@ import { type Json, sortKeys } from "../core/output.ts";
 import {
   array,
   bool,
+  type Decoder,
+  field,
   fromSlice,
-  fromValue,
+  fromValueNode,
+  map,
   type Node,
   node,
   optional,
   str as strDe,
   struct,
+  u32,
   withDefault,
 } from "../core/serde-json.ts";
 import type { Credential } from "./credential.ts";
 import { AtprotoError } from "./error.ts";
-import { request, statusText, transportError } from "./http.ts";
+import { nodeJson, request, statusText, transportError } from "./http.ts";
 
 /** instance.rs `KEY_VAR`, repeated here so admin.ts does not import instance.ts. */
 const KEY_VAR = "HPY_HV_API_KEY";
@@ -124,114 +128,105 @@ interface Refusal {
   problems: ProjectProblem[];
 }
 
-// serde's derive, by hand: a wrong type is an error; a missing defaulted field is its default.
-class Shape extends Error {}
-const obj = (v: unknown): Record<string, unknown> => {
-  if (!v || typeof v !== "object" || Array.isArray(v)) throw new Shape("expected an object");
-  return v as Record<string, unknown>;
-};
-const str = (o: Record<string, unknown>, k: string): string => {
-  if (typeof o[k] !== "string") throw new Shape(`missing field \`${k}\``);
-  return o[k] as string;
-};
-const optStr = (o: Record<string, unknown>, k: string): string | null => {
-  const v = o[k];
-  if (v === undefined || v === null) return null;
-  if (typeof v !== "string") throw new Shape(`invalid type for \`${k}\``);
-  return v;
-};
-const strs = (o: Record<string, unknown>, k: string): string[] => {
-  const v = o[k];
-  if (v === undefined || v === null) return [];
-  if (!Array.isArray(v) || v.some((x) => typeof x !== "string"))
-    throw new Shape(`invalid type for \`${k}\``);
-  return v as string[];
-};
-const list = <T>(o: Record<string, unknown>, k: string, f: (v: unknown) => T): T[] => {
-  const v = o[k];
-  if (v === undefined || v === null) return [];
-  if (!Array.isArray(v)) throw new Shape(`invalid type for \`${k}\``);
-  return v.map(f);
-};
-
-function problem(v: unknown): ProjectProblem {
-  const o = obj(v);
-  const line = o.line;
-  if (line !== undefined && line !== null && !(Number.isInteger(line) && (line as number) >= 0))
-    throw new Shape("invalid type for `line`");
-  return {
-    path: optStr(o, "path") ?? "",
-    line: (line as number | undefined) ?? null,
-    message: str(o, "message"),
-  };
-}
-
-function installedPlugin(v: unknown): InstalledPlugin {
-  const o = obj(v);
-  const reg = o.registry;
-  const caps = o.capabilities === undefined || o.capabilities === null ? {} : obj(o.capabilities);
-  return {
-    id: str(o, "id"),
-    version: str(o, "version"),
-    plugin_type: str(o, "plugin_type"),
-    registry:
-      reg === undefined || reg === null
-        ? null
-        : (() => {
-            const r = obj(reg);
-            return {
-              did: optStr(r, "did"),
-              name: optStr(r, "name"),
-              version_uri: optStr(r, "version_uri"),
-            };
-          })(),
-    capabilities: { declared: list(caps, "declared", (c) => ({ name: str(obj(c), "name") })) },
-  };
-}
-
-function changes(v: unknown): Changes {
-  const o = obj(v);
-  return { added: strs(o, "added"), changed: strs(o, "changed"), removed: strs(o, "removed") };
-}
-
-function projectDeploy(v: unknown): ProjectDeploy {
-  const o = obj(v);
-  if (typeof o.dry_run !== "boolean") throw new Shape("missing field `dry_run`");
-  const raw = o.changes === undefined || o.changes === null ? {} : obj(o.changes);
-  const ch: Record<string, Changes> = {};
-  for (const k of Object.keys(raw).sort()) ch[k] = changes(raw[k]);
-  return {
-    sha256: str(o, "sha256"),
-    dry_run: o.dry_run,
-    deployed_at: optStr(o, "deployed_at"),
-    changes: ch,
-    backfills: strs(o, "backfills"),
-    warnings: list(o, "warnings", problem),
-  };
-}
+// The structs serde derives in admin.rs, with their Rust names (they appear in errors).
+const PROBLEM = struct("ProjectProblem", {
+  path: withDefault(strDe, ""),
+  line: withDefault(optional(u32), undefined),
+  message: strDe,
+});
+const toProblem = (p: { path: string; line: number | undefined; message: string }) => ({
+  path: p.path,
+  line: p.line ?? null,
+  message: p.message,
+});
+const INSTALLED_PLUGIN = struct("InstalledPlugin", {
+  id: strDe,
+  version: strDe,
+  plugin_type: strDe,
+  registry: withDefault(
+    optional(
+      struct("InstalledFrom", {
+        did: withDefault(optional(strDe), undefined),
+        name: withDefault(optional(strDe), undefined),
+        version_uri: withDefault(optional(strDe), undefined),
+      }),
+    ),
+    undefined,
+  ),
+  capabilities: withDefault(
+    struct("InstalledCapabilities", {
+      declared: withDefault(array(struct("DeclaredCapability", { name: strDe })), () => []),
+    }),
+    () => ({ declared: [] }),
+  ),
+});
+const toPlugin = (p: ReturnType<typeof INSTALLED_PLUGIN>): InstalledPlugin => ({
+  id: p.id,
+  version: p.version,
+  plugin_type: p.plugin_type,
+  registry:
+    p.registry === undefined
+      ? null
+      : {
+          did: p.registry.did ?? null,
+          name: p.registry.name ?? null,
+          version_uri: p.registry.version_uri ?? null,
+        },
+  capabilities: { declared: p.capabilities.declared.map((c) => ({ name: c.name })) },
+});
+const PLUGIN_LIST = struct("PluginList", { plugins: array(INSTALLED_PLUGIN) });
+const REFUSAL = struct("Refusal", {
+  error: optional(strDe),
+  message: optional(strDe),
+  action_url: field(optional(strDe), { rename: "actionUrl" }),
+  action_label: field(optional(strDe), { rename: "actionLabel" }),
+  dependents: withDefault(array(strDe), () => []),
+  problems: withDefault(array(PROBLEM), () => []),
+});
+const RAW_DEPLOYED = struct("RawDeployed", {
+  sha256: strDe,
+  deployed_at: withDefault(optional(strDe), undefined),
+  deployed_by: withDefault(optional(strDe), undefined),
+  error: withDefault(
+    optional(struct("RawBootError", { problems: withDefault(array(PROBLEM), () => []) })),
+    undefined,
+  ),
+});
+const CHANGES = struct("Changes", {
+  added: withDefault(array(strDe), () => []),
+  changed: withDefault(array(strDe), () => []),
+  removed: withDefault(array(strDe), () => []),
+});
+const PROJECT_DEPLOY = struct("ProjectDeploy", {
+  sha256: strDe,
+  dry_run: bool,
+  deployed_at: withDefault(optional(strDe), undefined),
+  changes: withDefault(map(CHANGES), () => new Map()),
+  backfills: withDefault(array(strDe), () => []),
+  warnings: withDefault(array(PROBLEM), () => []),
+});
 
 /** `serde_json::from_slice(..).unwrap_or_default()`: any shape that does not fit is no refusal at all. */
 function refusal(bytes: Uint8Array): Refusal {
-  const none: Refusal = {
-    error: null,
-    message: null,
-    actionUrl: null,
-    actionLabel: null,
-    dependents: [],
-    problems: [],
-  };
   try {
-    const o = obj(JSON.parse(Buffer.from(bytes).toString()));
+    const r = fromSlice(bytes, REFUSAL);
     return {
-      error: optStr(o, "error"),
-      message: optStr(o, "message"),
-      actionUrl: optStr(o, "actionUrl"),
-      actionLabel: optStr(o, "actionLabel"),
-      dependents: strs(o, "dependents"),
-      problems: list(o, "problems", problem),
+      error: r.error ?? null,
+      message: r.message ?? null,
+      actionUrl: r.action_url ?? null,
+      actionLabel: r.action_label ?? null,
+      dependents: r.dependents,
+      problems: r.problems.map(toProblem),
     };
   } catch {
-    return none;
+    return {
+      error: null,
+      message: null,
+      actionUrl: null,
+      actionLabel: null,
+      dependents: [],
+      problems: [],
+    };
   }
 }
 
@@ -318,17 +313,27 @@ export class Admin {
 
   /** The JSON body of a successful answer (null for an empty one), or the refusal as an error. */
   #answer(what: string, status: number, bytes: Uint8Array): Json {
-    if (status >= 200 && status < 300) {
-      if (bytes.length === 0) return null;
-      try {
-        return JSON.parse(Buffer.from(bytes).toString()) as Json;
-      } catch (e) {
-        throw AtprotoError.other(
-          `${this.base} answered ${what} with something unreadable: ${(e as Error).message}`,
-        );
-      }
+    return nodeJson(this.#answerNode(what, status, bytes));
+  }
+
+  /** `#send`, keeping the answer as a `Value` for a typed decode. */
+  async #sendNode(what: string, method: string, path: string, body?: Json): Promise<Node> {
+    const { status, bytes } = await this.#request(
+      what,
+      method,
+      path,
+      body === undefined ? { kind: "none" } : { kind: "json", value: body },
+    );
+    return this.#answerNode(what, status, bytes);
+  }
+
+  /** `serde_json::from_value::<T>`, its error worded `<base> <what>: <error>`. */
+  #decode<T>(value: Node, decoder: Decoder<T>, what: string): T {
+    try {
+      return fromValueNode(value, decoder);
+    } catch (e) {
+      throw AtprotoError.other(`${this.base} ${what}: ${(e as Error).message}`);
     }
-    throw this.#refused(what, status, refusal(bytes));
   }
 
   async #send(what: string, method: string, path: string, body?: Json): Promise<Json> {
@@ -341,10 +346,6 @@ export class Admin {
     return this.#answer(what, status, bytes);
   }
 
-  #unreadable(what: string, e: unknown): AtprotoError {
-    return AtprotoError.other(`${this.base} ${what}: ${(e as Error).message}`);
-  }
-
   /** The project the instance serves; null when none was ever deployed. */
   async project(): Promise<DeployedProject | null> {
     const what = "reading the deployed project";
@@ -355,19 +356,17 @@ export class Admin {
         `${this.base} has no project deploys; it runs a HappyView too old for \`hpy happyview deploy\``,
       );
     }
-    const value = this.#answer(what, status, bytes);
-    try {
-      const o = obj(value);
-      const err = o.error === undefined || o.error === null ? null : obj(o.error);
-      return {
-        sha256: str(o, "sha256"),
-        deployed_at: optStr(o, "deployed_at"),
-        deployed_by: optStr(o, "deployed_by"),
-        problems: err ? list(err, "problems", problem) : [],
-      };
-    } catch (e) {
-      throw this.#unreadable("described its project unreadably", e);
-    }
+    const raw = this.#decode(
+      this.#answerNode(what, status, bytes),
+      RAW_DEPLOYED,
+      "described its project unreadably",
+    );
+    return {
+      sha256: raw.sha256,
+      deployed_at: raw.deployed_at ?? null,
+      deployed_by: raw.deployed_by ?? null,
+      problems: (raw.error?.problems ?? []).map(toProblem),
+    };
   }
 
   /**
@@ -387,12 +386,19 @@ export class Admin {
       { kind: "gzip", bytes: bundle },
       seen,
     );
-    const value = this.#answer(what, status, bytes);
-    try {
-      return projectDeploy(value);
-    } catch (e) {
-      throw this.#unreadable(`answered ${what} unreadably`, e);
-    }
+    const d = this.#decode(
+      this.#answerNode(what, status, bytes),
+      PROJECT_DEPLOY,
+      `answered ${what} unreadably`,
+    );
+    return {
+      sha256: d.sha256,
+      dry_run: d.dry_run,
+      deployed_at: d.deployed_at ?? null,
+      changes: Object.fromEntries(d.changes),
+      backfills: d.backfills,
+      warnings: d.warnings.map(toProblem),
+    };
   }
 
   #refused(what: string, status: number, r: Refusal): AtprotoError {
@@ -534,12 +540,8 @@ export class Admin {
 
   /** Every installed plugin. */
   async plugins(): Promise<InstalledPlugin[]> {
-    const out = await this.#send("listing plugins", "GET", "/plugins");
-    try {
-      return list(obj(out), "plugins", installedPlugin);
-    } catch (e) {
-      throw this.#unreadable("listed its plugins unreadably", e);
-    }
+    const out = await this.#sendNode("listing plugins", "GET", "/plugins");
+    return this.#decode(out, PLUGIN_LIST, "listed its plugins unreadably").plugins.map(toPlugin);
   }
 
   /**
@@ -553,15 +555,13 @@ export class Admin {
     version: string,
     capabilities: string[],
   ): Promise<InstalledPlugin> {
-    const out = await this.#send(`installing ${name} ${version}`, "POST", "/plugins", {
+    const out = await this.#sendNode(`installing ${name} ${version}`, "POST", "/plugins", {
       registry: { did, name, version },
       accepted_capabilities: capabilities,
     });
-    try {
-      return installedPlugin(out);
-    } catch (e) {
-      throw this.#unreadable(`answered the install of ${name} unreadably`, e);
-    }
+    return toPlugin(
+      this.#decode(out, INSTALLED_PLUGIN, `answered the install of ${name} unreadably`),
+    );
   }
 
   /** Moves an installed registry plugin to one exact version, accepting `capabilities` for it. */
@@ -583,14 +583,12 @@ export class Admin {
 
   /** Every variable the instance has, without its value. */
   async scriptVariables(): Promise<ScriptVariable[]> {
-    const out = await this.#send("listing script variables", "GET", "/script-variables");
-    try {
-      return fromValue(out, array(SCRIPT_VARIABLE)) as ScriptVariable[];
-    } catch (e) {
-      throw AtprotoError.other(
-        `${this.base} listed its script variables unreadably: ${(e as Error).message}`,
-      );
-    }
+    const out = await this.#sendNode("listing script variables", "GET", "/script-variables");
+    return this.#decode(
+      out,
+      array(SCRIPT_VARIABLE),
+      "listed its script variables unreadably",
+    ) as ScriptVariable[];
   }
 
   /** Creates the variable `key`, or replaces its value. */
