@@ -161,3 +161,44 @@ HPY_CREDENTIAL_STORE=vault -- registry whoami
 @plugin=basic -- -C p registry plugin publish --promote 0.9.0 --version 1.0.0-rc.1
 @plugin=basic -- -C p registry plugin publish --promote 0.9.0
 -- registry plugin publish --promote 0.9.0
+# registry plugin status and lifecycle; status reads the registry at HPY_REGISTRY_URL.
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- --json registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- registry plugin status --name my-plugin 1.1.0
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- registry plugin status --name my-plugin 2.0.0
+@mock @mockcred=new HPY_REGISTRY_URL=$MOCK/reg-new -- registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-gone -- registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-gone -- --json registry plugin status --name my-plugin
+@mock @plugin=basic @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- -C p registry plugin status
+-- registry plugin status --name my-plugin
+@mock @mockcred=has -- registry plugin status --name Bad
+@mock @mockcred=has -- registry plugin status
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfSupport --kind security --reason use-1.x --yes
+@mock @mockcred=has -- --json --no-input registry plugin lifecycle --name my-plugin 0.9.0 supersededBy --superseded-by 1.0.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin --project endOfLife -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 deprecated -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 withdrawn -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 supersededBy -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife --superseded-by 1.0.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin v1 endOfLife -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 supersededBy --superseded-by nope -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin --project -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://did:plc:mo7vq4jbioxwafy5zkcc3eux/software.release.status/3lstatus --reason by-mistake -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://did:plc:mo7vq4jbioxwafy5zkcc3eux/software.release.status/3lnothere -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://did:plc:other/software.release.status/3lstatus -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://x 0.9.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://x --project -y
+@mock @mockcred=has:atproto -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife -y
+@mock @mockcred=refuse -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife -y
+-- registry plugin lifecycle --name my-plugin 0.9.0 endOfLife -y
+# clap's usage after a conflict or a missing requirement names every option given, in order.
+-- hv pull --dry-run --api-key-env FOO
+-- hv pull --api-key-env FOO --dry-run
+-- registry plugin lifecycle -y --kind k --withdraw x --reason r
+-- registry plugin lifecycle --reason r --withdraw x -y --kind k
+-- registry plugin lifecycle --withdraw x --name n --project
+-- hv add --channel beta --interpreter --library
+-- hv add --library --channel beta --version 1.0.0 x

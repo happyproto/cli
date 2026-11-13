@@ -12,6 +12,11 @@
 //   reg-badcid    uploads answer a CID other than the bytes'
 //   reg-swap      my-plugin registered; putProject answers InvalidSwap
 //   reg-flaky     getVersion answers 500
+//   reg-gone      the registry's reads answer 500; the PDS still answers
+//
+// The PDS's software.release.version records are the registry's versions plus `repoOnly`
+// (reg-has: my-plugin 1.1.0, which the registry has not indexed); its software.release.status
+// records are `statuses` (reg-has: 3lstatus, about my-plugin 0.9.0).
 import { rawCid } from "../../src/plugin/checksum.ts";
 
 const PNG = Buffer.from([
@@ -104,7 +109,13 @@ const basic = (did, o = {}) =>
   });
 
 function seed(mode, did) {
-  const s = { projects: new Map(), versions: new Map(), publications: new Map() };
+  const s = {
+    projects: new Map(),
+    versions: new Map(),
+    publications: new Map(),
+    repoOnly: [],
+    statuses: new Map(),
+  };
   const addVersion = (v) => s.versions.set(`${v.name}@${v.version}`, v);
   if (mode === "has" || mode === "swap") {
     s.projects.set(
@@ -122,6 +133,11 @@ function seed(mode, did) {
       }),
     );
     addVersion(versionView(did, "my-plugin", "0.9.0", olderArtifact()));
+    s.repoOnly.push("my-plugin.1.1.0");
+    s.statuses.set("3lstatus", {
+      subject: `at://${did}/software.release.version/my-plugin.0.9.0`,
+      status: "endOfLife",
+    });
   }
   if (mode === "changed") {
     s.projects.set(
@@ -160,11 +176,23 @@ export function mountRegistry(server) {
     const body = r.method === "POST" && method !== "com.atproto.repo.uploadBlob" ? r.json() : {};
     const name = q("name") ?? body.name;
     switch (method) {
+      case "com.atproto.repo.listRecords": {
+        if (q("collection") !== "software.release.version") return { json: { records: [] } };
+        const keys = [...s.versions.values()].map((v) => `${v.name}.${v.version}`);
+        const records = [...keys, ...s.repoOnly].map((k) => ({
+          uri: `at://${did}/software.release.version/${k}`,
+          cid: "bafyrepoversion",
+          value: {},
+        }));
+        return { json: { records } };
+      }
       case "com.atproto.repo.getRecord": {
         const rec =
           q("collection") === "site.standard.publication"
             ? s.publications.get(q("rkey"))
-            : undefined;
+            : q("collection") === "software.release.status"
+              ? s.statuses.get(q("rkey"))
+              : undefined;
         if (!rec) return err(400, "RecordNotFound", "Could not locate record");
         return {
           json: {
@@ -175,6 +203,7 @@ export function mountRegistry(server) {
         };
       }
       case "at.happyproto.registry.getProject": {
+        if (mode === "gone") return err(500, "InternalServerError", "down for maintenance");
         const p = s.projects.get(name);
         return p ? { json: p } : err(400, "ProjectNotFound", "no such project");
       }
@@ -184,6 +213,7 @@ export function mountRegistry(server) {
         return v ? { json: v } : err(400, "VersionNotFound", "no such version");
       }
       case "at.happyproto.registry.listVersions": {
+        if (mode === "gone") return err(500, "InternalServerError", "down for maintenance");
         const versions = [...s.versions.values()].filter((v) => v.name === name).reverse();
         return { json: { versions } };
       }
@@ -268,6 +298,11 @@ export function mountRegistry(server) {
         const v = versionView(from.did, name, body.version, from.artifact);
         s.versions.set(`${name}@${body.version}`, v);
         return { json: { version: { uri: v.uri, cid: v.cid } } };
+      }
+      case "at.happyproto.registry.putStatus": {
+        if (mode === "refuse") return err(400, "InvalidStatus", "endOfLife needs a reason");
+        const did_ = "did:plc:mo7vq4jbioxwafy5zkcc3eux";
+        return { json: { uri: `at://${did_}/software.release.status/3lnew`, cid: "bafystatus" } };
       }
       default:
         return { status: 404 };

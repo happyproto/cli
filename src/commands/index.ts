@@ -3,8 +3,10 @@ import type { Args } from "../cli.ts";
 import type { Ctx } from "../core/ctx.ts";
 import * as auth from "./auth.ts";
 import * as instance from "./instance.ts";
+import * as lifecycle from "./lifecycle.ts";
 import * as profile from "./profile.ts";
 import * as publish from "./publish.ts";
+import * as status from "./status.ts";
 
 export type Handler = (ctx: Ctx, args: Args) => Promise<void>;
 
@@ -17,6 +19,8 @@ export const HANDLERS: Record<string, Handler> = {
   "plugin.edit": profile.edit,
   "plugin.pull": profile.pull,
   "plugin.publish": publish.run,
+  "plugin.status": status.run,
+  "plugin.lifecycle": lifecycle.run,
   "hv.login": instance.login,
   "hv.logout": instance.logout,
   "hv.whoami": (ctx) => instance.whoami(ctx),
