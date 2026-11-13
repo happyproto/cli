@@ -8,7 +8,9 @@
 // differ. stderr differences are listed but do not fail the run unless
 // --strict-stderr is given.
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -17,11 +19,14 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_SCOPE } from "../../src/atproto/settings.ts";
+import { networkDir } from "../../src/project/network/atmosbox.ts";
+import { FAKE_DENO, FAKE_DOCKER } from "../support/fake-network.ts";
 import { describeRequest, startMock } from "./mock-happyview.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -73,7 +78,9 @@ const cases = readFileSync(join(here, "cases.txt"), "utf8")
 /** Spawns one step, feeding `input` on stdin, while this process keeps serving the mock. */
 function spawnStep(cmd, argv, env, cwd, input) {
   return new Promise((res) => {
-    const child = spawn(cmd[0], [...cmd.slice(1), ...argv], { env, cwd });
+    // `node` by its own path: a case may give the child a PATH without it.
+    const program = cmd[0] === "node" ? process.execPath : cmd[0];
+    const child = spawn(program, [...cmd.slice(1), ...argv], { env, cwd });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d));
@@ -84,6 +91,75 @@ function spawnStep(cmd, argv, env, cwd, input) {
 }
 
 /**
+ * `@netbin[=<mode>]`, for `hv dev --network local`: the fake `deno` and `docker` of
+ * test/support/fake-network.ts first on PATH (logging to $HOME/net.log), hpy's data directory
+ * in $HOME/data, and the project at $HOME/proj's checkout already installed, so nothing is
+ * downloaded. HTTPS_PROXY points nowhere, so a download that was not meant to happen fails
+ * rather than reaching the real archive. Modes: `ready` (the access walkthrough done),
+ * `noaccess` (not done), `locked` (a lock left in the checkout), `nodeno` (no fake `deno`).
+ * The net log and the files written into the checkout's `stacks/` are compared.
+ */
+function netbin(home, env, mode) {
+  const bin = join(home, "netbin");
+  mkdirSync(bin);
+  const fakes = [["docker", FAKE_DOCKER]];
+  if (mode === "olddeno")
+    fakes.push(["deno", `echo "deno $*" >> "$NET_LOG"\necho "deno 2.7.9 (stable)"`]);
+  else if (mode !== "nodeno") fakes.push(["deno", FAKE_DENO]);
+  for (const [name, body] of fakes) {
+    writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`);
+    chmodSync(join(bin, name), 0o755);
+  }
+  const log = join(home, "net.log");
+  env.PATH = `${bin}:/usr/bin:/bin`;
+  env.NET_LOG = log;
+  env.HPY_DATA_DIR ??= join(home, "data");
+  env.HPY_NETWORK_ACCESS_ADDR ??= "127.0.0.1:9";
+  env.HTTPS_PROXY = "http://127.0.0.1:9";
+  const project = join(home, "proj");
+  mkdirSync(project, { recursive: true });
+  const net = networkDir(join(home, "data"), project);
+  const checkout = join(net.dir, "atmosphereinabox-v0.7.1");
+  mkdirSync(join(checkout, "stacks"), { recursive: true });
+  writeFileSync(join(checkout, "stacks/components.json"), "[]");
+  writeFileSync(
+    join(checkout, ".hpy-installed"),
+    "73bd22ac78ba137a2b5e9b8ffb88944232f1d25f0df42cdd5ab70e8d12bb526c",
+  );
+  if (mode !== "noaccess") {
+    const ca = createHash("sha256").update("fake-ca\n").digest("hex");
+    writeFileSync(join(net.dir, "access.toml"), `ca_sha256 = "${ca}"\n`);
+  }
+  if (mode === "locked") mkdirSync(join(checkout, "state/cli.lock"), { recursive: true });
+  if (mode === "pending") {
+    mkdirSync(join(checkout, "state"), { recursive: true });
+    writeFileSync(join(checkout, "state/pending-create.json"), "{}");
+  }
+  if (mode === "stale") {
+    // A network whose project has gone, which a new network's first run names.
+    const gone = join(home, "data/networks/gone-0123abcd");
+    mkdirSync(gone, { recursive: true });
+    writeFileSync(join(gone, "project"), join(home, "moved-away"));
+  }
+  // The new network's directory exists from the first run on, but `stale` needs it absent.
+  if (mode === "stale") rmSync(net.dir, { recursive: true, force: true });
+  const show = (label, p) => (existsSync(p) ? `${label}:\n${readFileSync(p, "utf8")}\n` : "");
+  return {
+    hash: net.project.slice(-8),
+    subnet: net.subnet,
+    files: () =>
+      [
+        show("net.log", log),
+        show("project", join(net.dir, "project")),
+        ...["happyview.yaml", "happyview.definition.json", "components.json"].map((f) =>
+          show(`stacks/${f}`, join(checkout, "stacks", f)),
+        ),
+        show("access.toml", join(net.dir, "access.toml")),
+      ].join(""),
+  };
+}
+
+/**
  * One case: `[tags] -- argv [;; argv ...]`, every step in the same fresh HOME.
  * Tags: @cred, @file, @net, @mock (a mock HappyView at $MOCK), STDIN=text
  * (for every step), @keep=<path under the config dir, or ~/path under HOME>
@@ -91,8 +167,8 @@ function spawnStep(cmd, argv, env, cwd, input) {
  * @mockcred=<mode>[:atproto] (HPY_CREDENTIAL signed in to $MOCK/reg-<mode>
  * with the default scope, or only `atproto`), @plugin=<fixture> (copies
  * test/fixtures/plugin/<fixture> to $HOME/p), @project=<fixture> (copies
- * test/fixtures/hvproject/<fixture> to $HOME/proj), and ENV=VALUE ($HOME in VALUE is the
- * case's HOME).
+ * test/fixtures/hvproject/<fixture> to $HOME/proj), @netbin[=<mode>] (see `netbin`), and
+ * ENV=VALUE ($HOME in VALUE is the case's HOME).
  */
 async function run(cmd, line, mock) {
   const [pre, argvText] = line.startsWith("-- ") ? ["", line.slice(3)] : line.split(" -- ");
@@ -112,6 +188,7 @@ async function run(cmd, line, mock) {
   };
   let input = "";
   const keep = [];
+  let net;
   for (const t of tags) {
     if (t === "@cred") env.HPY_CREDENTIAL = readFileSync(join(fixtures, "HPY_CREDENTIAL"), "utf8");
     else if (t === "@file") {
@@ -126,6 +203,7 @@ async function run(cmd, line, mock) {
       cpSync(join(plugins, t.slice(8)), join(home, "p"), { recursive: true });
     else if (t.startsWith("@project="))
       cpSync(join(projects, t.slice(9)), join(home, "proj"), { recursive: true });
+    else if (t === "@netbin" || t.startsWith("@netbin=")) net = t.slice(8) || "ready";
     else if (t.startsWith("STDIN=")) input = sub(t.slice(6)).replaceAll("\\n", "\n");
     else if (t.includes("=")) {
       const [k, ...v] = t.split("=");
@@ -133,6 +211,7 @@ async function run(cmd, line, mock) {
       env[k] = sub(v.join("=")).replaceAll("$HOME", home);
     }
   }
+  const netState = net ? netbin(home, env, net) : undefined;
   if (mock) {
     mock.requests.length = 0;
     mock.reset?.();
@@ -155,6 +234,7 @@ async function run(cmd, line, mock) {
       return `${k} (${mode}):\n${readFileSync(p, "utf8")}\n`;
     })
     .join("");
+  const netFiles = netState ? netState.files() : "";
   const requests = mock ? mock.requests.map(describeRequest).join("\n") : "";
   rmSync(home, { recursive: true, force: true });
   // macOS prints the temporary HOME through /private, which `home` is not; its random name is
@@ -165,12 +245,15 @@ async function run(cmd, line, mock) {
       .replaceAll(basename(home), "hpy-parity-XXXXXX")
       // …even where a report wrapped the name across its gutter.
       .replace(/hpy-parity-(\n {2}│ )?[A-Za-z0-9]{6}/g, "hpy-parity-$1XXXXXX")
-      .replaceAll(mock?.url ?? "\0", "$MOCK");
+      .replaceAll(mock?.url ?? "\0", "$MOCK")
+      // The network's name and subnet derive from the project's path, which HOME is in.
+      .replaceAll(netState?.hash ?? "\0", "HASH")
+      .replaceAll(netState?.subnet ?? "\0", "$SUBNET");
   return {
     code,
     stdout: clean(stdout),
     stderr: clean(stderr),
-    files: clean(files),
+    files: clean(files + netFiles),
     requests: clean(requests),
   };
 }

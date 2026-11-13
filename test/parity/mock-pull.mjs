@@ -288,11 +288,16 @@ export function mountPull(s) {
       (r) => r.query.get("name") === "steam" && r.query.get("channel") === "beta",
     ),
   );
+  // The host's release, and the Linux one `dev --network local` asks for (the fake `docker`
+  // reports aarch64).
+  for (const t of new Set([target(), "aarch64-unknown-linux-musl"])) {
+    const asset = `happyview-${t}.tar.xz`;
+    const archive = tarXz([[`happyview-${t}/happyview`, FAKE_HAPPYVIEW, 0o755]]);
+    const sum = createHash("sha256").update(archive).digest("hex");
+    s.given("GET", `/dl/v${VERSION}/${asset}`, { body: Buffer.from(archive) });
+    s.given("GET", `/dl/v${VERSION}/${asset}.sha256`, { body: `${sum}  ${asset}\n` });
+  }
   const asset = `happyview-${target()}.tar.xz`;
-  const archive = tarXz([[`happyview-${target()}/happyview`, FAKE_HAPPYVIEW, 0o755]]);
-  const sum = createHash("sha256").update(archive).digest("hex");
-  s.given("GET", `/dl/v${VERSION}/${asset}`, { body: Buffer.from(archive) });
-  s.given("GET", `/dl/v${VERSION}/${asset}.sha256`, { body: `${sum}  ${asset}\n` });
   s.given("GET", "/gh/repos/gamesgamesgamesgamesgames/happyview/releases", {
     json: [{ tag_name: `v${VERSION}`, draft: false, assets: [{ name: asset }] }],
   });
