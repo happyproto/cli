@@ -307,3 +307,39 @@ describe.skipIf(process.platform === "win32")("tests/cli.rs happyview_build", ()
     expect(r.stderr).toContain("'registry' failed to build");
   });
 });
+
+// TS-only: a spawned hpy reaches the keychain through test/support/keyring-fake.mjs, under the
+// CLI's own `hpy` service, and never the OS keychain. A Bun binary has the addon built in.
+describe.skipIf(!!process.env.HPY_TEST_BIN)("the keychain a spawned hpy sees", () => {
+  it("is_the_test_stand_in", async () => {
+    const did = "did:plc:abc";
+    const jwk = JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, "../fixtures/credentials/credentials.file.json"),
+        "utf8",
+      ),
+    ).dpop_key;
+    mkdirSync(join(home.config, "hpy"), { recursive: true });
+    // Nothing listens on port 9, so the logout's revoke fails fast and is ignored.
+    writeFileSync(
+      join(home.config, "hpy/credentials.json"),
+      JSON.stringify({
+        v: 1,
+        registry: "http://127.0.0.1:9",
+        client_key: "hvc_test",
+        did,
+        pds: "https://pds.test",
+        scopes: "atproto",
+        access_token: "t",
+        dpop_key: { keychain: true },
+      }),
+    );
+    const items = join(home.dir, "test-keychain.json");
+    const item = `hpy/127.0.0.1:9/${did}`;
+    writeFileSync(items, JSON.stringify({ [item]: JSON.stringify(jwk) }));
+    const r = await hpy(home, ["registry", "logout"]);
+    expect(r.code, r.stderr).toBe(0);
+    expect(r.stdout).toContain(`Logged out ${did}`);
+    expect(JSON.parse(readFileSync(items, "utf8"))).toEqual({});
+  });
+});

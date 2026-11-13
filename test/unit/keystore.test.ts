@@ -41,3 +41,16 @@ it("keyring_cores_no_keychain_errors_are_unavailable", () => {
     expect(classify(new Error(msg)).unavailable, msg).toBe(false);
   }
 });
+
+// TS-only: the CLI's keychain service is fixed; only a test that builds a Keychain names another.
+it("the_keychain_service_is_hpy_whatever_the_environment_says", () => {
+  const before = process.env.HPY_KEYCHAIN_SERVICE_FOR_TESTS;
+  try {
+    process.env.HPY_KEYCHAIN_SERVICE_FOR_TESTS = "hpy-test-other";
+    expect(new Keychain().service).toBe("hpy");
+    expect(new Keychain("hpy-test-keystore").service).toBe("hpy-test-keystore");
+  } finally {
+    if (before === undefined) delete process.env.HPY_KEYCHAIN_SERVICE_FOR_TESTS;
+    else process.env.HPY_KEYCHAIN_SERVICE_FOR_TESTS = before;
+  }
+});

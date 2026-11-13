@@ -280,8 +280,8 @@ function smoke(target, file) {
     return;
   }
   const home = mkdtempSync(join(tmpdir(), "hpy-smoke-"));
-  // A private home, no update check, and a test keychain service: nothing of
-  // the user's is read or written.
+  // A private home, no update check, and secrets kept in files: nothing of
+  // the user's is read or written (--version and --help touch neither anyway).
   const env = {
     HOME: home,
     USERPROFILE: home,
@@ -290,7 +290,7 @@ function smoke(target, file) {
     XDG_DATA_HOME: join(home, "data"),
     APPDATA: join(home, "config"),
     HPY_NO_UPDATE_CHECK: "1",
-    HPY_KEYCHAIN_SERVICE_FOR_TESTS: "hpy-test-smoke",
+    HPY_CREDENTIAL_STORE: "file",
   };
   try {
     const version = exec(how, ["--version"], env);

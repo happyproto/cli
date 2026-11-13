@@ -8,6 +8,14 @@ import { execa, type Options } from "execa";
 
 const BIN = process.env.HPY_TEST_BIN;
 const SCRIPT = fileURLToPath(new URL("../../dist/hpy.mjs", import.meta.url));
+const KEYRING_HOOK = fileURLToPath(new URL("./keyring-hook.mjs", import.meta.url));
+
+/**
+ * Node's arguments for running dist/hpy.mjs with the OS keychain swapped for
+ * keyring-fake.mjs. A Bun binary (HPY_TEST_BIN) has the addon built in, so there only
+ * HPY_CREDENTIAL_STORE=file keeps it away from the keychain.
+ */
+export const NODE_ARGS: readonly string[] = ["--import", KEYRING_HOOK, "--", SCRIPT];
 
 export interface Run {
   code: number;
@@ -31,7 +39,7 @@ export function hpyEnv(
   home: Home,
   extra: Record<string, string> = {},
 ): Record<string, string | undefined> {
-  return {
+  const env = {
     ...process.env,
     XDG_CONFIG_HOME: home.config,
     APPDATA: home.config,
@@ -44,11 +52,14 @@ export function hpyEnv(
     HPY_NO_UPDATE_CHECK: "1",
     ...extra,
   };
+  if (env.HPY_CREDENTIAL_STORE !== "file")
+    throw new Error("a spawned hpy keeps its secrets in files (HPY_CREDENTIAL_STORE=file)");
+  return env;
 }
 
 /** The program and leading arguments that run the built `hpy`. */
 export function hpyCommand(): [string, string[]] {
-  return BIN ? [BIN, []] : [process.execPath, ["--", SCRIPT]];
+  return BIN ? [BIN, []] : [process.execPath, [...NODE_ARGS]];
 }
 
 export async function hpy(
@@ -67,6 +78,6 @@ export async function hpy(
   };
   const r = BIN
     ? await execa(BIN, args, options)
-    : await execa(process.execPath, ["--", SCRIPT, ...args], options);
+    : await execa(process.execPath, [...NODE_ARGS, ...args], options);
   return { code: r.exitCode ?? -1, stdout: String(r.stdout), stderr: String(r.stderr) };
 }

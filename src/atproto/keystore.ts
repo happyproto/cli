@@ -63,11 +63,14 @@ export async function loadKeychain(): Promise<void> {
 }
 let loadError: KeyStoreError | undefined;
 
-/** The OS keychain. Call `loadKeychain()` first. */
+/**
+ * The OS keychain. Call `loadKeychain()` first. `service` is always `hpy` in the CLI; a test
+ * passes its own so it never reads or writes the user's items.
+ */
 export class Keychain implements KeyStore {
   readonly service: string;
 
-  constructor(service = process.env.HPY_KEYCHAIN_SERVICE_FOR_TESTS || SERVICE) {
+  constructor(service: string = SERVICE) {
     this.service = service;
   }
 

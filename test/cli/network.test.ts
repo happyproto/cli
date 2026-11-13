@@ -20,19 +20,17 @@ import {
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { FAKE_DENO, FAKE_DOCKER } from "../support/fake-network.ts";
-import { hpy } from "../support/hpy.ts";
+import { hpy, NODE_ARGS } from "../support/hpy.ts";
 import { FAKE_HAPPYVIEW, Stack, says, target, VERSION } from "../support/hv-stack.ts";
 import { tarXz } from "../support/tar.ts";
 
 const windows = process.platform === "win32";
 const ptyHost = process.platform === "darwin" || process.platform === "linux";
 const BIN = process.env.HPY_TEST_BIN;
-const SCRIPT = fileURLToPath(new URL("../../dist/hpy.mjs", import.meta.url));
 /** The command line that runs hpy, as test/support/hpy.ts runs it. */
-const HPY: string[] = BIN ? [BIN] : [process.execPath, "--", SCRIPT];
+const HPY: string[] = BIN ? [BIN] : [process.execPath, ...NODE_ARGS];
 const T = 120_000;
 
 const read = (p: string) => readFileSync(p, "utf8");
