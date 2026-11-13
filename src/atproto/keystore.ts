@@ -21,14 +21,17 @@ export interface KeyStore {
 }
 
 /**
- * keyring's errors, by their Display text (napi-rs/keyring is a binding of the
- * same crate). NoStorageAccess, PlatformFailure, NoDefaultStore and
- * NotSupportedByStore mean there is no usable keychain here.
+ * keyring's errors, by their Display text: @napi-rs/keyring raises every one as
+ * GenericFailure, so the message is all there is. NoStorageAccess, PlatformFailure,
+ * NoDefaultStore and NotSupportedByStore mean there is no usable keychain here. The
+ * patterns cover both keyring v3's wording and keyring-core's, which @napi-rs/keyring 2.x
+ * uses ("Couldn't access platform storage:", "Platform failure:", "Unsupported:", "No default
+ * store has been set").
  */
-function classify(e: unknown): KeyStoreError {
+export function classify(e: unknown): KeyStoreError {
   const msg = e instanceof Error ? e.message : String(e);
   const unavailable =
-    /access platform secure storage|platform storage|Platform secure storage failure|No default store|not supported by/i.test(
+    /access platform secure storage|platform storage|Platform secure storage failure|Platform failure|^Unsupported:|No default store|not supported by/i.test(
       msg,
     );
   return new KeyStoreError(msg, unavailable);

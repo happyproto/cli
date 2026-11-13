@@ -1,7 +1,7 @@
 // hpy-atproto/src/keystore.rs tests.
 import { expect, it } from "vitest";
 import { randomToken } from "../../src/atproto/dpop.ts";
-import { Keychain, loadKeychain, MemoryStore } from "../../src/atproto/keystore.ts";
+import { classify, Keychain, loadKeychain, MemoryStore } from "../../src/atproto/keystore.ts";
 
 it("memory_store_round_trip", () => {
   const s = new MemoryStore();
@@ -24,4 +24,20 @@ it.skipIf(!process.env.HPY_REAL_KEYCHAIN_TEST)("real_keychain_round_trip", async
   expect(k.get(account)).toBe("secret");
   k.delete(account);
   expect(k.get(account)).toBeNull();
+});
+
+// TS-only: @napi-rs/keyring 2.x raises every error as GenericFailure with keyring-core's
+// wording, so "no usable keychain" is told apart by the message alone.
+it("keyring_cores_no_keychain_errors_are_unavailable", () => {
+  for (const msg of [
+    "Couldn't access platform storage: no secret service",
+    "Platform failure: org.freedesktop.DBus.Error.ServiceUnknown",
+    "Unsupported: this store cannot do that",
+    "No default store has been set, so cannot search or create entries",
+  ]) {
+    expect(classify(new Error(msg)).unavailable, msg).toBe(true);
+  }
+  for (const msg of ["No matching credential found", "Password data is not valid UTF-8"]) {
+    expect(classify(new Error(msg)).unavailable, msg).toBe(false);
+  }
 });
