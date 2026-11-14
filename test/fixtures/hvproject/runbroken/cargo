@@ -1,0 +1,4 @@
+#!/bin/sh
+if [ "$1" = --version ]; then exit 0; fi
+echo 'error[E0425]: cannot find value `answr` in this scope' >&2
+exit 101

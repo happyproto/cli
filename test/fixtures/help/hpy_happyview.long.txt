@@ -1,0 +1,31 @@
+Build HappyView apps: a project directory, run and tested locally
+
+Usage: hpy happyview [OPTIONS] <COMMAND>
+
+Commands:
+  create    Scaffold a new HappyView project
+  dev       Run the project with its pinned HappyView; a saved file is live on the next request
+  add       Add plugins to happyview.toml and happyview.lock and download them; with none, bring the
+            lock up to date and download it
+  scaffold  Write a starter handler beside each query or procedure lexicon under src/ that has none
+  build     Build every compiled script module in happyview.toml into .happyview/build/
+  check     Build the project's snapshot without serving it; exits non-zero on any error
+  test      Run the project's tests
+  types     Write editor types for the project into .happyview/types/, and the tsconfig.json or
+            .luarc.json that points editors at them
+  login     Sign in to a HappyView instance through your browser, to deploy to it
+  logout    Sign out of an instance
+  whoami    Show the instances you are signed in to
+  deploy    Make an instance match the project: its plugins from happyview.lock, then its lexicons,
+            scripts and modules
+  env       Work with the deployed instance's script variables, which scripts read as `ctx.env`
+  pull      Build a project from what an instance serves: its lexicons, scripts, plugins and
+            settings
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+      --json      Print the result as JSON on stdout
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help

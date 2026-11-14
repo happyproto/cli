@@ -1,0 +1,5 @@
+[happyview]
+version = "3.0.0-alpha.12"
+[modules.registry]
+language = "rust"
+path = "modules/registry"

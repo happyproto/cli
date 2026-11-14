@@ -1,0 +1,18 @@
+Edit the plugin's project in the registry
+
+Usage: hpy registry plugin edit [OPTIONS]
+
+Options:
+      --json                         Print the result as JSON on stdout
+      --name <NAME>                  Project name (default: hpy.toml [project] name, then
+                                     manifest.json id)
+      --display-name <DISPLAY_NAME>  The name people see (the publication's name)
+      --no-input                     Never prompt; fail when a value is missing. Irreversible
+                                     actions still need --yes. Implied without a terminal
+  -C <DIR>                           Run as if started in DIR
+      --description <DESCRIPTION>    One-line description
+      --author <AUTHOR>              Author as `Name <email> (url)`; repeatable
+      --security <CONTACT>           Security contact (email or URL); repeatable
+      --keyword <KEYWORD>            Keyword; repeatable
+      --remove-keyword <KEYWORD>     Remove a keyword; repeatable
+  -h, --help                         Print help

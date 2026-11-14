@@ -1,0 +1,20 @@
+Scaffold a new HappyView project
+
+Usage: hpy happyview create [OPTIONS] --name <DIR>
+
+Options:
+      --json                         Print the result as JSON on stdout
+      --name <DIR>                   Directory to create, relative to the current one
+      --no-input                     Never prompt; fail when a value is missing. Irreversible
+                                     actions still need --yes. Implied without a terminal
+      --superadmin <DID>             The superadmin's DID (default: the account `hpy registry login`
+                                     holds)
+  -C <DIR>                           Run as if started in DIR
+      --interpreter <LANGUAGE>       Interpreter language id; repeatable (default: lua)
+      --library <LIBRARY>            Library namespace or project name; repeatable
+      --project <AT-URI>             The registry project to use for the interpreter or library it
+                                     answers to, when several do; repeatable
+      --app-name <APP_NAME>          The app's display name (default: the directory name)
+      --happyview-version <VERSION>  HappyView version to pin (default: the newest with a binary for
+                                     this machine)
+  -h, --help                         Print help

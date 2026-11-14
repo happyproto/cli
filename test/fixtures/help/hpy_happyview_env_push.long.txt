@@ -1,0 +1,38 @@
+Send keys from the project's .env to the instance's script variables, asking before each.
+
+Values are never shown: not in the questions, the output, --json or an error. Keys are read from the
+file only, never from your shell's environment. The instance shows values masked, so a key it
+already has is replaced without knowing whether the value differs.
+
+Usage: hpy happyview env push [OPTIONS] [KEY]...
+
+Arguments:
+  [KEY]...
+          Only these keys; each must be in the file (default: every key in it)
+
+Options:
+      --json
+          Print the result as JSON on stdout
+
+      --url <URL>
+          The instance, e.g. https://api.example.com (default: HPY_HV_URL, else the only one you are
+          signed in to)
+
+      --env-file <PATH>
+          Read the keys from this file instead of .env in the project root
+
+      --no-input
+          Never prompt; fail when a value is missing. Irreversible actions still need --yes. Implied
+          without a terminal
+
+  -C <DIR>
+          Run as if started in DIR
+
+      --dry-run
+          List each key as new or replacing an existing one, and send nothing
+
+  -y, --yes
+          Send every key without asking
+
+  -h, --help
+          Print help (see a summary with '-h')

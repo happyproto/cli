@@ -1,0 +1,17 @@
+Sign in to a HappyView instance through your browser, to deploy to it
+
+Usage: hpy happyview login [OPTIONS] [IDENTIFIER]
+
+Arguments:
+  [IDENTIFIER]  Your handle or DID (default: the account `hpy registry login` holds)
+
+Options:
+      --json        Print the result as JSON on stdout
+      --url <URL>   The instance, e.g. https://api.example.com
+      --no-browser  Print the authorization URL instead of opening a browser
+      --no-input    Never prompt; fail when a value is missing. Irreversible actions still need
+                    --yes. Implied without a terminal
+  -C <DIR>          Run as if started in DIR
+      --key-stdin   For CI: sign in with an API key from the instance's dashboard, read from
+                    standard input, instead of through the browser
+  -h, --help        Print help

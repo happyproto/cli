@@ -1,0 +1,10 @@
+Build every compiled script module in happyview.toml into .happyview/build/
+
+Usage: hpy happyview build [OPTIONS]
+
+Options:
+      --json      Print the result as JSON on stdout
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help

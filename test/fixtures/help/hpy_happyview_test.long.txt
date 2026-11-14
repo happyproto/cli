@@ -1,0 +1,15 @@
+Run the project's tests
+
+Usage: hpy happyview test [OPTIONS] [FILTER]
+
+Arguments:
+  [FILTER]  Only run test files whose path contains this
+
+Options:
+      --json      Print the result as JSON on stdout
+      --locked    Fail rather than update happyview.lock when it no longer matches happyview.toml
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+      --watch     Rerun the affected tests whenever the project changes
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help

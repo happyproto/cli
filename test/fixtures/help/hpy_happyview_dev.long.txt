@@ -1,0 +1,44 @@
+Run the project with its pinned HappyView; a saved file is live on the next request.
+
+A compiled module is rebuilt when a file under its own directory changes. A path dependency outside
+that directory, or a workspace's Cargo.lock above it, is not watched: after changing one, save a
+file in the module to rebuild it.
+
+Usage: hpy happyview dev [OPTIONS]
+
+Options:
+      --json
+          Print the result as JSON on stdout
+
+      --locked
+          Fail rather than update happyview.lock when it no longer matches happyview.toml
+
+      --network <NETWORK>
+          Which atproto network to run against
+
+          Possible values:
+          - real:  The real atproto network; writes reach your real PDS
+          - local: A private network on this computer (Atmosphere in a Box; needs Docker and Deno
+            2.8)
+          
+          [default: real]
+
+      --no-input
+          Never prompt; fail when a value is missing. Irreversible actions still need --yes. Implied
+          without a terminal
+
+  -C <DIR>
+          Run as if started in DIR
+
+      --reset
+          Discard the local network's accounts, records and database, then start fresh
+
+      --subnet <CIDR>
+          The private IPv4 network the local network is created on, when the one derived from the
+          project's path is taken. Kept until another is given
+
+  -y, --yes
+          Do not ask for confirmation
+
+  -h, --help
+          Print help (see a summary with '-h')

@@ -1,0 +1,20 @@
+Add plugins to happyview.toml and happyview.lock and download them; with none, bring the lock up to
+date and download it
+
+Usage: hpy happyview add [OPTIONS] [PLUGIN]...
+
+Arguments:
+  [PLUGIN]...  A language id (interpreters) or a namespace or project name (libraries)
+
+Options:
+      --interpreter        Treat every PLUGIN as an interpreter
+      --json               Print the result as JSON on stdout
+      --library            Treat every PLUGIN as a library
+      --no-input           Never prompt; fail when a value is missing. Irreversible actions still
+                           need --yes. Implied without a terminal
+  -C <DIR>                 Run as if started in DIR
+      --channel <CHANNEL>  Follow this channel: latest, beta or alpha (default: latest, else the
+                           only channel there is)
+      --version <VERSION>  Pin this exact version instead of following a channel
+      --project <AT-URI>   The registry project to use, when several answer to one name
+  -h, --help               Print help

@@ -1,0 +1,16 @@
+Make an instance match the project: its plugins from happyview.lock, then its lexicons, scripts and
+modules
+
+Usage: hpy happyview deploy [OPTIONS]
+
+Options:
+      --json           Print the result as JSON on stdout
+      --url <URL>      The instance, e.g. https://api.example.com (default: HPY_HV_URL, else the
+                       only one you are signed in to)
+      --dry-run        Show what would change on the instance without changing it
+      --no-input       Never prompt; fail when a value is missing. Irreversible actions still need
+                       --yes. Implied without a terminal
+  -C <DIR>             Run as if started in DIR
+      --prune-plugins  Also uninstall interpreters and libraries that happyview.lock doesn't list
+  -y, --yes            Do not ask for confirmation
+  -h, --help           Print help

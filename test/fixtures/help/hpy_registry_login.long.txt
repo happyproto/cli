@@ -1,0 +1,16 @@
+Sign in to the registry with your atproto account
+
+Usage: hpy registry login [OPTIONS] [IDENTIFIER]
+
+Arguments:
+  [IDENTIFIER]  Your handle or DID
+
+Options:
+      --export      Sign in for CI: print a credential to store as the HPY_CREDENTIAL secret instead
+                    of saving it here. It is its own session, revocable on its own
+      --json        Print the result as JSON on stdout
+      --no-browser  Print the authorization URL instead of opening a browser
+      --no-input    Never prompt; fail when a value is missing. Irreversible actions still need
+                    --yes. Implied without a terminal
+  -C <DIR>          Run as if started in DIR
+  -h, --help        Print help

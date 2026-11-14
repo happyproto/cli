@@ -1,0 +1,18 @@
+The HappyProto command line
+
+Usage: hpy [OPTIONS] <COMMAND>
+
+Commands:
+  registry   Work with the HappyProto plugin registry
+  update     Update hpy to the newest release on your channel
+  channel    Show or choose the release channel hpy updates from
+  happyview  Build HappyView apps: a project directory, run and tested locally
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+      --json      Print the result as JSON on stdout
+      --no-input  Never prompt; fail when a value is missing. Irreversible actions still need --yes.
+                  Implied without a terminal
+  -C <DIR>        Run as if started in DIR
+  -h, --help      Print help
+  -V, --version   Print version

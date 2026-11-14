@@ -1,0 +1,19 @@
+#!/bin/sh
+# Stands in for happyview-codemod in the parity harness: prefixes the script with what it was
+# asked, adds a happyview.db require, leaves a marker in a job, and refuses a label.
+kind=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "--kind" ] && kind="$2"
+  shift
+done
+if [ "$kind" = label ]; then
+  echo "cannot parse a labeler" >&2
+  exit 1
+fi
+echo "-- v3 $kind"
+echo 'local db = require("happyview.db")'
+cat
+if [ "$kind" = job ]; then
+  echo "-- codemod: ctx.job has no v3 equivalent"
+  exit 2
+fi

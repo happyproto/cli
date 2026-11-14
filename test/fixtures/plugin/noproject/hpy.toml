@@ -1,0 +1,12 @@
+[release]
+license = "MIT"
+changelog = "CHANGELOG.md"
+
+[release.sections]
+description = { text = "Does things." }
+
+[release.artifacts]
+banner = { path = "banner.png", alt = "A banner" }
+
+[release.requires]
+"env:happyview" = ">=3.0.0"

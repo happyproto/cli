@@ -1,1 +1,3 @@
-crates/hpy-project/templates/** text eol=lf
+# Check every text file out with LF line endings, on Windows too: biome checks
+# formatting byte for byte, and fixtures and templates are compared as bytes.
+* text=auto eol=lf

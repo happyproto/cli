@@ -153,7 +153,21 @@ no_sudo() {
   exit 1
 }
 
+# hpy's musl build (Bun's) is dynamically linked against libstdc++, which a
+# bare Alpine system lacks; dist's installer picks that build on musl without
+# checking, and the hpy it leaves would not start. Detects musl as dist's
+# installer does.
+check_libstdcxx() {
+  [ "$(uname -s)" = Linux ] || return 0
+  ldd --version 2>&1 | grep -q musl || return 0
+  for d in /usr/lib /lib /usr/local/lib /usr/lib64 /lib64; do
+    [ -e "$d/libstdc++.so.6" ] && return 0
+  done
+  die "hpy for musl Linux needs libstdc++, which this system does not have. Install it (on Alpine: apk add libstdc++), then run this again."
+}
+
 main() {
+  check_libstdcxx
   sysdir=/usr/local/bin
   if [ "$test_knobs" = 1 ]; then
     sysdir=${HPY_CLI_SYSTEM_DIR:-/usr/local/bin}

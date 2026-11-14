@@ -1,0 +1,11 @@
+{
+  "id": "my-plugin",
+  "name": "Mine",
+  "version": "v1.0.0",
+  "description": "Does things.",
+  "api_version": "2",
+  "plugin_type": "library",
+  "namespace": "my.plugin",
+  "capabilities": [],
+  "wasm_file": "my-plugin.wasm"
+}

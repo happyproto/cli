@@ -1,0 +1,14 @@
+Show what the registry knows about this plugin's versions
+
+Usage: hpy registry plugin status [OPTIONS] [VERSION]
+
+Arguments:
+  [VERSION]  A single version to inspect
+
+Options:
+      --json         Print the result as JSON on stdout
+      --name <NAME>  Project name (default: hpy.toml [project] name, then manifest.json id)
+      --no-input     Never prompt; fail when a value is missing. Irreversible actions still need
+                     --yes. Implied without a terminal
+  -C <DIR>           Run as if started in DIR
+  -h, --help         Print help

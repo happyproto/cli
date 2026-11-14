@@ -1,0 +1,6 @@
+# Kept.
+[project]
+icon = { path = "icon.png" }
+
+[release]
+license = "MIT"

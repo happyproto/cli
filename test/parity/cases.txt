@@ -1,0 +1,747 @@
+# One case per line: [ENV=VALUE ...] -- ARGV
+# @cred puts test/fixtures/credentials/HPY_CREDENTIAL in HPY_CREDENTIAL.
+# @file copies credentials.file.json into the config directory.
+# @net marks a case that reads the public registry (skipped with --offline).
+-- --version
+-- registry whoami
+@cred -- registry whoami
+@cred -- registry whoami --json
+@cred -- --json registry whoami
+@cred -- --no-input registry whoami
+@file -- registry whoami
+@file -- --json registry whoami
+-- registry logout
+-- --json registry logout
+@file -- registry logout
+@file -- --json registry logout
+HPY_CREDENTIAL=garbage -- registry whoami
+@cred -- registry plugin lifecycle --project endOfLife --withdraw at://x
+@cred -- registry plugin lifecycle --withdraw at://x --kind security
+@cred -- registry plugin lifecycle --withdraw at://x --superseded-by 1.0.0
+-- hv pull --diff --dry-run
+-- hv pull --api-key-env FOO
+-- hv add --channel beta
+-- hv add --version 1.0.0
+-- hv add --interpreter --library lua
+-- hv login --key-stdin alice
+-- hv login --key-stdin --no-browser
+-- registry plugin nope
+-- bogus
+-- hv dev --network nope
+-- hv create
+-- --no-input registry login
+-- registry login
+@cred @net -- registry plugin show --name happyview-lua
+@cred @net -- --json registry plugin show --name happyview-lua
+@cred @net -- registry plugin show --name nope-xyz
+HPY_OAUTH_REDIRECT=http://evil -- registry whoami
+HPY_CREDENTIAL_STORE=vault -- registry whoami
+-- registry whoami --bogus
+-- registry plugin show --name
+-- registry login a b
+-- registry plugin lifecycle --withdraw at://x --kind security
+-- 
+-- --help
+-- -h
+-- help
+-- help registry plugin
+-- hv
+-- hv env
+-- registry plugin publish --version 1 -h
+-- hv dev --help
+-- hv pull --help
+-- hv add -h
+-- hv dev --subnet 10.40.0.0
+-- hv dev --subnet=10.40.0.1/24
+-- hv dev --subnet 8.8.8.0/24
+-- hv dev --subnet 10.40.0.0/29
+-- hv dev --subnet 172.32.0.0/24
+-- hv dev --subnet
+-- channel foo
+-- channel Beta
+-- channel stable extra
+# hv login/logout/whoami against the mock HappyView ($MOCK/<mode>, see mock-happyview.mjs).
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/ok --key-stdin ;; hv whoami ;; hv whoami --json ;; hv logout ;; hv whoami
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- --json hv login --url $MOCK/ok/ --key-stdin ;; --json hv logout --url $MOCK/ok ;; --json hv logout
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/refuse --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/forbid --key-stdin
+@mock STDIN=nope -- hv login --url $MOCK/ok --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url http://example.com --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/ok --key-stdin ;; hv login --url $MOCK/old --key-stdin ;; hv whoami ;; hv logout ;; hv logout --url $MOCK/old ;; hv whoami --json
+@mock HPY_HV_URL=$MOCK/ci HPY_HV_API_KEY=hv_fedcba9876543210fedcba9876543210 -- hv whoami ;; --json hv whoami
+@mock HPY_HV_API_KEY=hv_fedcba9876543210fedcba9876543210 -- hv whoami
+-- hv logout
+-- hv logout --url https://nowhere.example.com
+-- hv whoami
+-- --json hv whoami
+-- hv logout --url ftp://x
+# registry plugin init/show/edit/pull/publish against the mock registry ($MOCK/reg-<mode>, see
+# mock-registry.mjs). @plugin=<fixture> copies test/fixtures/plugin/<fixture> to $HOME/p.
+@plugin=bare @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --local-only
+@plugin=bare @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --local-only --author Ada<ada@example.com> --security security@example.com --keyword one --keyword two --description Things.
+@plugin=bare @keep=~/p/hpy.toml -- --json --no-input -C p registry plugin init --local-only --author Ada --security https://example.com/security --name other-name --display-name Other
+@plugin=bare -- --no-input -C p registry plugin init --local-only --author Ada --security nope
+@plugin=bare -- --no-input -C p registry plugin init --local-only --author <ada@example.com> --security s@example.com
+@plugin=bare -- --no-input -C p registry plugin init --local-only --name Bad:Name --author Ada --security s@example.com
+@plugin=bare @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com
+@mock @plugin=bare @mockcred=new @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com
+@mock @plugin=bare @mockcred=new @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com --yes
+@mock @plugin=bare @mockcred=new -- --json --no-input -C p registry plugin init --author Ada --security s@example.com -y ;; --json -C p registry plugin show
+@mock @plugin=initicon @mockcred=new @keep=~/p/hpy.toml -- --no-input -C p registry plugin init --author Ada --security s@example.com --yes
+@mock @plugin=initicon @mockcred=new:atproto -- --no-input -C p registry plugin init --author Ada --security s@example.com --yes
+@mock @plugin=basic @mockcred=has -- --no-input -C p registry plugin init --yes
+@mock @mockcred=has -- registry plugin show --name my-plugin
+@mock @mockcred=has -- --json registry plugin show --name my-plugin
+@mock @mockcred=changed -- registry plugin show --name my-plugin
+@mock @mockcred=new -- registry plugin show --name my-plugin
+@mock @plugin=basic @mockcred=has -- -C p registry plugin show
+-- registry plugin show --name my-plugin
+-- registry plugin show --name Bad
+-- registry plugin show
+@plugin=bad -- -C p registry plugin show
+@mock @mockcred=has -- --no-input registry plugin edit --name my-plugin
+@mock @mockcred=has -- registry plugin edit --name my-plugin --author Bea --security https://x.example/sec --keyword more
+@mock @mockcred=has -- --json registry plugin edit --name my-plugin --display-name Renamed --description New. --remove-keyword demo
+@mock @plugin=basic @mockcred=changed @keep=~/p/hpy.toml -- -C p registry plugin edit --display-name Renamed --keyword new --remove-keyword demo
+@mock @plugin=basic @mockcred=has @keep=~/p/hpy.toml -- -C p registry plugin edit --name other --display-name Renamed
+@mock @mockcred=swap -- registry plugin edit --name my-plugin --display-name X
+@mock @mockcred=has -- registry plugin edit --name my-plugin --author <a@example.com>
+@mock @mockcred=has -- registry plugin edit --name my-plugin --security nope
+@mock @mockcred=has -- registry plugin edit --name my-plugin --keyword aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+@mock @mockcred=has:atproto -- registry plugin edit --name my-plugin --keyword x
+@mock @mockcred=new -- registry plugin edit --name my-plugin --keyword x
+-- registry plugin edit --name my-plugin --keyword x
+@mock @plugin=bare @mockcred=has @keep=~/p/hpy.toml -- -C p registry plugin pull
+@mock @plugin=initicon @mockcred=has @keep=~/p/hpy.toml -- --json -C p registry plugin pull
+@mock @plugin=basic @mockcred=changed @keep=~/p/hpy.toml -- -C p registry plugin pull ;; -C p registry plugin pull --name my-plugin
+@mock @mockcred=new -- registry plugin pull --name my-plugin
+-- registry plugin pull --name my-plugin
+@plugin=basic -- -C p registry plugin publish --dry-run
+@plugin=bad -- -C p registry plugin publish
+@plugin=bad -- --json -C p registry plugin publish --version 1.0.0
+@plugin=notwasm -- -C p registry plugin publish
+@plugin=rc -- -C p registry plugin publish
+@plugin=basic -- -C p registry plugin publish --track stable
+@plugin=basic -- -C p registry plugin publish --wasm nope.wasm
+@plugin=bare -- -C p registry plugin publish
+-- registry plugin publish
+@mock @plugin=build @mockcred=new -- -C p registry plugin publish --dry-run
+@mock @plugin=build @mockcred=new -- -C p registry plugin publish --dry-run --no-build
+@mock @plugin=basic @mockcred=new -- -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=new -- --json -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --dry-run --version 1.0.1
+@mock @plugin=basic @mockcred=changed -- --json -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=new -- --no-input -C p registry plugin publish
+@mock @plugin=basic @mockcred=new -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=new -- --json -C p registry plugin publish --yes --wait
+@mock @plugin=basic @mockcred=new -- -C p registry plugin publish --yes ;; -C p registry plugin publish --yes ;; --json -C p registry plugin publish -y
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=changed -- --json -C p registry plugin publish --yes
+@mock @plugin=noproject @mockcred=new -- -C p registry plugin publish --yes
+@mock @plugin=noproject @mockcred=has -- -C p registry plugin publish --yes
+@mock @plugin=noproject @mockcred=changed -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=refuse -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=dup -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=badcid -- -C p registry plugin publish --yes
+@mock @plugin=basic @mockcred=flaky -- -C p registry plugin publish --dry-run
+@mock @plugin=basic @mockcred=new:atproto -- -C p registry plugin publish --yes
+@mock @plugin=beta @mockcred=has -- -C p registry plugin publish --dry-run
+@mock @plugin=rc @mockcred=has -- -C p registry plugin publish --dry-run --track beta
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --promote 0.9.0 --dry-run
+@mock @plugin=basic @mockcred=has -- --json -C p registry plugin publish --promote 0.9.0 --version 1.0.0-beta.1 --dry-run
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --promote 0.9.0 --yes
+@mock @plugin=basic @mockcred=has -- --json -C p registry plugin publish --promote 0.9.0 --version 1.1.0 --track alpha -y --wait
+@mock @plugin=basic @mockcred=has -- -C p registry plugin publish --promote 0.8.0 --yes
+@mock @plugin=basic @mockcred=has -- --no-input -C p registry plugin publish --promote 0.9.0
+@mock @plugin=basic @mockcred=has:atproto -- -C p registry plugin publish --promote 0.9.0 --yes
+@plugin=basic -- -C p registry plugin publish --promote 0.9.0 --version v1
+@plugin=basic -- -C p registry plugin publish --promote 0.9.0 --version 1.0.0-rc.1
+@plugin=basic -- -C p registry plugin publish --promote 0.9.0
+-- registry plugin publish --promote 0.9.0
+# registry plugin status and lifecycle; status reads the registry at HPY_REGISTRY_URL.
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- --json registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- registry plugin status --name my-plugin 1.1.0
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- registry plugin status --name my-plugin 2.0.0
+@mock @mockcred=new HPY_REGISTRY_URL=$MOCK/reg-new -- registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-gone -- registry plugin status --name my-plugin
+@mock @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-gone -- --json registry plugin status --name my-plugin
+@mock @plugin=basic @mockcred=has HPY_REGISTRY_URL=$MOCK/reg-has -- -C p registry plugin status
+-- registry plugin status --name my-plugin
+@mock @mockcred=has -- registry plugin status --name Bad
+@mock @mockcred=has -- registry plugin status
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfSupport --kind security --reason use-1.x --yes
+@mock @mockcred=has -- --json --no-input registry plugin lifecycle --name my-plugin 0.9.0 supersededBy --superseded-by 1.0.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin --project endOfLife -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 deprecated -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 withdrawn -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 supersededBy -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife --superseded-by 1.0.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin v1 endOfLife -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 supersededBy --superseded-by nope -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin --project -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://did:plc:mo7vq4jbioxwafy5zkcc3eux/software.release.status/3lstatus --reason by-mistake -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://did:plc:mo7vq4jbioxwafy5zkcc3eux/software.release.status/3lnothere -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://did:plc:other/software.release.status/3lstatus -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://x 0.9.0 -y
+@mock @mockcred=has -- --no-input registry plugin lifecycle --withdraw at://x --project -y
+@mock @mockcred=has:atproto -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife -y
+@mock @mockcred=refuse -- --no-input registry plugin lifecycle --name my-plugin 0.9.0 endOfLife -y
+-- registry plugin lifecycle --name my-plugin 0.9.0 endOfLife -y
+# clap's usage after a conflict or a missing requirement names every option given, in order.
+-- hv pull --dry-run --api-key-env FOO
+-- hv pull --api-key-env FOO --dry-run
+-- registry plugin lifecycle -y --kind k --withdraw x --reason r
+-- registry plugin lifecycle --reason r --withdraw x -y --kind k
+-- registry plugin lifecycle --withdraw x --name n --project
+-- hv add --channel beta --interpreter --library
+-- hv add --library --channel beta --version 1.0.0 x
+# hv deploy against the mock HappyView (test/fixtures/hvproject; see mock-happyview.mjs).
+-- hv deploy
+-- hv deploy --dry-run
+@project=basic -- -C proj hv deploy --dry-run
+@project=basic -- -C proj hv deploy --dry-run --url https://nowhere.example.com
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run --prune-plugins
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy
+@mock @project=basic HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --yes --prune-plugins
+@mock @project=basic HPY_HV_URL=$MOCK/same HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy ;; -C proj --json hv deploy
+@mock @project=basic HPY_HV_URL=$MOCK/invalid HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic HPY_HV_URL=$MOCK/pending HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/eol HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic HPY_HV_URL=$MOCK/noboot HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic HPY_HV_URL=$MOCK/forbid HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=basic STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url $MOCK/dep --key-stdin ;; -C proj hv deploy --dry-run
+@mock @project=nolock HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --dry-run
+@mock @project=nocaps HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+@mock @project=drift HPY_HV_URL=$MOCK/dep HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes
+# hv env push against the mock HappyView.
+-- hv env push
+@project=basic -- -C proj hv env push --yes
+@project=basic -- -C proj hv env push --env-file missing.env --yes
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --yes
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --dry-run ;; -C proj --json hv env push --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push B A B --yes ;; -C proj hv env push A MISSING OTHER --yes ;; -C proj hv env push MY-KEY --yes
+@mock @project=basic HPY_HV_URL=$MOCK/varsfail HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --yes
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --env-file src/jobs/nightly.lua --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv env push --env-file proj/.env --dry-run
+@mock @project=badenv HPY_HV_URL=$MOCK/vars HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes
+@mock @project=basic HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes
+# hv pull against the mock instances in mock-pull.mjs.
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml @keep=~/pulled/happyview.lock @keep=~/pulled/.env.example @keep=~/pulled/src/lexicons/com/example/post.json @keep=~/pulled/src/lexicons/com/example/listPosts.lua HV_LOG=hv.log @keep=~/pulled/hv.log -- hv pull pulled ;; hv pull pulled ;; hv pull pulled --diff ;; --json hv pull pulled --diff
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- --json hv pull pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3nos HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml -- hv pull pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv3mod HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml @keep=~/pulled/src/lib/format.lua -- hv pull pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pvdev HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/pv2 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/refuse HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=basic HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull proj ;; hv pull --diff nowhere
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=basic HPY_HV_URL=$MOCK/pv3 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull proj --diff
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=codemod HPY_HAPPYVIEW_CODEMOD=proj/fake-codemod HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef @keep=~/pulled/happyview.toml @keep=~/pulled/src/jobs/cleanup.lua @keep=~/pulled/src/lexicons/com/example/listPosts.lua -- hv pull --legacy --url $MOCK/pv2 pulled
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @project=codemod HPY_HAPPYVIEW_CODEMOD=proj/fake-codemod HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef -- --json hv pull --legacy --url $MOCK/pv2 --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HAPPYVIEW_API_KEY=hv_ffffffffffffffffffffffffffffffff -- hv pull --legacy --url $MOCK/pv2
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh MY_KEY=nope -- hv pull --legacy --url $MOCK/pv2 --api-key-env MY_KEY
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy --url $MOCK/pv2 --api-key-env MY_KEY
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy --url $MOCK/pv3
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh -- hv pull --legacy
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HAPPYVIEW_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --legacy --url ftp://x
+# channel: show, choose the one already followed (no network), refuse an unknown one.
+-- channel
+-- --json channel
+@keep=hpy/channel.toml -- channel alpha
+@keep=hpy/channel.toml -- --json channel alpha
+@keep=hpy/channel.toml -- channel alpha ;; channel ;; --json channel
+-- channel nightly
+-- channel ''
+-- --json channel nightly
+-- channel alpha extra
+XDG_CONFIG_HOME=/dev/null/x -- channel alpha
+XDG_CONFIG_HOME=/dev/null/x -- channel
+# Switching channels lists the releases on GitHub; a prerelease channel always warns, so with no
+# terminal and no --yes these stop at the confirmation, before anything is recorded or installed.
+# Never add a networked `update`, `channel stable` or `--yes` case: when GitHub has a newer
+# release, the Rust binary would replace itself with it.
+@net @keep=hpy/channel.toml -- channel beta
+@net @keep=hpy/channel.toml -- --json --no-input channel beta
+# update and switching channels need GitHub's release list; through a proxy that refuses, both
+# fail before anything is recorded or installed. reqwest honours these variables; so does the TS.
+# Only beta here: should the proxy ever be skipped, a prerelease channel still stops at its
+# confirmation, where stable (newer than this alpha) would install.
+HTTPS_PROXY=http://127.0.0.1:9 -- update
+https_proxy=http://127.0.0.1:9 -- --json update
+ALL_PROXY=127.0.0.1:9 -- update
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel beta
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- --json channel beta
+HTTPS_PROXY=http://127.0.0.1:9 @keep=hpy/channel.toml -- channel alpha ;; channel beta ;; channel
+# hv create (M4), against the registries and release lists in mock-create.mjs.
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock @keep=~/app/.gitignore @keep=~/app/.env.example @keep=~/app/.luarc.json @keep=~/app/tsconfig.json @keep=~/app/src/lexicons/com/example/hello.json @keep=~/app/src/lexicons/com/example/hello.lua @keep=~/app/src/lexicons/com/example/hello.ts @keep=~/app/src/lexicons/com/example/hello.js -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock @keep=~/app/.gitignore @keep=~/app/.env.example @keep=~/app/.luarc.json @keep=~/app/tsconfig.json @keep=~/app/src/lexicons/com/example/hello.json @keep=~/app/src/lexicons/com/example/hello.lua @keep=~/app/src/lexicons/com/example/hello.ts @keep=~/app/src/lexicons/com/example/hello.js -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --app-name MyApp ;; hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/happyview.toml @keep=~/happyview.lock -- hv create --name . --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @keep=~/happyview.toml -- hv create --name ./ --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --app-name Here
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file @keep=~/.config/app/happyview.toml -- -C .config hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crghpre @keep=~/app/happyview.toml -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh0 -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh5 -- hv create --name app --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version nope
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version v3.0.0
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @cred @keep=~/app/happyview.toml -- hv create --name app --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @cred -- --json hv create --name app --happyview-version 3.0.0-alpha.12 --superadmin did:plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @cred -- hv create --name app --happyview-version 3.0.0-alpha.12 --superadmin did:PLC:x
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- --no-input hv create --name app
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:PLC:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin plc:me
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:x%
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --app-name=
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name . --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name .config --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name .config/hpy/credentials.json --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh @file -- hv create --name .config/hpy/credentials.json/x --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project nope
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/app.bsky.feed.post/x
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter python
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library happyview.nope
+@mock HPY_REGISTRY_URL=$MOCK/crreg HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter lua --library happyview.nope ;; hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crold HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh -- hv create --name asked --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh @keep=~/pinned/happyview.toml @keep=~/pinned/happyview.lock -- hv create --name pinned --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/other-lua
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name pinned --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh @keep=~/stray/happyview.toml -- hv create --name stray --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/nobody
+@mock HPY_REGISTRY_URL=$MOCK/crtwo HPY_GITHUB_API=$MOCK/crgh -- hv create --name both --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --project at://did:plc:hv/software.release.project/other-lua --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh @keep=~/ns/happyview.toml @keep=~/ns/happyview.lock -- hv create --name ns --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library happyview.http
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh @keep=~/byname/happyview.toml @keep=~/byname/happyview.lock -- --json hv create --name byname --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library http-lib
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh -- hv create --name neither --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library happyview.nope
+@mock HPY_REGISTRY_URL=$MOCK/crlib HPY_GITHUB_API=$MOCK/crgh -- hv create --name x --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library http-lib --project at://did:plc:hv/software.release.project/http-lib --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock @keep=~/app/.gitignore @keep=~/app/.env.example @keep=~/app/.luarc.json @keep=~/app/tsconfig.json @keep=~/app/src/lexicons/com/example/hello.json @keep=~/app/src/lexicons/com/example/hello.lua @keep=~/app/src/lexicons/com/example/hello.ts @keep=~/app/src/lexicons/com/example/hello.js -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter typescript --interpreter lua --library http-lib
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter python
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh @keep=~/app/happyview.toml @keep=~/app/happyview.lock -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter luau --interpreter lua
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh -- --json hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter luau --interpreter lua
+@mock HPY_REGISTRY_URL=$MOCK/crmany HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --interpreter ruby
+@mock HPY_REGISTRY_URL=$MOCK/crempty HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+@mock HPY_REGISTRY_URL=$MOCK/crempty HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12 --library anything
+@mock HPY_REGISTRY_URL=$MOCK/crnone HPY_GITHUB_API=$MOCK/crgh -- hv create --name app --superadmin did:plc:me --happyview-version 3.0.0-alpha.12
+# hv add / scaffold (M4)
+# add: against $MOCK/addreg (lua, happyview.db, happyview.record), $MOCK/addboth (`lua` is both
+# kinds), $MOCK/addtwo (two interpreters answer `lua`) and $MOCK/addpre (only an alpha channel).
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua happyview.db
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv install happyview.record --library
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --interpreter --version 1.4.2
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua --channel latest
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --channel beta
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --channel nightly
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --version 9.9.9
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --version ^1
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --channel beta --version 1.4.2
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --interpreter --library
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project at://did:plc:hv/software.release.project/happyview-lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project at://did:plc:nobody/software.release.project/x
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project not-a-uri
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua@1.4.2
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add nothing-here
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua --library
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua ;; -C proj hv add happyview.db ;; -C proj hv install ;; --json -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addboth @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addboth @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --library
+@mock HPY_REGISTRY_URL=$MOCK/addtwo @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addtwo @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv add lua --project at://did:plc:hv/software.release.project/other-lua
+@mock HPY_REGISTRY_URL=$MOCK/addtwo @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua --project at://did:plc:hv/software.release.project/other-lua ;; -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addpre @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add js
+@mock HPY_REGISTRY_URL=$MOCK/addpre @project=addempty @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add js --channel alpha
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addlua @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addlua @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- --json -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addlua @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj/src hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addold @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv install
+@mock HPY_REGISTRY_URL=$MOCK/addreg @project=addold @keep=~/proj/happyview.toml @keep=~/proj/happyview.lock -- -C proj hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg -- hv add lua
+@mock HPY_REGISTRY_URL=$MOCK/addreg -- --json hv install
+# scaffold: lua and typescript projects with a record, a query and a procedure lexicon.
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua @keep=~/proj/src/lexicons/com/example/saveNote.lua @keep=~/proj/src/lexicons/com/example/note.lua -- -C proj hv scaffold
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua @keep=~/proj/src/lexicons/com/example/saveNote.lua @keep=~/proj/happyview.toml -- -C proj hv scaffold --collection com.example.note
+@project=scaffold -- --json -C proj hv scaffold --collection com.example.note
+@project=scaffold -- --json -C proj hv scaffold
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua @keep=~/proj/src/lexicons/com/example/saveNote.lua -- -C proj hv scaffold com.example.listNotes com.example.listNotes --collection com.example.note
+@project=scaffold -- --json -C proj hv scaffold com.example.saveNote
+@project=scaffold -- -C proj hv scaffold com.example.note
+@project=scaffold -- --json -C proj hv scaffold com.example.note
+@project=scaffold -- -C proj hv scaffold com.example.nowhere
+@project=scaffold -- -C proj hv scaffold --collection notes
+@project=scaffold @keep=~/proj/src/lexicons/com/example/listNotes.lua -- -C proj hv scaffold com.example.listNotes ;; -C proj hv scaffold --collection com.example.note ;; --json -C proj hv scaffold
+@project=scaffoldts @keep=~/proj/src/lexicons/com/example/listNotes.ts @keep=~/proj/src/lexicons/com/example/saveNote.ts -- -C proj hv scaffold --collection com.example.note
+@project=scaffoldts @keep=~/proj/src/lexicons/com/example/listNotes.ts @keep=~/proj/src/lexicons/com/example/saveNote.ts -- -C proj hv scaffold
+@project=scaffoldpy -- -C proj hv scaffold
+@project=addempty -- -C proj hv scaffold
+@project=addlua -- --json -C proj hv scaffold
+@project=addold -- -C proj hv scaffold
+-- hv scaffold
+# hv check / test / types / build / dev (M4), against mock-pull.mjs's registry and release.
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_SAY=hello @keep=~/proj/hv.log @keep=~/proj/hv.log.cwd -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_EXIT=3 HV_SAY=failing -- -C proj hv check ;; -C proj happyview check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare @keep=~/proj/hv.log -- -C proj --json hv check ;; -C proj hv check --json
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare @keep=~/proj/hv.log -- -C proj/src/lexicons hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare PLUGIN_DIR=/elsewhere @keep=~/proj/hv.log -- -C proj hv check ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runwarn @keep=~/proj/hv.log -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runlua @keep=~/proj/happyview.lock @keep=~/proj/hv.log @keep=~/proj/.happyview/plugins/happyview-lua/manifest.json -- -C proj hv check ;; -C proj hv check --locked
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runluadrift @keep=~/proj/happyview.lock -- -C proj hv check --locked ;; -C proj hv test --locked ;; -C proj hv types --locked ;; -C proj hv dev --locked
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runoldlock -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbarever -- -C proj hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log -- hv check ;; hv test ;; hv types ;; hv dev ;; hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HPY_CACHE_DIR=proj -- -C proj hv check ;; hv check
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare @keep=~/proj/hv.log -- -C proj hv test ;; -C proj hv test --watch getArtifact ;; -C proj hv test some/filter
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_EXIT=4 -- -C proj hv test ;; -C proj hv types ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runlua @keep=~/proj/hv.log @keep=~/proj/.luarc.json @keep=~/proj/tsconfig.json -- -C proj hv types ;; -C proj hv types ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runlua HV_EXIT=1 @keep=~/proj/.luarc.json -- -C proj hv types
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare HV_SAY=dev @keep=~/proj/hv.log @keep=~/proj/hv.log.cwd -- -C proj hv dev ;; -C proj --json hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare -- -C proj hv build ;; -C proj --json hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup @keep=~/proj/.happyview/build/registry.wasm -- -C proj hv build ;; -C proj --json hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbroken HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup -- -C proj hv build ;; -C proj hv check ;; -C proj hv test ;; -C proj hv types ;; -C proj --json hv build
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbroken HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup @keep=~/proj/hv.log -- -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup @keep=~/proj/hv.log @keep=~/proj/.happyview/build/registry.wasm -- -C proj hv check ;; -C proj hv test ;; -C proj hv types
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup HV_EXIT=3 HV_SAY=mod @keep=~/proj/hv.log -- -C proj hv dev ;; -C proj hv test --watch
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=$HOME/proj/cargo HPY_RUSTUP=/nonexistent/rustup HV_MODE=die -- -C proj hv dev ;; -C proj hv test --watch
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runmod HPY_CARGO=/nonexistent/cargo HPY_RUSTUP=/nonexistent/rustup -- -C proj hv build ;; -C proj hv dev
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HV_LOG=hv.log @project=runbare -- -C proj hv dev --reset ;; -C proj hv dev --subnet 10.40.0.0/24 ;; -C proj hv dev --network real --reset
+# hv dev --network local against the fake deno and docker of test/support/fake-network.ts
+# (@netbin[=<mode>]; see netbin() in run.mjs) and the fake HappyView release for aarch64 Linux.
+-- hv dev --reset
+-- hv dev --subnet 10.40.0.0/24
+@netbin -- hv dev --network local
+@netbin=nodeno -- -C proj hv dev --network local
+@netbin=olddeno -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local ;; -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj --json hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=noaccess -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=locked -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=pending -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin=stale -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_RELAY=hv-other-12345678 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_UP_FAILS=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_SEED_FAILS=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_UP_CRASHES=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin NET_UP_CONTENDED=1 -- -C proj hv dev --network local
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local --reset
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local --reset --yes ;; -C proj hv dev --network local --reset --yes
+@mock @project=netlocal HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh @netbin -- -C proj hv dev --network local --subnet 10.40.0.0/24 ;; -C proj hv dev --network local --subnet 10.41.0.0/24 ;; -C proj hv dev --network local --reset --yes ;; -C proj hv dev --network local --reset --yes --subnet 10.41.0.0/24
+
+# Review round 1: how each command meets a HappyView or registry that answers HTML, a 500, an
+# empty body, the wrong JSON shape, a rate limit, or an XRPC error (mock-happyview.mjs mountRv:
+# $MOCK/html, /e500, /e500t, /empty, /shape, /r429, /e401, /exp, /nonce, /e403, /e404j, /weird;
+# reg-* for the registry).
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/html --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/html --key-stdin
+@mock HPY_HV_URL=$MOCK/html HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/html HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/html HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/html HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=html -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=html -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=html -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=html -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=html -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/html @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/e500 --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/e500 --key-stdin
+@mock HPY_HV_URL=$MOCK/e500 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/e500 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/e500 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/e500 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=e500 -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=e500 -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=e500 -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=e500 -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=e500 -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/e500 @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/e500t --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/e500t --key-stdin
+@mock HPY_HV_URL=$MOCK/e500t HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/e500t HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/e500t HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/e500t HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=e500t -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=e500t -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=e500t -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=e500t -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=e500t -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/e500t @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/empty --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/empty --key-stdin
+@mock HPY_HV_URL=$MOCK/empty HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/empty HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/empty HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/empty HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=empty -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=empty -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=empty -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=empty -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=empty -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/empty @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/shape --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/shape --key-stdin
+@mock HPY_HV_URL=$MOCK/shape HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/shape HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/shape HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/shape HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=shape -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=shape -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=shape -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=shape -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=shape -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/shape @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/r429 --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/r429 --key-stdin
+@mock HPY_HV_URL=$MOCK/r429 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/r429 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/r429 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/r429 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=r429 -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=r429 -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=r429 -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=r429 -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=r429 -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/r429 @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/e401 --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/e401 --key-stdin
+@mock HPY_HV_URL=$MOCK/e401 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/e401 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/e401 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/e401 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=e401 -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=e401 -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=e401 -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=e401 -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=e401 -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/e401 @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/exp --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/exp --key-stdin
+@mock HPY_HV_URL=$MOCK/exp HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/exp HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/exp HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/exp HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=exp -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=exp -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=exp -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=exp -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=exp -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/exp @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/e403 --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/e403 --key-stdin
+@mock HPY_HV_URL=$MOCK/e403 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/e403 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/e403 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/e403 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=e403 -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=e403 -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=e403 -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=e403 -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=e403 -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/e403 @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/e404j --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/e404j --key-stdin
+@mock HPY_HV_URL=$MOCK/e404j HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/e404j HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/e404j HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/e404j HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=e404j -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=e404j -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=e404j -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=e404j -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=e404j -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/e404j @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/weird --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --json hv login --url $MOCK/weird --key-stdin
+@mock HPY_HV_URL=$MOCK/weird HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami ;; --json hv whoami
+@mock @project=basic HPY_HV_URL=$MOCK/weird HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv deploy --yes ;; -C proj --json hv deploy --dry-run
+@mock @project=basic HPY_HV_URL=$MOCK/weird HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- -C proj hv env push --yes ;; -C proj --json hv env push --dry-run
+@mock HPY_REGISTRY_URL=$MOCK/hvreg HPY_HAPPYVIEW_DOWNLOAD=$MOCK/dl HPY_GITHUB_API=$MOCK/gh HPY_HV_URL=$MOCK/weird HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv pull --dry-run ;; --json hv pull --dry-run out
+@mock @mockcred=weird -- registry plugin show --name my-plugin ;; --json registry plugin show --name my-plugin
+@mock @mockcred=weird -- registry plugin status --name my-plugin ;; --json registry plugin status --name my-plugin
+@mock @mockcred=weird -- --no-input registry plugin lifecycle --name my-plugin 1.0.0 endOfLife --reason r --yes ;; --json --no-input registry plugin lifecycle --name my-plugin --project endOfLife --reason r --yes
+@mock @plugin=basic @mockcred=weird -- -C p --no-input registry plugin publish --yes ;; -C p --json registry plugin publish --dry-run
+@mock @mockcred=weird -- registry plugin edit --name my-plugin --keyword x
+@mock HPY_REGISTRY_URL=$MOCK/weird @project=addempty @keep=~/proj/happyview.toml -- -C proj hv add lua ;; --json -C proj hv add lua
+HPY_CREDENTIAL= -- registry whoami
+HPY_CREDENTIAL=e30 -- registry whoami
+HPY_CREDENTIAL=e30 -- --json registry whoami
+HPY_CREDENTIAL=eyJ2IjoyfQ -- registry whoami
+HPY_CREDENTIAL=eyJ2IjoxfQ -- registry whoami
+HPY_CREDENTIAL=!!!! -- --json registry whoami
+@cred -- registry logout
+@cred -- --json registry logout
+@cred @file -- registry whoami
+@cred @file -- registry logout ;; registry whoami
+@cred -- --no-input registry login
+@cred -- registry login --export --no-input
+@file @keep=hpy/credentials.json -- registry whoami
+@file HPY_CREDENTIAL_STORE=keychain -- registry whoami
+@file HPY_CREDENTIAL_STORE= -- registry whoami
+@file HPY_CREDENTIAL_STORE=FILE -- registry whoami
+-- --json --no-input registry login
+-- --json registry login --export
+HPY_REGISTRY_URL=notaurl -- registry plugin show --name x
+HPY_REGISTRY_URL=ftp://x -- registry plugin show --name x
+HPY_HV_URL=notaurl HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami
+HPY_HV_URL=http://127.0.0.1:9 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- hv whoami
+HPY_HV_URL=http://127.0.0.1:9 HPY_HV_API_KEY=hv_0123456789abcdef0123456789abcdef -- --json hv whoami
+@mock HPY_HV_URL=$MOCK/ok HPY_HV_API_KEY=short -- hv whoami
+@mock HPY_HV_URL=$MOCK/ok HPY_HV_API_KEY= -- hv whoami
+@mock HPY_HV_URL=$MOCK/ok -- hv whoami
+@mock STDIN= -- hv login --url $MOCK/ok --key-stdin
+@mock STDIN=\n\n -- hv login --url $MOCK/ok --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef\nextra -- hv login --url $MOCK/ok --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url $MOCK/ok?x=1 --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url $MOCK/ok#frag --key-stdin
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- hv login --url $MOCK/ok --key-stdin bob
+@mock STDIN=hv_0123456789abcdef0123456789abcdef -- --no-input hv login --url $MOCK/ok
+@mock STDIN=hv_0123456789abcdef0123456789abcdef @keep=hpy/instances.json -- hv login --url $MOCK/ok --key-stdin ;; hv login --url $MOCK/ok --key-stdin ;; --json hv whoami
+-- --json --no-input hv login
+-- --json hv dev
+-- --no-input hv dev --network local --reset
+-- -C /nonexistent registry whoami
+-- -C /nonexistent --json hv whoami
+-- --json --json registry whoami
+-- --no-input --no-input registry whoami
+-- -C
+-- registry whoami -C
+-- --json=true registry whoami
+-- -Cx registry whoami
+-- registry plugin lifecycle
+-- --no-input registry plugin lifecycle
+-- --json registry plugin lifecycle 1.0.0
+-- registry plugin lifecycle 1.0.0 endOfLife extra
+-- registry plugin lifecycle --project 1.0.0 endOfLife
+-- registry plugin lifecycle 1.0.0 badEvent --name x
+-- registry plugin status 1.0.0 2.0.0
+-- registry plugin publish --track nightly
+-- registry plugin publish --promote 1.0.0
+-- registry plugin publish --version notsemver --dry-run
+-- update extra
+-- update --yes
+-- --no-input update --json
+-- channel --json
+-- channel stable --no-input
+-- hv add
+-- --no-input hv add
+-- hv add --interpreter --library
+-- hv add --version 1.0.0 a b
+-- hv create --name
+-- --no-input hv create --name x --superadmin notadid
+-- hv env push --env-file
+-- hv deploy --yes --dry-run
+-- hv pull --legacy --diff
+-- hv pull a b
+-- hv dev --locked --network local
+-- hv build extra
+-- hv test --bogus
+-- hv types --json
+-- hv check --json
+-- registry plugin init --no-input
+-- --json registry plugin show
+-- registry plugin edit
+-- registry plugin pull
+-- completion
+-- help hv dev
+-- help nope
+-- hv help deploy
+-- registry help
+-- -V registry
+-- registry -V
+-- --version --json
+
+# Review round 1: clap's parsing edges (repeated options, hyphen values, the help subcommand,
+# similar-subcommand tips, `--`, values given to flags, -hV and -Vh).
+-- registry whoami --json --json
+-- -C a -C b registry whoami
+-- hv deploy --yes --yes --dry-run
+-- hv deploy --url a --url b
+-- registry plugin show --name a --name b
+-- hv dev --network local --network real
+-- hv create --name a --name b
+-- hv add --channel beta --channel alpha lua
+-- registry plugin publish --version 1.0.0 --version 2.0.0 --dry-run
+-- registry plugin show --name -x
+-- hv create --name -1
+-- hv deploy --url -x
+-- registry plugin lifecycle --reason -x 1.0.0 endOfLife
+-- hv env push --env-file -x
+-- hv pull --api-key-env -X
+-- -C -x registry whoami
+-- help hv nope
+-- registry help nope
+-- help registry plugin nope
+-- hv help nope
+-- help help
+-- help --json
+-- --json help
+-- help -h
+-- registry plugin help
+-- registry --json
+-- hv --no-input
+-- --no-input
+-- --json
+-- -C .
+-- -y registry whoami
+-- registry whoami -y
+-- registry whoami --yes
+-- hv whoami --dry-run
+-- hv deploy --yes=true
+-- hv deploy --dry-run=false
+-- hv deploy --url=
+-- hv deploy --url ''
+-- registry plugin show --name=
+-- --json= registry whoami
+-- registry whoami --
+-- registry -- whoami
+-- hv env push -- A B
+-- hv env push -- --dry-run
+-- hv test -- --bogus
+-- hv test a b
+-- hv add lua -- --x
+-- registry plugin lifecycle -- 1.0.0 endOfLife
+-- registry whoami --no-such=1
+-- registry Whoami
+-- REGISTRY whoami
+-- happyview whoami
+-- hv who
+-- reg whoami
+-- registry plugin publ
+-- --help registry
+-- registry --help plugin
+-- -hV
+-- -Vh
+-- --version extra
+-- --version registry whoami
+-- registry plugin --version
+-- update --version
+-- help help x
+-- help hv help x
+-- hv help help
+-- help hv deploy x
+-- hv --dry-run deploy
+-- hv deploy --dry-rn
+-- hv deploy --url x --dry-rn
+-- hv dev --network rel
+-- hv dev --network=
+-- hv deploy --url --dry-run
+-- hv create --app-name x
+-- -C a -C b registry nope
+-- -C a -C b hv add --channel x --version y lua
+-- hv deploy -yCdir
+-- hv deploy --help=x
+-- hv deploy --url -h
+-- hv pull --diff --dry-run --json
+-- hv pull --json --diff -C x --dry-run
+-- hv add --interpreter --library --json lua
+-- hv add --version 1 --json
+-- hv pull --api-key-env K --json x
+-- hv login alice --key-stdin --url u
+-- registry plugin lifecycle --withdraw x --project --kind k --superseded-by v
+-- hv dev --subnet bad --subnet bad2
