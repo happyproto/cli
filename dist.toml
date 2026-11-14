@@ -8,7 +8,7 @@
 # test/unit/packaging.test.ts checks them.
 [package]
 name = "hpy-cli"
-version = "1.0.0-alpha.32"
+version = "1.0.0-alpha.33"
 description = "The HappyProto command line"
 license = "MIT"
 repository = "https://github.com/happyproto/cli"
